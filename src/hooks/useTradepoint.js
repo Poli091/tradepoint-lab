@@ -8,6 +8,18 @@ import { useState, useMemo } from 'react'
 import { filterByAccount, calcPortfolioStats } from '../utils/finance.js'
 
 export function useTradepoint() {
+  // ── Theme ────────────────────────────────────────────────
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('tp-theme') || 'dark'
+  )
+  const toggleTheme = () => {
+    setTheme(t => {
+      const next = t === 'dark' ? 'light' : 'dark'
+      localStorage.setItem('tp-theme', next)
+      return next
+    })
+  }
+
   // ── Navigation ──────────────────────────────────────────
   const [view,    setView]    = useState('dashboard')
 
@@ -51,6 +63,8 @@ export function useTradepoint() {
   const decQty = () => setQty(q => Math.max(1, q - 1))
 
   return {
+    // Theme
+    theme, toggleTheme,
     // Navigation
     view, setView,
     // Account

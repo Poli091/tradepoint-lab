@@ -126,3 +126,44 @@ a      { color: var(--accent); text-decoration: none; }
 .txt-accent { color: var(--accent); }
 .txt-muted  { color: var(--txt-muted); }
 .txt-sec    { color: var(--txt-sec); }
+
+/* ═══════════════════════════════════════════════════════════
+   LIGHT MODE TOKENS
+   Applied when <html data-theme="light"> is set.
+   All other rules (fonts, layout, reset) stay the same.
+═══════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg:           #F8FAFC;   /* gris hueso azulino — descansa la vista */
+  --surface:      #FFFFFF;   /* blanco puro para tarjetas */
+  --surface-up:   #F1F5F9;   /* gris muy claro para inputs */
+  --surface-hov:  #E2E8F0;   /* hover */
+
+  /* Borders */
+  --border:       #E2E8F0;   /* bordes finos gris claro */
+  --border-lt:    #CBD5E1;
+
+  /* UI accent */
+  --accent:       #0284C7;   /* sky blue ligeramente más oscuro para contraste en blanco */
+  --accent-dim:   rgba(2, 132, 199, 0.10);
+  --accent-glow:  rgba(2, 132, 199, 0.18);
+
+  /* Chart line — índigo vibrante, identidad lab en modo claro */
+  --chart-line:   #4F46E5;
+  --chart-dim:    rgba(79, 70, 229, 0.10);
+
+  /* Semantic — tonos más sólidos y saturados para fondos claros */
+  --green:        #059669;   /* verde esmeralda rico */
+  --green-dim:    rgba(5, 150, 105, 0.10);
+  --red:          #DC2626;   /* rojo rubí / carmín */
+  --red-dim:      rgba(220, 38, 38, 0.10);
+  --amber:        #D97706;   /* ámbar oscuro para contraste en blanco */
+  --amber-dim:    rgba(217, 119, 6, 0.10);
+  --purple:       #4F46E5;
+  --purple-dim:   rgba(79, 70, 229, 0.10);
+
+  /* Typography */
+  --txt:          #0F172A;   /* azul marino corporativo — máxima seriedad bancaria */
+  --txt-sec:      #64748B;   /* gris pizarra medio — fechas, subtítulos */
+  --txt-muted:    #94A3B8;   /* gris claro — hints, ticks del eje */
+}

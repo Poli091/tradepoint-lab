@@ -4,8 +4,9 @@
  * To add a new view: register it in VIEWS and add a nav item in Sidebar.jsx.
  */
 
-import Sidebar    from './components/layout/Sidebar.jsx'
-import Header     from './components/layout/Header.jsx'
+import { useEffect } from 'react'
+import Sidebar        from './components/layout/Sidebar.jsx'
+import Header         from './components/layout/Header.jsx'
 import DashboardView  from './views/DashboardView.jsx'
 import PositionsView  from './views/PositionsView.jsx'
 import WatchlistView  from './views/WatchlistView.jsx'
@@ -16,6 +17,7 @@ export default function App() {
   const state = useTradepoint()
 
   const {
+    theme, toggleTheme,
     view, setView,
     account, setAccount,
     ticker, setTicker,
@@ -29,7 +31,12 @@ export default function App() {
     portfolioStats,
   } = state
 
-  /* ── View registry ── add new pages here ── */
+  // ── Apply theme to <html> so CSS vars cascade everywhere ──
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
+  // ── View registry ── add new pages here ──
   const renderView = () => {
     switch (view) {
       case 'dashboard':
@@ -67,10 +74,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* ── Left nav ── */}
-      <Sidebar view={view} setView={setView} />
-
-      {/* ── Main area ── */}
+      <Sidebar view={view} setView={setView} theme={theme} toggleTheme={toggleTheme} />
       <div className="app-main">
         <Header
           account={account}

@@ -117,8 +117,8 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
         <AreaChart data={data} margin={{ top: 4, right: 6, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id={GRAD_ID} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#7C3AED" stopOpacity={0.20} />
-              <stop offset="95%" stopColor="#7C3AED" stopOpacity={0}    />
+              <stop offset="5%"  stopColor="var(--chart-line)" stopOpacity={0.20} />
+              <stop offset="95%" stopColor="var(--chart-line)" stopOpacity={0}    />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -143,7 +143,7 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
             strokeWidth={2}
             fill={`url(#${GRAD_ID})`}
             dot={false}
-            activeDot={{ r: 4, fill: '#7C3AED', stroke: 'var(--bg)', strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: 'var(--chart-line)', stroke: 'var(--bg)', strokeWidth: 2 }}
           />
         </AreaChart>
       </ResponsiveContainer>
