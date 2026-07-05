@@ -12,13 +12,13 @@
  * All responses are cached. Cache checked before every call.
  */
 
-import { API_KEYS, ENDPOINTS } from './config.js'
+import { getApiKeys, ENDPOINTS } from './config.js'
 import { cache } from '../cache.js'
 
 const BASE = ENDPOINTS.finnhub
 
 async function get(path) {
-  const key = API_KEYS.finnhub
+  const key = getApiKeys().finnhub
   if (!key) throw new Error('Finnhub key not configured')
   const res = await fetch(`${BASE}${path}&token=${key}`)
   if (!res.ok) throw new Error(`Finnhub ${res.status}: ${path}`)

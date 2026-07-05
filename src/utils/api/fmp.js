@@ -14,13 +14,13 @@
  * Manual refresh: per-ticker only (not global) to protect the daily limit.
  */
 
-import { API_KEYS, ENDPOINTS } from './config.js'
+import { getApiKeys, ENDPOINTS } from './config.js'
 import { cache } from '../cache.js'
 
 const BASE = ENDPOINTS.fmp
 
 async function get(path) {
-  const key = API_KEYS.fmp
+  const key = getApiKeys().fmp
   if (!key) throw new Error('FMP key not configured')
   const res = await fetch(`${BASE}${path}&apikey=${key}`)
   if (!res.ok) throw new Error(`FMP ${res.status}: ${path}`)
@@ -41,7 +41,7 @@ export async function getFundamentals(ticker, forceRefresh = false) {
     if (cached) return { data: cached, fromCache: true }
   }
 
-  if (!API_KEYS.fmp) {
+  if (!getApiKeys().fmp) {
     return { data: null, fromCache: false, error: 'FMP key not configured' }
   }
 

@@ -1,25 +1,16 @@
 /**
  * MODULE: LAYOUT / Sidebar.jsx
- * Desktop: left rail (64px wide)
- * Mobile:  fixed bottom navigation bar
+ * Desktop: left rail with nav, settings gear, and theme toggle.
+ * Mobile:  fixed bottom navigation bar.
  */
 
-import { LayoutDashboard, Briefcase, Eye, CalendarDays, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Eye, CalendarDays, Settings, Sun, Moon } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint.js'
+import { useLang }        from '../../context/LanguageContext.jsx'
 
-const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
-  { id: 'positions', label: 'Positions',  Icon: Briefcase       },
-  { id: 'watchlist', label: 'Watchlist',  Icon: Eye             },
-  { id: 'calendar',  label: 'Calendar',   Icon: CalendarDays    },
-]
-
-function NavButton({ id, label, Icon, active, onClick, style = {} }) {
+function NavButton({ label, Icon, active, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
+    <button onClick={onClick} title={label} aria-label={label}
       aria-current={active ? 'page' : undefined}
       style={{
         width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
@@ -27,9 +18,7 @@ function NavButton({ id, label, Icon, active, onClick, style = {} }) {
         background: active ? 'var(--accent-dim)' : 'transparent',
         color:      active ? 'var(--accent)'     : 'var(--txt-muted)',
         boxShadow: active ? 'inset 0 0 0 1px var(--accent-glow)' : 'none',
-        transition: 'all 0.14s ease',
-        flexShrink: 0,
-        ...style,
+        transition: 'all 0.14s',
       }}
       onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface-up)'; e.currentTarget.style.color = 'var(--txt-sec)' }}}
       onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent';       e.currentTarget.style.color = 'var(--txt-muted)' }}}
@@ -39,39 +28,50 @@ function NavButton({ id, label, Icon, active, onClick, style = {} }) {
   )
 }
 
-export default function Sidebar({ view, setView, theme, toggleTheme }) {
-  const { isMobile } = useBreakpoint()
-  const isLight = theme === 'light'
+function IconBtn({ label, Icon, onClick, color, bg }) {
+  return (
+    <button onClick={onClick} title={label} aria-label={label}
+      style={{
+        width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: bg || 'var(--surface-up)', color: color || 'var(--txt-muted)',
+        transition: 'all 0.14s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.color = color || 'var(--accent)' }}
+      onMouseLeave={e => { e.currentTarget.style.color = color || 'var(--txt-muted)' }}
+    >
+      <Icon size={18} />
+    </button>
+  )
+}
 
-  /* ── Mobile: fixed bottom nav bar ── */
+export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSettings }) {
+  const { isMobile }  = useBreakpoint()
+  const { t }         = useLang()
+  const isLight       = theme === 'light'
+
+  const NAV_ITEMS = [
+    { id: 'dashboard', label: t.navDashboard, Icon: LayoutDashboard },
+    { id: 'positions', label: t.navPositions,  Icon: Briefcase       },
+    { id: 'watchlist', label: t.navWatchlist,  Icon: Eye             },
+    { id: 'calendar',  label: t.navCalendar,   Icon: CalendarDays    },
+  ]
+
+  /* ── Mobile: fixed bottom bar ── */
   if (isMobile) {
     return (
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        height: 58,
-        background: 'var(--surface)',
-        borderTop: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center',
-        justifyContent: 'space-around',
+        height: 58, background: 'var(--surface)', borderTop: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
         padding: '0 8px',
       }}>
         {NAV_ITEMS.map(({ id, label, Icon }) => (
-          <NavButton key={id} id={id} label={label} Icon={Icon}
-            active={view === id} onClick={() => setView(id)} />
+          <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
         ))}
-        {/* Theme toggle in bottom nav */}
-        <button
-          onClick={toggleTheme}
-          aria-label={isLight ? 'Dark mode' : 'Light mode'}
-          style={{
-            width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'transparent',
-            color: isLight ? 'var(--amber)' : 'var(--txt-muted)',
-          }}
-        >
-          {isLight ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
+        <NavButton label={t.navSettings} Icon={Settings} active={false} onClick={onOpenSettings} />
+        <IconBtn label={isLight ? 'Dark mode' : 'Light mode'} Icon={isLight ? Sun : Moon}
+          color={isLight ? 'var(--amber)' : undefined} onClick={toggleTheme} />
       </nav>
     )
   }
@@ -79,48 +79,40 @@ export default function Sidebar({ view, setView, theme, toggleTheme }) {
   /* ── Desktop: left sidebar ── */
   return (
     <aside style={{
-      width: 'var(--sidebar-w)',
-      height: '100vh',
-      background: 'var(--surface)',
-      borderRight: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center',
-      paddingTop: 14, paddingBottom: 14,
-      gap: 4, flexShrink: 0,
+      width: 'var(--sidebar-w)', height: '100vh',
+      background: 'var(--surface)', borderRight: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      paddingTop: 14, paddingBottom: 14, gap: 4, flexShrink: 0,
     }}>
       {/* Logo */}
       <div style={{
-        width: 36, height: 36, borderRadius: 10,
+        width: 36, height: 36, borderRadius: 10, marginBottom: 18,
         background: 'linear-gradient(135deg, var(--accent), var(--purple))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
-        marginBottom: 18,
       }}>TP</div>
 
+      {/* Nav items */}
       {NAV_ITEMS.map(({ id, label, Icon }) => (
-        <NavButton key={id} id={id} label={label} Icon={Icon}
-          active={view === id} onClick={() => setView(id)} />
+        <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
       ))}
 
       <div style={{ flex: 1 }} />
 
+      {/* Settings gear */}
+      <IconBtn
+        label={t.navSettings}
+        Icon={Settings}
+        onClick={onOpenSettings}
+      />
+
       {/* Theme toggle */}
-      <button
+      <IconBtn
+        label={isLight ? 'Dark mode' : 'Light mode'}
+        Icon={isLight ? Sun : Moon}
+        color={isLight ? 'var(--amber)' : undefined}
         onClick={toggleTheme}
-        title={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
-        aria-label={isLight ? 'Dark mode' : 'Light mode'}
-        style={{
-          width: 42, height: 42, borderRadius: 10, border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface-up)',
-          color: isLight ? 'var(--amber)' : 'var(--txt-sec)',
-          marginBottom: 4, transition: 'all 0.14s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = isLight ? 'var(--amber)' : 'var(--accent)' }}
-        onMouseLeave={e => { e.currentTarget.style.color = isLight ? 'var(--amber)' : 'var(--txt-sec)' }}
-      >
-        {isLight ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
+      />
     </aside>
   )
 }

@@ -6,7 +6,7 @@
  * Used for: ticker deep-dives, earnings previews, risk summaries.
  */
 
-import { API_KEYS, ENDPOINTS } from './config.js'
+import { getApiKeys, ENDPOINTS } from './config.js'
 
 const BASE = ENDPOINTS.groq
 const MODEL = 'llama-3.3-70b-versatile'
@@ -18,7 +18,7 @@ const MODEL = 'llama-3.3-70b-versatile'
  * @returns {string} analysis text
  */
 export async function analyzeTickerAI(ticker, context = {}) {
-  if (!API_KEYS.groq) {
+  if (!getApiKeys().groq) {
     throw new Error('Groq key not configured')
   }
 
@@ -47,7 +47,7 @@ Be direct and specific. No disclaimers. Max 200 words total.`
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${API_KEYS.groq}`,
+      'Authorization': `Bearer ${getApiKeys().groq}`,
     },
     body: JSON.stringify({
       model: MODEL,

@@ -1,21 +1,20 @@
 /**
  * MODULE: ROOT / App.jsx
- * Shell: Sidebar + Header + active view.
- * To add a new view: register it in VIEWS and add a nav item in Sidebar.jsx.
+ * App shell: Language provider → Sidebar + Header + active view + Settings panel.
  */
 
-import { useEffect } from 'react'
-import Sidebar        from './components/layout/Sidebar.jsx'
-import Header         from './components/layout/Header.jsx'
-import DashboardView  from './views/DashboardView.jsx'
-import PositionsView  from './views/PositionsView.jsx'
-import WatchlistView  from './views/WatchlistView.jsx'
-import CalendarView   from './views/CalendarView.jsx'
-import { useTradepoint } from './hooks/useTradepoint.js'
+import { useState, useEffect } from 'react'
+import { LanguageProvider }  from './context/LanguageContext.jsx'
+import Sidebar               from './components/layout/Sidebar.jsx'
+import Header                from './components/layout/Header.jsx'
+import SettingsPanel         from './components/layout/SettingsPanel.jsx'
+import DashboardView         from './views/DashboardView.jsx'
+import PositionsView         from './views/PositionsView.jsx'
+import WatchlistView         from './views/WatchlistView.jsx'
+import CalendarView          from './views/CalendarView.jsx'
+import { useTradepoint }     from './hooks/useTradepoint.js'
 
-export default function App() {
-  const state = useTradepoint()
-
+function AppInner() {
   const {
     theme, toggleTheme,
     view, setView,
@@ -29,21 +28,21 @@ export default function App() {
     limitPrice, setLimitPrice,
     visiblePositions,
     portfolioStats,
-  } = state
+  } = useTradepoint()
 
-  // ── Apply theme to <html> so CSS vars cascade everywhere ──
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  /* Apply theme to <html> */
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  // ── View registry ── add new pages here ──
   const renderView = () => {
     switch (view) {
       case 'dashboard':
         return (
           <DashboardView
-            visiblePositions={visiblePositions}
-            portfolioStats={portfolioStats}
+            visiblePositions={visiblePositions} portfolioStats={portfolioStats}
             ticker={ticker} setTicker={setTicker}
             range={range}   setRange={setRange}
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
@@ -61,24 +60,22 @@ export default function App() {
             ticker={ticker} setTicker={setTicker}
           />
         )
-      case 'watchlist':
-        return <WatchlistView />
-
-      case 'calendar':
-        return <CalendarView />
-
-      default:
-        return null
+      case 'watchlist': return <WatchlistView />
+      case 'calendar':  return <CalendarView />
+      default:          return null
     }
   }
 
   return (
     <div className="app-shell">
-      <Sidebar view={view} setView={setView} theme={theme} toggleTheme={toggleTheme} />
+      <Sidebar
+        view={view} setView={setView}
+        theme={theme} toggleTheme={toggleTheme}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <div className="app-main">
         <Header
-          account={account}
-          setAccount={setAccount}
+          account={account} setAccount={setAccount}
           visiblePositions={visiblePositions}
           portfolioStats={portfolioStats}
         />
@@ -86,6 +83,17 @@ export default function App() {
           {renderView()}
         </main>
       </div>
+
+      {/* Settings modal — rendered at root level to overlay everything */}
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppInner />
+    </LanguageProvider>
   )
 }

@@ -1,30 +1,45 @@
 /**
  * MODULE: API / config.js
- * Reads API keys from Vite environment variables.
+ * API key management.
  *
- * HOW TO CONFIGURE (two options):
+ * Priority order (highest → lowest):
+ *  1. User-saved key in localStorage  (set via Settings panel)
+ *  2. Vite environment variable       (set in .env.local or Cloudflare Pages)
+ *  3. null                            (not configured — graceful fallback)
  *
- * A) Local development — create a .env.local file in the project root:
- *    VITE_FINNHUB_KEY=your_key_here
- *    VITE_ALPACA_KEY=your_key_here
- *    VITE_ALPACA_SECRET=your_secret_here
- *    VITE_FMP_KEY=your_key_here
- *    VITE_GROQ_KEY=your_key_here
- *
- * B) Cloudflare Pages — in the dashboard:
- *    Settings → Environment variables → Add the same variable names above.
- *    They'll be injected at build time automatically.
- *
- * The app works WITHOUT keys — it uses mock/cached data.
- * As soon as a key is set, that API activates automatically.
+ * Keys are read at CALL TIME (not module load time) so they update
+ * immediately after saving in the Settings panel without a page reload.
  */
 
-export const API_KEYS = {
-  finnhub:      import.meta.env.VITE_FINNHUB_KEY     || null,
-  alpacaKey:    import.meta.env.VITE_ALPACA_KEY      || null,
-  alpacaSecret: import.meta.env.VITE_ALPACA_SECRET   || null,
-  fmp:          import.meta.env.VITE_FMP_KEY         || null,
-  groq:         import.meta.env.VITE_GROQ_KEY        || null,
+/* ── localStorage key names ──────────────────────────────── */
+export const LS_KEYS = {
+  finnhub:      'tp_key_finnhub',
+  alpacaKey:    'tp_key_alpaca_key',
+  alpacaSecret: 'tp_key_alpaca_secret',
+  fmp:          'tp_key_fmp',
+  groq:         'tp_key_groq',
+}
+
+/* ── Runtime key resolver ────────────────────────────────── */
+export function getApiKeys() {
+  return {
+    finnhub:      localStorage.getItem(LS_KEYS.finnhub)      || import.meta.env.VITE_FINNHUB_KEY     || null,
+    alpacaKey:    localStorage.getItem(LS_KEYS.alpacaKey)    || import.meta.env.VITE_ALPACA_KEY      || null,
+    alpacaSecret: localStorage.getItem(LS_KEYS.alpacaSecret) || import.meta.env.VITE_ALPACA_SECRET   || null,
+    fmp:          localStorage.getItem(LS_KEYS.fmp)          || import.meta.env.VITE_FMP_KEY         || null,
+    groq:         localStorage.getItem(LS_KEYS.groq)         || import.meta.env.VITE_GROQ_KEY        || null,
+  }
+}
+
+/* ── Status helper ───────────────────────────────────────── */
+export function getApiStatus() {
+  const k = getApiKeys()
+  return {
+    finnhub: !!k.finnhub,
+    alpaca:  !!(k.alpacaKey && k.alpacaSecret),
+    fmp:     !!k.fmp,
+    groq:    !!k.groq,
+  }
 }
 
 export const ENDPOINTS = {
@@ -32,14 +47,4 @@ export const ENDPOINTS = {
   alpaca:  'https://data.alpaca.markets/v2',
   fmp:     'https://financialmodelingprep.com/api/v3',
   groq:    'https://api.groq.com/openai/v1',
-}
-
-/** Returns which APIs are currently configured */
-export function getApiStatus() {
-  return {
-    finnhub: !!API_KEYS.finnhub,
-    alpaca:  !!(API_KEYS.alpacaKey && API_KEYS.alpacaSecret),
-    fmp:     !!API_KEYS.fmp,
-    groq:    !!API_KEYS.groq,
-  }
 }

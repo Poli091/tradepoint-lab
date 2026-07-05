@@ -9,7 +9,7 @@
  * A closed trading day never changes, so 24h is safe and efficient.
  */
 
-import { API_KEYS, ENDPOINTS } from './config.js'
+import { getApiKeys, ENDPOINTS } from './config.js'
 import { cache } from '../cache.js'
 
 const BASE = ENDPOINTS.alpaca
@@ -40,15 +40,15 @@ export async function getOHLCV(ticker, range = '3M') {
   const start = dateStr(days)
   const end   = dateStr(0)
 
-  if (!API_KEYS.alpacaKey || !API_KEYS.alpacaSecret) {
+  if (!getApiKeys().alpacaKey || !getApiKeys().alpacaSecret) {
     throw new Error('Alpaca keys not configured')
   }
 
   const url = `${BASE}/stocks/${ticker}/bars?timeframe=${timeframe}&start=${start}&end=${end}&limit=1000&feed=iex`
   const res = await fetch(url, {
     headers: {
-      'APCA-API-KEY-ID':     API_KEYS.alpacaKey,
-      'APCA-API-SECRET-KEY': API_KEYS.alpacaSecret,
+      'APCA-API-KEY-ID':     getApiKeys().alpacaKey,
+      'APCA-API-SECRET-KEY': getApiKeys().alpacaSecret,
     },
   })
   if (!res.ok) throw new Error(`Alpaca ${res.status}: ${ticker} ${range}`)
