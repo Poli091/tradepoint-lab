@@ -1,10 +1,16 @@
 /**
  * MODULE: ROOT / App.jsx
- * App shell: Language provider → Sidebar + Header + active view + Settings panel.
+ * Provider tree:
+ *   LanguageProvider → AuthProvider → (LockScreen | AppInner)
+ *
+ * The lock screen is always rendered on top when not authenticated.
+ * App content is never in the DOM until authenticated.
  */
 
 import { useState, useEffect } from 'react'
 import { LanguageProvider }  from './context/LanguageContext.jsx'
+import { AuthProvider, useAuth } from './context/AuthContext.jsx'
+import LockScreen            from './auth/LockScreen.jsx'
 import Sidebar               from './components/layout/Sidebar.jsx'
 import Header                from './components/layout/Header.jsx'
 import SettingsPanel         from './components/layout/SettingsPanel.jsx'
@@ -14,6 +20,7 @@ import WatchlistView         from './views/WatchlistView.jsx'
 import CalendarView          from './views/CalendarView.jsx'
 import { useTradepoint }     from './hooks/useTradepoint.js'
 
+/* ── Main app (only rendered when authenticated) ── */
 function AppInner() {
   const {
     theme, toggleTheme,
@@ -32,7 +39,6 @@ function AppInner() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  /* Apply theme to <html> */
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
@@ -79,21 +85,28 @@ function AppInner() {
           visiblePositions={visiblePositions}
           portfolioStats={portfolioStats}
         />
-        <main className="app-content">
-          {renderView()}
-        </main>
+        <main className="app-content">{renderView()}</main>
       </div>
-
-      {/* Settings modal — rendered at root level to overlay everything */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }
 
+/* ── Auth gate — decides what to render ── */
+function AuthGate() {
+  const { authenticated } = useAuth()
+  // Lock screen always covers everything until authenticated
+  if (!authenticated) return <LockScreen />
+  return <AppInner />
+}
+
+/* ── Root export ── */
 export default function App() {
   return (
     <LanguageProvider>
-      <AppInner />
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </LanguageProvider>
   )
 }
