@@ -1,10 +1,11 @@
 /**
  * MODULE: LAYOUT / Sidebar.jsx
- * Left navigation rail with icon buttons and theme toggle.
- * To add a new view: add an entry to NAV_ITEMS.
+ * Desktop: left rail (64px wide)
+ * Mobile:  fixed bottom navigation bar
  */
 
 import { LayoutDashboard, Briefcase, Eye, CalendarDays, Sun, Moon } from 'lucide-react'
+import { useBreakpoint } from '../../hooks/useBreakpoint.js'
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -13,79 +14,107 @@ const NAV_ITEMS = [
   { id: 'calendar',  label: 'Calendar',   Icon: CalendarDays    },
 ]
 
+function NavButton({ id, label, Icon, active, onClick, style = {} }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      style={{
+        width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: active ? 'var(--accent-dim)' : 'transparent',
+        color:      active ? 'var(--accent)'     : 'var(--txt-muted)',
+        boxShadow: active ? 'inset 0 0 0 1px var(--accent-glow)' : 'none',
+        transition: 'all 0.14s ease',
+        flexShrink: 0,
+        ...style,
+      }}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface-up)'; e.currentTarget.style.color = 'var(--txt-sec)' }}}
+      onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent';       e.currentTarget.style.color = 'var(--txt-muted)' }}}
+    >
+      <Icon size={19} />
+    </button>
+  )
+}
+
 export default function Sidebar({ view, setView, theme, toggleTheme }) {
+  const { isMobile } = useBreakpoint()
   const isLight = theme === 'light'
 
+  /* ── Mobile: fixed bottom nav bar ── */
+  if (isMobile) {
+    return (
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        height: 58,
+        background: 'var(--surface)',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-around',
+        padding: '0 8px',
+      }}>
+        {NAV_ITEMS.map(({ id, label, Icon }) => (
+          <NavButton key={id} id={id} label={label} Icon={Icon}
+            active={view === id} onClick={() => setView(id)} />
+        ))}
+        {/* Theme toggle in bottom nav */}
+        <button
+          onClick={toggleTheme}
+          aria-label={isLight ? 'Dark mode' : 'Light mode'}
+          style={{
+            width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'transparent',
+            color: isLight ? 'var(--amber)' : 'var(--txt-muted)',
+          }}
+        >
+          {isLight ? <Sun size={19} /> : <Moon size={19} />}
+        </button>
+      </nav>
+    )
+  }
+
+  /* ── Desktop: left sidebar ── */
   return (
     <aside style={{
       width: 'var(--sidebar-w)',
       height: '100vh',
       background: 'var(--surface)',
       borderRight: '1px solid var(--border)',
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'flex', flexDirection: 'column',
       alignItems: 'center',
-      paddingTop: 14,
-      paddingBottom: 14,
-      gap: 4,
-      flexShrink: 0,
+      paddingTop: 14, paddingBottom: 14,
+      gap: 4, flexShrink: 0,
     }}>
-      {/* Logo mark */}
+      {/* Logo */}
       <div style={{
         width: 36, height: 36, borderRadius: 10,
         background: 'linear-gradient(135deg, var(--accent), var(--purple))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
         marginBottom: 18,
-      }}>
-        TP
-      </div>
+      }}>TP</div>
 
-      {/* Nav items */}
-      {NAV_ITEMS.map(({ id, label, Icon }) => {
-        const active = view === id
-        return (
-          <button
-            key={id}
-            onClick={() => setView(id)}
-            title={label}
-            aria-label={label}
-            aria-current={active ? 'page' : undefined}
-            style={{
-              width: 42, height: 42,
-              borderRadius: 10,
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: active ? 'var(--accent-dim)' : 'transparent',
-              color: active ? 'var(--accent)' : 'var(--txt-muted)',
-              boxShadow: active ? 'inset 0 0 0 1px var(--accent-glow)' : 'none',
-              transition: 'all 0.14s ease',
-            }}
-            onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface-up)'; e.currentTarget.style.color = 'var(--txt-sec)' } }}
-            onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--txt-muted)' } }}
-          >
-            <Icon size={18} />
-          </button>
-        )
-      })}
+      {NAV_ITEMS.map(({ id, label, Icon }) => (
+        <NavButton key={id} id={id} label={label} Icon={Icon}
+          active={view === id} onClick={() => setView(id)} />
+      ))}
 
-      {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Theme toggle — Sun (light) / Moon (dark) */}
+      {/* Theme toggle */}
       <button
         onClick={toggleTheme}
         title={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
-        aria-label={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
+        aria-label={isLight ? 'Dark mode' : 'Light mode'}
         style={{
-          width: 42, height: 42,
-          borderRadius: 10, border: 'none', cursor: 'pointer',
+          width: 42, height: 42, borderRadius: 10, border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface-up)',
           color: isLight ? 'var(--amber)' : 'var(--txt-sec)',
-          marginBottom: 4,
-          transition: 'all 0.14s ease',
+          marginBottom: 4, transition: 'all 0.14s',
         }}
         onMouseEnter={e => { e.currentTarget.style.color = isLight ? 'var(--amber)' : 'var(--accent)' }}
         onMouseLeave={e => { e.currentTarget.style.color = isLight ? 'var(--amber)' : 'var(--txt-sec)' }}
