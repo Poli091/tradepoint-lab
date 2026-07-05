@@ -3,35 +3,39 @@
    Edit these variables to retheme the entire app at once.
 ═══════════════════════════════════════════════════════════ */
 :root {
-  /* Backgrounds */
-  --bg:           #06080F;
-  --surface:      #0C1120;
-  --surface-up:   #111827;
-  --surface-hov:  #162032;
+  /* Backgrounds — deep black-blue for maximum data contrast */
+  --bg:           #0B0E14;
+  --surface:      #0D1117;
+  --surface-up:   #131C25;
+  --surface-hov:  #1A2535;
 
   /* Borders */
-  --border:       #1E2D3D;
-  --border-lt:    #253545;
+  --border:       #1F2D3E;
+  --border-lt:    #263748;
 
-  /* Brand accent */
+  /* UI accent — sky blue reserved for nav, pills, interactive elements */
   --accent:       #0EA5E9;
   --accent-dim:   rgba(14, 165, 233, 0.12);
   --accent-glow:  rgba(14, 165, 233, 0.25);
 
-  /* Semantic colors */
-  --green:        #34D399;
-  --green-dim:    rgba(52, 211, 153, 0.10);
-  --red:          #F87171;
-  --red-dim:      rgba(248, 113, 113, 0.10);
-  --amber:        #FBBF24;
-  --amber-dim:    rgba(251, 191, 36, 0.10);
-  --purple:       #818CF8;
-  --purple-dim:   rgba(129, 140, 248, 0.10);
+  /* Chart line — electric purple, distinct from all other UI colors */
+  --chart-line:   #7C3AED;
+  --chart-dim:    rgba(124, 58, 237, 0.14);
 
-  /* Typography */
-  --txt:          #E2EBF4;
-  --txt-sec:      #8DA4BE;
-  --txt-muted:    #3D5166;
+  /* Semantic colors */
+  --green:        #34D399;   /* pastel emerald — readable on dark, BUY state + positive text */
+  --green-dim:    rgba(52, 211, 153, 0.12);
+  --red:          #EF4444;   /* vibrant coral-crimson — SELL state + losses */
+  --red-dim:      rgba(239, 68, 68, 0.13);
+  --amber:        #FBBF24;
+  --amber-dim:    rgba(251, 191, 36, 0.11);
+  --purple:       #7C3AED;
+  --purple-dim:   rgba(124, 58, 237, 0.12);
+
+  /* Typography — pure white hierarchy */
+  --txt:          #FFFFFF;   /* pure white — balances, prices, key values */
+  --txt-sec:      #9CA3AF;   /* medium gray — secondary labels, company names */
+  --txt-muted:    #4B5563;   /* dark gray — axis ticks, hints, placeholders */
 
   /* Fonts */
   --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;

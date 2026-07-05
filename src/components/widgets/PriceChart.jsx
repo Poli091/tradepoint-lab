@@ -43,11 +43,12 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
     [ticker, range] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  const first = data[0]?.price ?? 0
-  const last  = data[data.length - 1]?.price ?? 0
-  const isUp  = last >= first
-  const color = isUp ? 'var(--green)' : 'var(--red)'
-  const pct   = first > 0 ? ((last - first) / first) * 100 : 0
+  const first      = data[0]?.price ?? 0
+  const last       = data[data.length - 1]?.price ?? 0
+  const isUp       = last >= first
+  const lineColor  = 'var(--chart-line)'   // always purple — the lab aesthetic
+  const priceColor = isUp ? 'var(--green)' : 'var(--red)'  // green/red for the price indicator only
+  const pct        = first > 0 ? ((last - first) / first) * 100 : 0
 
   return (
     <div style={{
@@ -70,7 +71,7 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
           }}>
             {pos ? fUSD(pos.currentPrice) : '—'}
           </div>
-          <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color, marginTop: 4 }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: priceColor, marginTop: 4 }}>
             {isUp ? '▲' : '▼'} {fPct(Math.abs(pct))} ({range})
           </div>
         </div>
@@ -101,9 +102,9 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
           return (
             <button key={p.ticker} onClick={() => onTickerChange(p.ticker)} style={{
               padding: '3px 9px', borderRadius: 5, cursor: 'pointer',
-              border: `1px solid ${active ? color : 'var(--border)'}`,
-              background: active ? `${color}18` : 'transparent',
-              color: active ? color : 'var(--txt-muted)',
+              border: `1px solid ${active ? 'var(--chart-line)' : 'var(--border)'}`,
+              background: active ? 'var(--chart-dim)' : 'transparent',
+              color: active ? 'var(--chart-line)' : 'var(--txt-muted)',
               fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600,
               transition: 'all 0.11s',
             }}>{p.ticker}</button>
@@ -116,8 +117,8 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
         <AreaChart data={data} margin={{ top: 4, right: 6, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id={GRAD_ID} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor={color} stopOpacity={0.18} />
-              <stop offset="95%" stopColor={color} stopOpacity={0}    />
+              <stop offset="5%"  stopColor="#7C3AED" stopOpacity={0.20} />
+              <stop offset="95%" stopColor="#7C3AED" stopOpacity={0}    />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -138,11 +139,11 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
           <Area
             type="monotone"
             dataKey="price"
-            stroke={color}
+            stroke={lineColor}
             strokeWidth={2}
             fill={`url(#${GRAD_ID})`}
             dot={false}
-            activeDot={{ r: 4, fill: color, stroke: 'var(--bg)', strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: '#7C3AED', stroke: 'var(--bg)', strokeWidth: 2 }}
           />
         </AreaChart>
       </ResponsiveContainer>
