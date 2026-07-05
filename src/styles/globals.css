@@ -1,0 +1,124 @@
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — TradePoint Lab
+   Edit these variables to retheme the entire app at once.
+═══════════════════════════════════════════════════════════ */
+:root {
+  /* Backgrounds */
+  --bg:           #06080F;
+  --surface:      #0C1120;
+  --surface-up:   #111827;
+  --surface-hov:  #162032;
+
+  /* Borders */
+  --border:       #1E2D3D;
+  --border-lt:    #253545;
+
+  /* Brand accent */
+  --accent:       #0EA5E9;
+  --accent-dim:   rgba(14, 165, 233, 0.12);
+  --accent-glow:  rgba(14, 165, 233, 0.25);
+
+  /* Semantic colors */
+  --green:        #34D399;
+  --green-dim:    rgba(52, 211, 153, 0.10);
+  --red:          #F87171;
+  --red-dim:      rgba(248, 113, 113, 0.10);
+  --amber:        #FBBF24;
+  --amber-dim:    rgba(251, 191, 36, 0.10);
+  --purple:       #818CF8;
+  --purple-dim:   rgba(129, 140, 248, 0.10);
+
+  /* Typography */
+  --txt:          #E2EBF4;
+  --txt-sec:      #8DA4BE;
+  --txt-muted:    #3D5166;
+
+  /* Fonts */
+  --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+
+  /* Layout */
+  --sidebar-w:    64px;
+  --header-h:     56px;
+  --radius:       8px;
+  --radius-lg:    12px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button { font-family: inherit; cursor: pointer; }
+input  { font-family: inherit; outline: none; }
+a      { color: var(--accent); text-decoration: none; }
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBARS
+═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar         { width: 5px; height: 5px; }
+::-webkit-scrollbar-track   { background: var(--surface); }
+::-webkit-scrollbar-thumb   { background: var(--border-lt); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--txt-muted); }
+
+/* ═══════════════════════════════════════════════════════════
+   APP SHELL
+═══════════════════════════════════════════════════════════ */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INTERACTIVE UTILITIES
+═══════════════════════════════════════════════════════════ */
+.btn-reset {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.mono { font-family: var(--mono); }
+.txt-green  { color: var(--green); }
+.txt-red    { color: var(--red); }
+.txt-amber  { color: var(--amber); }
+.txt-accent { color: var(--accent); }
+.txt-muted  { color: var(--txt-muted); }
+.txt-sec    { color: var(--txt-sec); }
