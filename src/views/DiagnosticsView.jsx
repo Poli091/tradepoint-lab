@@ -14,7 +14,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import { RefreshCcw, AlertTriangle } from 'lucide-react'
+import { RotateCcw, AlertTriangle } from 'lucide-react'
 import { useAllConvictions, calcDiagnostics } from '../hooks/useAllConvictions.js'
 import { GRADES } from '../conviction/grade/index.js'
 
@@ -133,7 +133,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
           borderRadius:8, border:'1px solid var(--border)', background:'transparent',
           cursor: isLoading ? 'wait' : 'pointer', color:'var(--txt-sec)', fontSize:12,
         }}>
-          <RefreshCcw size={13} style={{ animation: isLoading ? 'tp-spin 1s linear infinite' : 'none' }} />
+          <RotateCcw size={13} style={{ animation: isLoading ? 'tp-spin 1s linear infinite' : 'none' }} />
           {isLoading ? `${progress.done}/${progress.total}…` : 'Recompute all'}
         </button>
       </div>
