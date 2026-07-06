@@ -102,12 +102,25 @@ export const BANKS = {
 }
 
 /* ─── Router ────────────────────────────────────────────── */
+// Primary: sector name
 const SECTOR_MAP = {
   'Utilities':   UTILITIES,
   'Real Estate': REIT,
   'Financials':  BANKS,
 }
 
-export function getSectorProfile(sector) {
-  return SECTOR_MAP[sector] ?? DEFAULT
+// Secondary: sector ETF (more accurate for edge cases)
+// e.g. VST/CEG are tagged 'Energy' sector but trade as XLU (Utilities ETF)
+const ETF_MAP = {
+  'XLU':  UTILITIES,   // Utilities ETF — applies to power generators (VST, CEG, NEE)
+  'XLRE': REIT,        // Real Estate ETF
+  'XLF':  BANKS,       // Financials ETF
+}
+
+/**
+ * @param {string} sector   - GICS sector name from tickerUniverse
+ * @param {string} sectorEtf - ETF ticker from tickerUniverse (more precise)
+ */
+export function getSectorProfile(sector, sectorEtf = '') {
+  return ETF_MAP[sectorEtf] ?? SECTOR_MAP[sector] ?? DEFAULT
 }

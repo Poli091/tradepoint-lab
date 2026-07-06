@@ -15,8 +15,9 @@ import { getTicker }        from '../data/tickerUniverse.js'
  */
 export function createContext({ fundamentals, ohlcv = [], spyOhlcv = [], prices = {} }) {
   const tickerMeta    = getTicker(fundamentals.ticker) ?? {}
-  const sector        = tickerMeta.sector ?? 'Information Technology'
-  const sectorProfile = getSectorProfile(sector)
+  const sector        = tickerMeta.sector    ?? 'Information Technology'
+  const sectorEtf     = tickerMeta.sectorEtf ?? ''
+  const sectorProfile = getSectorProfile(sector, sectorEtf)
 
   return {
     fundamentals,

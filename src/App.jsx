@@ -49,6 +49,7 @@ function AppInner() {
   /* ── Live market data ── */
   const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
 
+
   /* ── Visible positions with live prices ── */
   const liveVisiblePositions = useMemo(() => {
     const base = filterByAccount(account)
@@ -94,6 +95,7 @@ function AppInner() {
         )
       case 'watchlist': return <WatchlistView />
       case 'calendar':  return <CalendarView />
+      case 'conviction': return <ConvictionView visiblePositions={liveVisiblePositions} prices={prices} />
       default:          return null
     }
   }
