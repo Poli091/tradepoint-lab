@@ -53,3 +53,9 @@ export function fRatio(v, decimals = 1) {
   if (v == null) return '—'
   return v.toFixed(decimals)
 }
+
+/** Format a value already in percentage form: 74.15 → "+74.2%" (Finnhub format) */
+export function fPctRaw(v) {
+  if (v == null) return '—'
+  return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
+}
