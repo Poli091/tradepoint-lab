@@ -114,23 +114,14 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   await delay(150)
   const fhRecs    = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
 
-  // FMP calls in parallel — try financial-ratios (better free plan coverage) + earnings
-  const [fmpRatios, fmpCashFlow, fmpEarnings] = await Promise.all([
-    fmpGet(`/financial-ratios/${t}?limit=1&period=annual`, keys.fmp),
-    fmpGet(`/cash-flow-statement/${t}?limit=1&period=annual`, keys.fmp),
-    fmpGet(`/earnings-surprises/${t}`, keys.fmp),
-  ])
-
-  const m   = fhMetrics?.metric || {}
-  const rec = Array.isArray(fhRecs) ? (fhRecs[0] || {}) : {}
-  const fr  = Array.isArray(fmpRatios)   ? (fmpRatios[0]   || {}) : {}
-  const fc  = Array.isArray(fmpCashFlow) ? (fmpCashFlow[0]  || {}) : {}
-  const earns = Array.isArray(fmpEarnings) ? fmpEarnings : []
-
-  // Calculate FCF from cash flow statement if not in Finnhub
-  const fcfFromFMP = (fc.operatingCashFlow != null && fc.capitalExpenditure != null)
-    ? fc.operatingCashFlow + fc.capitalExpenditure  // capex is negative in FMP
+  // FMP earnings only (ratios endpoint not available on free plan)
+  const fmpEarnings = keys.fmp
+    ? await fmpGet(`/earnings-surprises/${t}`, keys.fmp)
     : null
+
+  const m     = fhMetrics?.metric || {}
+  const rec   = Array.isArray(fhRecs) ? (fhRecs[0] || {}) : {}
+  const earns = Array.isArray(fmpEarnings) ? fmpEarnings : []
 
   // Consecutive beats
   let consecutiveBeats = 0
@@ -143,54 +134,63 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     ? ((last.actualEarningResult - last.estimatedEarning) / Math.abs(last.estimatedEarning)) * 100
     : null
 
+  // Calculate FCF TTM from EV / EV·FCF multiple
+  const fcfTTM = (m.enterpriseValue && m['currentEv/freeCashFlowTTM'])
+    ? Math.round(m.enterpriseValue / m['currentEv/freeCashFlowTTM'])
+    : null
+
   const data = {
     ticker: t,
-    // Growth (Finnhub)
-    revenueGrowthYoY: m.revenueGrowthTTMYoy          ?? null,
-    revenueGrowth3Y:  m.revenueGrowth3Y               ?? null,
-    revenueGrowth5Y:  m.revenueGrowth5Y               ?? null,
-    epsGrowthYoY:     m.epsGrowthTTMYoy               ?? null,
-    epsGrowth3Y:      m.epsGrowth3Y                   ?? null,
-    epsGrowth5Y:      m.epsGrowth5Y                   ?? null,
-    fcfTTM:           m.freeCashFlowTTM ?? fcfFromFMP  ?? null,
-    fcfGrowth5Y:      m.freeCashFlowGrowth5Y          ?? null,
-    // Quality (Finnhub)
-    roe:              m.roeTTM                         ?? null,
-    grossMargin:      m.grossMarginTTM                 ?? null,
-    operatingMargin:  m.operatingMarginTTM             ?? null,
-    netMargin:        m.netMarginTTM                   ?? null,
-    // Strength (Finnhub)
-    debtToEquity:     m['totalDebt/totalEquityAnnual'] ?? null,
-    currentRatio:     m.currentRatioAnnual             ?? null,
-    interestCoverage: m.interestCoverageAnnual         ?? null,
-    // Valuation (Finnhub)
-    pe:               m.peBasicExclExtraTTM ?? m.peTTM ?? null,
-    evEbitda:         m['ev/ebitdaTTM']                ?? null,
-    pFcf:             m.pfcfShareTTM                   ?? null,
-    beta:             m.beta                           ?? null,
-    // From FMP
-    roic:             (fr.returnOnInvestedCapital != null ? fr.returnOnInvestedCapital * 100 : null),
-    peg:              fr.priceEarningsToGrowthRatio     ?? null,
-    fcfFromFMP:       fcfFromFMP,
+    // ── Growth ───────────────────────────────────────────────
+    revenueGrowthYoY:  m.revenueGrowthTTMYoy           ?? null,
+    revenueGrowth3Y:   m.revenueGrowth3Y                ?? null,
+    revenueGrowth5Y:   m.revenueGrowth5Y                ?? null,
+    epsGrowthYoY:      m.epsGrowthTTMYoy                ?? null,
+    epsGrowth3Y:       m.epsGrowth3Y                    ?? null,
+    epsGrowth5Y:       m.epsGrowth5Y                    ?? null,
+    fcfTTM,                                              // calculated from EV/FCF
+    fcfGrowth5Y:       m.focfCagr5Y                     ?? null,  // FCF CAGR 5Y
+    ebitdaGrowth5Y:    m.ebitdaCagr5Y                   ?? null,
+    // ── Quality ──────────────────────────────────────────────
+    roe:               m.roeTTM                          ?? null,
+    roi:               m.roiTTM                          ?? null,  // ROI ≈ ROIC proxy
+    grossMargin:       m.grossMarginTTM                  ?? null,
+    operatingMargin:   m.operatingMarginTTM              ?? null,
+    netMargin:         m.netProfitMarginTTM              ?? null,  // FIXED name
+    // ── Strength ─────────────────────────────────────────────
+    debtToEquity:      m['totalDebt/totalEquityAnnual']  ?? null,
+    currentRatio:      m.currentRatioAnnual              ?? null,
+    interestCoverage:  m.netInterestCoverageTTM          ?? null,  // FIXED name
+    // ── Valuation ────────────────────────────────────────────
+    pe:                m.peBasicExclExtraTTM ?? m.peTTM  ?? null,
+    peg:               m.pegTTM                          ?? null,  // Finnhub has it!
+    forwardPE:         m.forwardPE                       ?? null,
+    forwardPEG:        m.forwardPEG                      ?? null,
+    evEbitda:          m.evEbitdaTTM                     ?? null,  // FIXED name
+    evFcf:             m['currentEv/freeCashFlowTTM']    ?? null,
+    pFcf:              m.pfcfShareTTM                    ?? null,
+    beta:              m.beta                            ?? null,
+    // ── Relative Strength vs S&P 500 (from Finnhub!) ─────────
+    relStrength52W:    m['priceRelativeToS&P50052Week']  ?? null,
+    relStrength13W:    m['priceRelativeToS&P50013Week']  ?? null,
+    relStrength4W:     m['priceRelativeToS&P5004Week']   ?? null,
+    // ── Analyst consensus ─────────────────────────────────────
+    targetMean:        fhTarget?.targetMean              ?? null,
+    targetHigh:        fhTarget?.targetHigh              ?? null,
+    targetLow:         fhTarget?.targetLow               ?? null,
+    targetMedian:      fhTarget?.targetMedian            ?? null,
+    strongBuy:         rec.strongBuy                     ?? 0,
+    buy:               rec.buy                          ?? 0,
+    hold:              rec.hold                         ?? 0,
+    sell:              rec.sell                         ?? 0,
+    strongSell:        rec.strongSell                   ?? 0,
     consecutiveBeats,
     epsSurprisePct,
-    // Analyst consensus (Finnhub)
-    targetMean:       fhTarget?.targetMean             ?? null,
-    targetHigh:       fhTarget?.targetHigh             ?? null,
-    targetLow:        fhTarget?.targetLow              ?? null,
-    targetMedian:     fhTarget?.targetMedian           ?? null,
-    strongBuy:        rec.strongBuy                    ?? 0,
-    buy:              rec.buy                          ?? 0,
-    hold:             rec.hold                         ?? 0,
-    sell:             rec.sell                         ?? 0,
-    strongSell:       rec.strongSell                   ?? 0,
     // Debug — tells the client which sources responded
     _sources: {
       finnhubMetric: !!fhMetrics,
       finnhubTarget: !!fhTarget,
       finnhubRecs:   !!fhRecs,
-      fmpRatios:     !!fmpRatios,
-      fmpCashFlow:   !!fmpCashFlow,
       fmpEarnings:   earns.length > 0,
     },
   }
@@ -318,6 +318,24 @@ async function handleCacheClear(ticker, kv) {
   return json({ ticker: t, cleared: keys2, ok: true })
 }
 
+
+/* ── /api/debug/:ticker — returns raw Finnhub metric fields ─ */
+async function handleDebug(ticker, keys) {
+  const t = ticker.toUpperCase()
+  if (!keys.finnhub) return json({ error: 'No Finnhub key' }, 401)
+  const raw = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
+  const target = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+  const cashflow = keys.fmp ? await fmpGet(`/cash-flow-statement/${t}?limit=1`, keys.fmp) : null
+  const ratios   = keys.fmp ? await fmpGet(`/financial-ratios/${t}?limit=1`, keys.fmp) : null
+  return json({
+    finnhubMetricFields: raw?.metric ? Object.keys(raw.metric).filter(k => raw.metric[k] != null) : [],
+    finnhubMetricSample: raw?.metric,
+    finnhubTarget: target,
+    fmpCashFlow: cashflow,
+    fmpRatios: ratios,
+  })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -359,6 +377,8 @@ export default {
           return await handleGroq(param1, type, keys, kv)
         case 'earnings':
           return await handleEarnings(keys, kv)
+        case 'debug':
+          return await handleDebug(param1, keys)
         case 'cache':
           if (param1 === 'info')  return await handleCacheInfo(param2, kv)
           if (param1 === 'clear') return await handleCacheClear(param2, kv)

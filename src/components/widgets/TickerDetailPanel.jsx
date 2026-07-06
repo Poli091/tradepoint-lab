@@ -238,26 +238,22 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {} }) {
 
               {data && (
                 <>
-                  {/* GROWTH — Finnhub returns values already in % */}
+                  {/* GROWTH */}
                   <SectionHeader icon={TrendingUp} label="Growth" />
-                  <Row label="Revenue Growth YoY" value={fPctRaw(data.revenueGrowthYoY)} color={growthColor(data.revenueGrowthYoY)} />
-                  <Row label="Revenue Growth 3Y"  value={fPctRaw(data.revenueGrowth3Y)}  color={growthColor(data.revenueGrowth3Y)} />
-                  <Row label="Revenue Growth 5Y"  value={fPctRaw(data.revenueGrowth5Y)}  color={growthColor(data.revenueGrowth5Y)} />
-                  <Row label="EPS Growth YoY"     value={fPctRaw(data.epsGrowthYoY)}     color={growthColor(data.epsGrowthYoY)} />
-                  <Row label="EPS Growth 3Y"      value={fPctRaw(data.epsGrowth3Y)}      color={growthColor(data.epsGrowth3Y)} />
-                  <Row label="FCF (TTM)"          value={fBig(data.fcfTTM)} />
-                  <Row label="FCF Growth 5Y"      value={fPctRaw(data.fcfGrowth5Y)}      color={growthColor(data.fcfGrowth5Y)} />
-                  <Row
-                    label="Earnings Beats"
-                    value={data.consecutiveBeats > 0 ? `${data.consecutiveBeats} consecutive` : '—'}
-                    color={beatsColor(data.consecutiveBeats)}
-                    sub={data.epsSurprisePct != null ? `Last: ${data.epsSurprisePct >= 0 ? '+' : ''}${data.epsSurprisePct?.toFixed(1)}%` : null}
-                  />
+                  <Row label="Revenue Growth YoY"  value={fPctRaw(data.revenueGrowthYoY)} color={growthColor(data.revenueGrowthYoY)} />
+                  <Row label="Revenue Growth 3Y"   value={fPctRaw(data.revenueGrowth3Y)}  color={growthColor(data.revenueGrowth3Y)} />
+                  <Row label="Revenue Growth 5Y"   value={fPctRaw(data.revenueGrowth5Y)}  color={growthColor(data.revenueGrowth5Y)} />
+                  <Row label="EPS Growth YoY"      value={fPctRaw(data.epsGrowthYoY)}     color={growthColor(data.epsGrowthYoY)} />
+                  <Row label="EPS Growth 3Y"       value={fPctRaw(data.epsGrowth3Y)}      color={growthColor(data.epsGrowth3Y)} />
+                  <Row label="EPS Growth 5Y"       value={fPctRaw(data.epsGrowth5Y)}      color={growthColor(data.epsGrowth5Y)} />
+                  <Row label="FCF (TTM)"           value={data.fcfTTM ? fBig(data.fcfTTM * 1_000_000) : '—'} />
+                  <Row label="FCF CAGR 5Y"         value={fPctRaw(data.fcfGrowth5Y)}      color={growthColor(data.fcfGrowth5Y)} />
+                  <Row label="EBITDA CAGR 5Y"      value={fPctRaw(data.ebitdaGrowth5Y)}   color={growthColor(data.ebitdaGrowth5Y)} />
 
                   {/* QUALITY */}
                   <SectionHeader icon={Shield} label="Quality" />
                   <Row label="ROE"              value={fPctRaw(data.roe)}            color={roeColor(data.roe)} />
-                  <Row label="ROIC"             value={fPctRaw(data.roic)}           color={roeColor(data.roic)} sub={data.roic ? 'via FMP' : null} />
+                  <Row label="ROI (ROIC proxy)" value={fPctRaw(data.roi)}            color={roeColor(data.roi)} />
                   <Row label="Gross Margin"     value={fPctRaw(data.grossMargin)}    color={marginColor(data.grossMargin)} />
                   <Row label="Operating Margin" value={fPctRaw(data.operatingMargin)} color={marginColor(data.operatingMargin)} />
                   <Row label="Net Margin"       value={fPctRaw(data.netMargin)}      color={marginColor(data.netMargin)} />
@@ -276,12 +272,21 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {} }) {
 
                   {/* VALUATION */}
                   <SectionHeader icon={DollarSign} label="Valuation" />
-                  <Row label="P/E"       value={fMult(data.pe)}       color={peColor(data.pe)} />
-                  <Row label="PEG"       value={fRatio(data.peg, 2)}  color={data.peg ? (data.peg < 1 ? 'var(--green)' : data.peg < 2 ? 'var(--amber)' : 'var(--red)') : 'var(--txt-muted)'} sub={data.peg ? 'via FMP' : null} />
-                  <Row label="EV/EBITDA" value={fMult(data.evEbitda)} />
-                  <Row label="P/FCF"     value={fMult(data.pFcf)} />
-                  <Row label="Beta"      value={fRatio(data.beta, 2)}
+                  <Row label="P/E (TTM)"       value={fMult(data.pe)}        color={peColor(data.pe)} />
+                  <Row label="Forward P/E"     value={fMult(data.forwardPE)}  color={peColor(data.forwardPE)} />
+                  <Row label="PEG (TTM)"       value={fRatio(data.peg, 2)}   color={data.peg ? (data.peg < 1 ? 'var(--green)' : data.peg < 2 ? 'var(--amber)' : 'var(--red)') : 'var(--txt-muted)'} />
+                  <Row label="Forward PEG"     value={fRatio(data.forwardPEG, 2)} color={data.forwardPEG ? (data.forwardPEG < 1 ? 'var(--green)' : data.forwardPEG < 2 ? 'var(--amber)' : 'var(--red)') : 'var(--txt-muted)'} />
+                  <Row label="EV/EBITDA"       value={fMult(data.evEbitda)} />
+                  <Row label="EV/FCF"          value={fMult(data.evFcf)} />
+                  <Row label="P/FCF"           value={fMult(data.pFcf)} />
+                  <Row label="Beta"            value={fRatio(data.beta, 2)}
                     color={data.beta ? (data.beta < 1 ? 'var(--green)' : data.beta < 1.5 ? 'var(--amber)' : 'var(--red)') : 'var(--txt-muted)'} />
+
+                  {/* RELATIVE STRENGTH VS S&P 500 */}
+                  <SectionHeader icon={TrendingUp} label="Relative Strength vs S&P 500" />
+                  <Row label="1 Month"   value={data.relStrength4W  != null ? fPctRaw(data.relStrength4W)  : '—'} color={data.relStrength4W  >= 0 ? 'var(--green)' : 'var(--red)'} />
+                  <Row label="3 Months"  value={data.relStrength13W != null ? fPctRaw(data.relStrength13W) : '—'} color={data.relStrength13W >= 0 ? 'var(--green)' : 'var(--red)'} />
+                  <Row label="12 Months" value={data.relStrength52W != null ? fPctRaw(data.relStrength52W) : '—'} color={data.relStrength52W >= 0 ? 'var(--green)' : 'var(--red)'} />
 
                   {/* DATA FRESHNESS */}
                   <SectionHeader icon={Clock} label="Data Freshness" />
