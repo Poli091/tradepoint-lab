@@ -10,7 +10,7 @@ import { WATCHLIST } from '../../data/watchlist.js'
 import { genSparklines } from '../../utils/chartData.js'
 import { fUSD, fPct } from '../../utils/format.js'
 
-export default function WatchlistPanel() {
+export default function WatchlistPanel({ style = {} }) {
   const sparklines = useMemo(() => genSparklines(WATCHLIST, 21), [])
 
   return (
@@ -21,6 +21,7 @@ export default function WatchlistPanel() {
       overflow: 'hidden',
       width: 260,
       flexShrink: 0,
+      ...style,    // allows DashboardView to override width on mobile
     }}>
       {/* Header */}
       <div style={{

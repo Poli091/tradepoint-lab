@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Eye, EyeOff, Check, Trash2, Globe, Key, Link, CheckCircle, XCircle } from 'lucide-react'
 import { useLang } from '../../context/LanguageContext.jsx'
-import { LS_KEYS, getApiStatus } from '../../utils/api/config.js'
+import { LS_KEYS } from '../../utils/api/config.js'
 import { getWorkerUrl, setWorkerUrl, workerAPI } from '../../utils/api/worker.js'
 
 

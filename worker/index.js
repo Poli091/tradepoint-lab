@@ -87,6 +87,8 @@ async function fmpGet(path, key) {
     .catch(e => { console.error('[FMP v3]', path.split('?')[0], e.message); return null })
 }
 
+const delay = ms => new Promise(r => setTimeout(r, ms))
+
 /** FMP /stable/ endpoints — newer API with different free plan coverage */
 async function fmpStableGet(path, key) {
   if (!key) return null
@@ -98,8 +100,6 @@ async function fmpStableGet(path, key) {
 /* ════════════════════════════════════════════════════════════
    MODULE 4 — HANDLERS
 ════════════════════════════════════════════════════════════ */
-
-const delay = ms => new Promise(r => setTimeout(r, ms))
 
 async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   const t     = ticker.toUpperCase()
