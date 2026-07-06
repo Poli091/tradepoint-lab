@@ -39,9 +39,11 @@ function scoreGrossMargin(v) {
 export function scoreQuality(ctx) {
   const f = ctx.fundamentals
 
-  // ROIC preferred, ROI as proxy if unavailable
-  const roicValue  = f.roic ?? f.roi ?? null
-  const roicSource = f.roic != null ? 'roic' : (f.roi != null ? 'roi_proxy' : null)
+  // Use the BEST available quality metric — same logic as Gate 2.
+  // Avoids using ROI (-0.9%) when ROE (43%) is available and healthier.
+  const qualityOptions = [f.roic, f.roi, f.roe].filter(v => v != null)
+  const roicValue  = qualityOptions.length > 0 ? Math.max(...qualityOptions) : null
+  const roicSource = f.roic != null ? 'roic' : f.roi != null ? 'roi_proxy' : f.roe != null ? 'roe_proxy' : null
 
   const components = {
     roic:        { raw: scoreROIC(roicValue),            max: 8, value: roicValue, source: roicSource },
