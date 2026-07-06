@@ -84,7 +84,15 @@ async function fhGet(path, key) {
 async function fmpGet(path, key) {
   if (!key) return null
   return fetchJSON(`https://financialmodelingprep.com/api/v3${path}&apikey=${key}`)
-    .catch(e => { console.error('[FMP]', path.split('?')[0], e.message); return null })
+    .catch(e => { console.error('[FMP v3]', path.split('?')[0], e.message); return null })
+}
+
+/** FMP /stable/ endpoints — newer API with different free plan coverage */
+async function fmpStableGet(path, key) {
+  if (!key) return null
+  const sep = path.includes('?') ? '&' : '?'
+  return fetchJSON(`https://financialmodelingprep.com/stable${path}${sep}apikey=${key}`)
+    .catch(e => { console.error('[FMP stable]', path.split('?')[0], e.message); return null })
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -109,30 +117,33 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
 
   // Sequential Finnhub calls (avoids rate limit on 60 req/min free plan)
   const fhMetrics = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
-  await delay(150)
-  const fhTarget  = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
-  await delay(150)
+  await delay(200)
+  // Price target — retry once if first call fails
+  let fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+  if (!fhTarget?.targetMean) { await delay(300); fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub) }
+  await delay(200)
   const fhRecs    = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
 
-  // FMP earnings only (ratios endpoint not available on free plan)
-  const fmpEarnings = keys.fmp
-    ? await fmpGet(`/earnings-surprises/${t}`, keys.fmp)
-    : null
+  // FMP price target consensus (free plan — /stable/ endpoint)
+  const fmpTarget = await fmpStableGet(`/price-target-consensus?symbol=${t}`, keys.fmp)
+
+  // Finnhub earnings history — actual vs estimated per quarter (free plan)
+  await delay(150)
+  const fhEarnings = await fhGet(`/stock/earnings?symbol=${t}&limit=8`, keys.finnhub)
 
   const m     = fhMetrics?.metric || {}
   const rec   = Array.isArray(fhRecs) ? (fhRecs[0] || {}) : {}
-  const earns = Array.isArray(fmpEarnings) ? fmpEarnings : []
+  // Process Finnhub earnings (sorted newest first)
+  const earns = Array.isArray(fhEarnings) ? fhEarnings : []
 
-  // Consecutive beats
+  // Count consecutive beats (newest → oldest)
   let consecutiveBeats = 0
   for (const e of earns) {
-    if ((e.actualEarningResult ?? 0) > (e.estimatedEarning ?? 0)) consecutiveBeats++
+    if (e.actual != null && e.estimate != null && e.actual > e.estimate) consecutiveBeats++
     else break
   }
-  const last = earns[0] || {}
-  const epsSurprisePct = last.estimatedEarning
-    ? ((last.actualEarningResult - last.estimatedEarning) / Math.abs(last.estimatedEarning)) * 100
-    : null
+  const lastEarning   = earns[0] || {}
+  const epsSurprisePct = lastEarning.surprisePercent ?? null
 
   // Calculate FCF TTM from EV / EV·FCF multiple
   const fcfTTM = (m.enterpriseValue && m['currentEv/freeCashFlowTTM'])
@@ -174,11 +185,12 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     relStrength52W:    m['priceRelativeToS&P50052Week']  ?? null,
     relStrength13W:    m['priceRelativeToS&P50013Week']  ?? null,
     relStrength4W:     m['priceRelativeToS&P5004Week']   ?? null,
-    // ── Analyst consensus ─────────────────────────────────────
-    targetMean:        fhTarget?.targetMean              ?? null,
-    targetHigh:        fhTarget?.targetHigh              ?? null,
-    targetLow:         fhTarget?.targetLow               ?? null,
-    targetMedian:      fhTarget?.targetMedian            ?? null,
+    // ── Analyst consensus — Finnhub preferred, FMP /stable/ as fallback ──
+    // FMP returns array [{targetConsensus, targetHigh...}], Finnhub returns object
+    targetMean:        fhTarget?.targetMean    ?? fmpTarget?.[0]?.targetConsensus ?? null,
+    targetHigh:        fhTarget?.targetHigh    ?? fmpTarget?.[0]?.targetHigh      ?? null,
+    targetLow:         fhTarget?.targetLow     ?? fmpTarget?.[0]?.targetLow       ?? null,
+    targetMedian:      fhTarget?.targetMedian  ?? fmpTarget?.[0]?.targetMedian    ?? null,
     strongBuy:         rec.strongBuy                     ?? 0,
     buy:               rec.buy                          ?? 0,
     hold:              rec.hold                         ?? 0,
@@ -188,10 +200,11 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     epsSurprisePct,
     // Debug — tells the client which sources responded
     _sources: {
-      finnhubMetric: !!fhMetrics,
-      finnhubTarget: !!fhTarget,
-      finnhubRecs:   !!fhRecs,
-      fmpEarnings:   earns.length > 0,
+      finnhubMetric:   !!fhMetrics,
+      finnhubTarget:   !!(fhTarget?.targetMean || fmpTarget?.[0]?.targetConsensus),
+      fmpPriceTarget:  !!fmpTarget?.targetConsensus,
+      finnhubRecs:     !!fhRecs,
+      finnhubEarnings: earns.length > 0,
     },
   }
 
@@ -323,16 +336,21 @@ async function handleCacheClear(ticker, kv) {
 async function handleDebug(ticker, keys) {
   const t = ticker.toUpperCase()
   if (!keys.finnhub) return json({ error: 'No Finnhub key' }, 401)
-  const raw = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
-  const target = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
-  const cashflow = keys.fmp ? await fmpGet(`/cash-flow-statement/${t}?limit=1`, keys.fmp) : null
-  const ratios   = keys.fmp ? await fmpGet(`/financial-ratios/${t}?limit=1`, keys.fmp) : null
+  const raw      = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
+  await delay(200)
+  const target   = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+  await delay(200)
+  const fhEarnings   = await fhGet(`/stock/earnings?symbol=${t}&limit=4`, keys.finnhub)
+  const fmpPriceTarget = keys.fmp ? await fmpStableGet(`/price-target-consensus?symbol=${t}`, keys.fmp) : null
   return json({
-    finnhubMetricFields: raw?.metric ? Object.keys(raw.metric).filter(k => raw.metric[k] != null) : [],
-    finnhubMetricSample: raw?.metric,
-    finnhubTarget: target,
-    fmpCashFlow: cashflow,
-    fmpRatios: ratios,
+    keys_configured:  { finnhub: !!keys.finnhub, fmp: !!keys.fmp },
+    finnhubTarget:    target,
+    fmpPriceTarget:   fmpPriceTarget,
+    finnhubEarnings:  fhEarnings,
+    status: {
+      priceTarget:  !!(target?.targetMean || fmpPriceTarget?.targetConsensus) ? 'OK' : 'MISSING',
+      earnings:     fhEarnings?.length > 0 ? 'OK' : 'EMPTY',
+    },
   })
 }
 
