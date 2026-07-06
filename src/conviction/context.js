@@ -17,7 +17,7 @@ export function createContext({ fundamentals, ohlcv = [], spyOhlcv = [], prices 
   const tickerMeta    = getTicker(fundamentals.ticker) ?? {}
   const sector        = tickerMeta.sector    ?? 'Information Technology'
   const sectorEtf     = tickerMeta.sectorEtf ?? ''
-  const sectorProfile = getSectorProfile(sector, sectorEtf)
+  const sectorProfile = getSectorProfile(sector, sectorEtf, fundamentals.ticker)
 
   return {
     fundamentals,

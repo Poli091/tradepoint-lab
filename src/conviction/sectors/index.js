@@ -102,6 +102,20 @@ export const BANKS = {
 }
 
 /* ─── Router ────────────────────────────────────────────── */
+// Ticker-level overrides — highest priority, beats both ETF and sector maps.
+// Used for companies whose GICS sector doesn't reflect their financial structure.
+// e.g. VST/CEG are classified as "Energy" but operate as power/utility companies.
+const TICKER_OVERRIDES = {
+  'VST':  UTILITIES,   // Vistra Energy — power generator, utility financial structure
+  'CEG':  UTILITIES,   // Constellation Energy — nuclear power, utility structure
+  'NEE':  UTILITIES,   // NextEra Energy
+  'NRG':  UTILITIES,   // NRG Energy
+  'ETR':  UTILITIES,   // Entergy
+  'OKLO': UTILITIES,   // Oklo — nuclear SMR
+  'SMR':  UTILITIES,   // NuScale Power
+  'VRT':  DEFAULT,     // Vertiv — data center infra, default profile
+}
+
 // Primary: sector name
 const SECTOR_MAP = {
   'Utilities':   UTILITIES,
@@ -118,9 +132,10 @@ const ETF_MAP = {
 }
 
 /**
- * @param {string} sector   - GICS sector name from tickerUniverse
- * @param {string} sectorEtf - ETF ticker from tickerUniverse (more precise)
+ * @param {string} sector    - GICS sector name from tickerUniverse
+ * @param {string} sectorEtf - ETF ticker from tickerUniverse
+ * @param {string} ticker    - ticker symbol (highest priority override)
  */
-export function getSectorProfile(sector, sectorEtf = '') {
-  return ETF_MAP[sectorEtf] ?? SECTOR_MAP[sector] ?? DEFAULT
+export function getSectorProfile(sector, sectorEtf = '', ticker = '') {
+  return TICKER_OVERRIDES[ticker] ?? ETF_MAP[sectorEtf] ?? SECTOR_MAP[sector] ?? DEFAULT
 }
