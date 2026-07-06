@@ -24,6 +24,7 @@ export default function DashboardView({
   sortBy, sortDir, handleSort,
   side, setSide, orderType, setOrderType,
   qty, incQty, decQty, limitPrice, setLimitPrice,
+  prices = {},
 }) {
   const { isMobile, isNarrow } = useBreakpoint()
   const { totalValue, totalGain, gainPct, avgConviction, best } = portfolioStats
@@ -56,7 +57,7 @@ export default function DashboardView({
 
       {/* ── Chart + Order panel ── */}
       <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: PAD }}>
-        <PriceChart ticker={ticker} onTickerChange={setTicker} range={range} onRangeChange={setRange} />
+        <PriceChart ticker={ticker} onTickerChange={setTicker} range={range} onRangeChange={setRange} prices={prices} />
         <OrderPanel
           ticker={ticker} side={side} setSide={setSide}
           orderType={orderType} setOrderType={setOrderType}

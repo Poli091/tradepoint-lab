@@ -1,26 +1,37 @@
 /**
  * MODULE: ROOT / App.jsx
- * Provider tree:
- *   LanguageProvider → AuthProvider → (LockScreen | AppInner)
- *
- * The lock screen is always rendered on top when not authenticated.
- * App content is never in the DOM until authenticated.
+ * Integrates live market data with UI state.
+ * liveVisiblePositions override the static positions with real prices.
  */
 
-import { useState, useEffect } from 'react'
-import { LanguageProvider }  from './context/LanguageContext.jsx'
-import { AuthProvider, useAuth } from './context/AuthContext.jsx'
-import LockScreen            from './auth/LockScreen.jsx'
-import Sidebar               from './components/layout/Sidebar.jsx'
-import Header                from './components/layout/Header.jsx'
-import SettingsPanel         from './components/layout/SettingsPanel.jsx'
-import DashboardView         from './views/DashboardView.jsx'
-import PositionsView         from './views/PositionsView.jsx'
-import WatchlistView         from './views/WatchlistView.jsx'
-import CalendarView          from './views/CalendarView.jsx'
-import { useTradepoint }     from './hooks/useTradepoint.js'
+import { useState, useEffect, useMemo } from 'react'
+import { LanguageProvider }       from './context/LanguageContext.jsx'
+import { AuthProvider, useAuth }  from './context/AuthContext.jsx'
+import LockScreen                 from './auth/LockScreen.jsx'
+import Sidebar                    from './components/layout/Sidebar.jsx'
+import Header                     from './components/layout/Header.jsx'
+import SettingsPanel              from './components/layout/SettingsPanel.jsx'
+import DashboardView              from './views/DashboardView.jsx'
+import PositionsView              from './views/PositionsView.jsx'
+import WatchlistView              from './views/WatchlistView.jsx'
+import CalendarView               from './views/CalendarView.jsx'
+import { useTradepoint }          from './hooks/useTradepoint.js'
+import { useMarketData }          from './hooks/useMarketData.js'
+import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
 
-/* ── Main app (only rendered when authenticated) ── */
+/* ── Live data indicator ───────────────────────────────── */
+function LiveBadge({ loading, lastUpdated, error }) {
+  if (error)    return <span style={{ fontSize:10, color:'var(--red)',    fontFamily:'var(--mono)' }}>⚠ {error.slice(0,40)}</span>
+  if (loading)  return <span style={{ fontSize:10, color:'var(--amber)',  fontFamily:'var(--mono)' }}>↻ Updating…</span>
+  if (lastUpdated) {
+    const secs = Math.round((Date.now() - lastUpdated) / 1000)
+    const label = secs < 60 ? `${secs}s ago` : `${Math.round(secs/60)}m ago`
+    return <span style={{ fontSize:10, color:'var(--green)', fontFamily:'var(--mono)' }}>● Live · {label}</span>
+  }
+  return <span style={{ fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>○ Simulated</span>
+}
+
+/* ── Main app ──────────────────────────────────────────── */
 function AppInner() {
   const {
     theme, toggleTheme,
@@ -33,9 +44,22 @@ function AppInner() {
     orderType, setOrderType,
     qty, incQty, decQty,
     limitPrice, setLimitPrice,
-    visiblePositions,
-    portfolioStats,
   } = useTradepoint()
+
+  /* ── Live market data ── */
+  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
+
+  /* ── Visible positions with live prices ── */
+  const liveVisiblePositions = useMemo(() => {
+    const base = filterByAccount(account)
+    return livePositions.filter(p => base.some(b => b.ticker === p.ticker))
+  }, [account, livePositions])
+
+  /* ── Portfolio stats from live prices ── */
+  const portfolioStats = useMemo(
+    () => calcPortfolioStats(liveVisiblePositions),
+    [liveVisiblePositions]
+  )
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -48,7 +72,9 @@ function AppInner() {
       case 'dashboard':
         return (
           <DashboardView
-            visiblePositions={visiblePositions} portfolioStats={portfolioStats}
+            visiblePositions={liveVisiblePositions}
+            portfolioStats={portfolioStats}
+            prices={prices}
             ticker={ticker} setTicker={setTicker}
             range={range}   setRange={setRange}
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
@@ -61,7 +87,7 @@ function AppInner() {
       case 'positions':
         return (
           <PositionsView
-            visiblePositions={visiblePositions}
+            visiblePositions={liveVisiblePositions}
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
             ticker={ticker} setTicker={setTicker}
           />
@@ -82,8 +108,9 @@ function AppInner() {
       <div className="app-main">
         <Header
           account={account} setAccount={setAccount}
-          visiblePositions={visiblePositions}
+          visiblePositions={liveVisiblePositions}
           portfolioStats={portfolioStats}
+          liveBadge={<LiveBadge loading={pricesLoading} lastUpdated={lastUpdated} error={pricesError} />}
         />
         <main className="app-content">{renderView()}</main>
       </div>
@@ -92,15 +119,13 @@ function AppInner() {
   )
 }
 
-/* ── Auth gate — decides what to render ── */
+/* ── Auth gate ─────────────────────────────────────────── */
 function AuthGate() {
   const { authenticated } = useAuth()
-  // Lock screen always covers everything until authenticated
   if (!authenticated) return <LockScreen />
   return <AppInner />
 }
 
-/* ── Root export ── */
 export default function App() {
   return (
     <LanguageProvider>
