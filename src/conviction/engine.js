@@ -150,5 +150,6 @@ export function runConviction({ fundamentals, ohlcv = [], spyOhlcv = [], prices 
     // Audit
     audit,
     sectorProfile: ctx.sectorProfile.name,
+    fundamentalsData: ctx.fundamentals,  // exposed for UI display
   }
 }
