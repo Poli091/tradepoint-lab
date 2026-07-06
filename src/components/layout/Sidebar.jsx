@@ -10,7 +10,10 @@ import { useLang }        from '../../context/LanguageContext.jsx'
 
 function NavButton({ label, Icon, active, onClick }) {
   return (
-    <button onClick={onClick} title={label} aria-label={label}
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
       aria-current={active ? 'page' : undefined}
       style={{
         width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
@@ -30,11 +33,15 @@ function NavButton({ label, Icon, active, onClick }) {
 
 function IconBtn({ label, Icon, onClick, color, bg }) {
   return (
-    <button onClick={onClick} title={label} aria-label={label}
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
       style={{
         width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: bg || 'var(--surface-up)', color: color || 'var(--txt-muted)',
+        background: bg || 'var(--surface-up)',
+        color: color || 'var(--txt-muted)',
         transition: 'all 0.14s',
       }}
       onMouseEnter={e => { e.currentTarget.style.color = color || 'var(--accent)' }}
@@ -46,20 +53,19 @@ function IconBtn({ label, Icon, onClick, color, bg }) {
 }
 
 export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSettings }) {
-  const { isMobile }  = useBreakpoint()
-  const { t }         = useLang()
-  const isLight       = theme === 'light'
+  const { isMobile } = useBreakpoint()
+  const { t }        = useLang()
+  const isLight      = theme === 'light'
 
   const NAV_ITEMS = [
-    { id: 'dashboard', label: t.navDashboard, Icon: LayoutDashboard },
-    { id: 'positions', label: t.navPositions,  Icon: Briefcase       },
-    { id: 'watchlist', label: t.navWatchlist,  Icon: Eye             },
-    { id: 'calendar',     label: t.navCalendar,     Icon: CalendarDays },
-  { id: 'diagnostics',  label: 'Model Diagnostics', Icon: BarChart2    },
-  { id: 'conviction', label: 'Conviction',     Icon: BarChart3       },
+    { id: 'dashboard',   label: t.navDashboard,     Icon: LayoutDashboard },
+    { id: 'positions',   label: t.navPositions,     Icon: Briefcase       },
+    { id: 'watchlist',   label: t.navWatchlist,     Icon: Eye             },
+    { id: 'calendar',    label: t.navCalendar,      Icon: CalendarDays    },
+    { id: 'diagnostics', label: 'Model Diagnostics', Icon: BarChart3      },
   ]
 
-  /* ── Mobile: fixed bottom bar ── */
+  /* ── Mobile: fixed bottom nav bar ── */
   if (isMobile) {
     return (
       <nav style={{
@@ -71,9 +77,12 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
         {NAV_ITEMS.map(({ id, label, Icon }) => (
           <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
         ))}
-        <NavButton label={t.navSettings} Icon={Settings} active={false} onClick={onOpenSettings} />
-        <IconBtn label={isLight ? 'Dark mode' : 'Light mode'} Icon={isLight ? Sun : Moon}
-          color={isLight ? 'var(--amber)' : undefined} onClick={toggleTheme} />
+        <IconBtn
+          label={isLight ? 'Dark mode' : 'Light mode'}
+          Icon={isLight ? Sun : Moon}
+          color={isLight ? 'var(--amber)' : undefined}
+          onClick={toggleTheme}
+        />
       </nav>
     )
   }
@@ -83,30 +92,28 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     <aside style={{
       width: 'var(--sidebar-w)', height: '100vh',
       background: 'var(--surface)', borderRight: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      paddingTop: 14, paddingBottom: 14, gap: 4, flexShrink: 0,
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', paddingTop: 14, paddingBottom: 14,
+      gap: 4, flexShrink: 0,
     }}>
       {/* Logo */}
       <div style={{
-        width: 36, height: 36, borderRadius: 10, marginBottom: 18,
+        width: 36, height: 36, borderRadius: 10,
         background: 'linear-gradient(135deg, var(--accent), var(--purple))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
+        marginBottom: 18,
       }}>TP</div>
 
-      {/* Nav items */}
+      {/* Nav */}
       {NAV_ITEMS.map(({ id, label, Icon }) => (
         <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
       ))}
 
       <div style={{ flex: 1 }} />
 
-      {/* Settings gear */}
-      <IconBtn
-        label={t.navSettings}
-        Icon={Settings}
-        onClick={onOpenSettings}
-      />
+      {/* Settings */}
+      <IconBtn label={t.navSettings ?? 'Settings'} Icon={Settings} onClick={onOpenSettings} />
 
       {/* Theme toggle */}
       <IconBtn
