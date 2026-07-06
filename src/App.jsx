@@ -15,16 +15,17 @@ import DashboardView              from './views/DashboardView.jsx'
 import PositionsView              from './views/PositionsView.jsx'
 import WatchlistView              from './views/WatchlistView.jsx'
 import CalendarView               from './views/CalendarView.jsx'
+import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { useMarketData }          from './hooks/useMarketData.js'
 import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
 
-/* ── Live data indicator ───────────────────────────────── */
+/* ── Live data badge ───────────────────────────────────── */
 function LiveBadge({ loading, lastUpdated, error }) {
-  if (error)    return <span style={{ fontSize:10, color:'var(--red)',    fontFamily:'var(--mono)' }}>⚠ {error.slice(0,40)}</span>
-  if (loading)  return <span style={{ fontSize:10, color:'var(--amber)',  fontFamily:'var(--mono)' }}>↻ Updating…</span>
+  if (error)       return <span style={{ fontSize:10, color:'var(--red)',     fontFamily:'var(--mono)' }}>⚠ {error.slice(0,40)}</span>
+  if (loading)     return <span style={{ fontSize:10, color:'var(--amber)',   fontFamily:'var(--mono)' }}>↻ Updating…</span>
   if (lastUpdated) {
-    const secs = Math.round((Date.now() - lastUpdated) / 1000)
+    const secs  = Math.round((Date.now() - lastUpdated) / 1000)
     const label = secs < 60 ? `${secs}s ago` : `${Math.round(secs/60)}m ago`
     return <span style={{ fontSize:10, color:'var(--green)', fontFamily:'var(--mono)' }}>● Live · {label}</span>
   }
@@ -46,17 +47,13 @@ function AppInner() {
     limitPrice, setLimitPrice,
   } = useTradepoint()
 
-  /* ── Live market data ── */
   const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
 
-
-  /* ── Visible positions with live prices ── */
   const liveVisiblePositions = useMemo(() => {
     const base = filterByAccount(account)
     return livePositions.filter(p => base.some(b => b.ticker === p.ticker))
   }, [account, livePositions])
 
-  /* ── Portfolio stats from live prices ── */
   const portfolioStats = useMemo(
     () => calcPortfolioStats(liveVisiblePositions),
     [liveVisiblePositions]
@@ -93,10 +90,19 @@ function AppInner() {
             ticker={ticker} setTicker={setTicker}
           />
         )
-      case 'watchlist': return <WatchlistView />
-      case 'calendar':  return <CalendarView />
-      case 'conviction': return <ConvictionView visiblePositions={liveVisiblePositions} prices={prices} />
-      default:          return null
+      case 'watchlist':
+        return <WatchlistView />
+      case 'calendar':
+        return <CalendarView />
+      case 'diagnostics':
+        return (
+          <DiagnosticsView
+            visiblePositions={liveVisiblePositions}
+            prices={prices}
+          />
+        )
+      default:
+        return null
     }
   }
 
