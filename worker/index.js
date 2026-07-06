@@ -91,6 +91,8 @@ async function fmpGet(path, key) {
    MODULE 4 — HANDLERS
 ════════════════════════════════════════════════════════════ */
 
+const delay = ms => new Promise(r => setTimeout(r, ms))
+
 async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   const t     = ticker.toUpperCase()
   const kvKey = `fund:${t}`
@@ -105,19 +107,30 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     return json({ error: 'Finnhub key not configured — add it in Settings → API Keys' }, 401)
   }
 
-  // All 5 calls handle their own errors — partial data is OK
-  const [fhMetrics, fhTarget, fhRecs, fmpMetrics, fmpEarnings] = await Promise.all([
-    fhGet(`/stock/metric?symbol=${t}&metric=all`,  keys.finnhub),
-    fhGet(`/stock/price-target?symbol=${t}`,       keys.finnhub),
-    fhGet(`/stock/recommendation?symbol=${t}`,     keys.finnhub),
-    fmpGet(`/key-metrics/${t}?limit=1`,            keys.fmp),
-    fmpGet(`/earnings-surprises/${t}`,             keys.fmp),
+  // Sequential Finnhub calls (avoids rate limit on 60 req/min free plan)
+  const fhMetrics = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
+  await delay(150)
+  const fhTarget  = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+  await delay(150)
+  const fhRecs    = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
+
+  // FMP calls in parallel — try financial-ratios (better free plan coverage) + earnings
+  const [fmpRatios, fmpCashFlow, fmpEarnings] = await Promise.all([
+    fmpGet(`/financial-ratios/${t}?limit=1&period=annual`, keys.fmp),
+    fmpGet(`/cash-flow-statement/${t}?limit=1&period=annual`, keys.fmp),
+    fmpGet(`/earnings-surprises/${t}`, keys.fmp),
   ])
 
   const m   = fhMetrics?.metric || {}
   const rec = Array.isArray(fhRecs) ? (fhRecs[0] || {}) : {}
-  const fm  = Array.isArray(fmpMetrics)  ? (fmpMetrics[0]  || {}) : {}
+  const fr  = Array.isArray(fmpRatios)   ? (fmpRatios[0]   || {}) : {}
+  const fc  = Array.isArray(fmpCashFlow) ? (fmpCashFlow[0]  || {}) : {}
   const earns = Array.isArray(fmpEarnings) ? fmpEarnings : []
+
+  // Calculate FCF from cash flow statement if not in Finnhub
+  const fcfFromFMP = (fc.operatingCashFlow != null && fc.capitalExpenditure != null)
+    ? fc.operatingCashFlow + fc.capitalExpenditure  // capex is negative in FMP
+    : null
 
   // Consecutive beats
   let consecutiveBeats = 0
@@ -139,7 +152,7 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     epsGrowthYoY:     m.epsGrowthTTMYoy               ?? null,
     epsGrowth3Y:      m.epsGrowth3Y                   ?? null,
     epsGrowth5Y:      m.epsGrowth5Y                   ?? null,
-    fcfTTM:           m.freeCashFlowTTM               ?? null,
+    fcfTTM:           m.freeCashFlowTTM ?? fcfFromFMP  ?? null,
     fcfGrowth5Y:      m.freeCashFlowGrowth5Y          ?? null,
     // Quality (Finnhub)
     roe:              m.roeTTM                         ?? null,
@@ -156,8 +169,9 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     pFcf:             m.pfcfShareTTM                   ?? null,
     beta:             m.beta                           ?? null,
     // From FMP
-    roic:             fm.returnOnInvestedCapital        ?? null,
-    peg:              fm.priceEarningsToGrowthRatio     ?? null,
+    roic:             (fr.returnOnInvestedCapital != null ? fr.returnOnInvestedCapital * 100 : null),
+    peg:              fr.priceEarningsToGrowthRatio     ?? null,
+    fcfFromFMP:       fcfFromFMP,
     consecutiveBeats,
     epsSurprisePct,
     // Analyst consensus (Finnhub)
@@ -175,7 +189,8 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
       finnhubMetric: !!fhMetrics,
       finnhubTarget: !!fhTarget,
       finnhubRecs:   !!fhRecs,
-      fmpMetrics:    !!fmpMetrics,
+      fmpRatios:     !!fmpRatios,
+      fmpCashFlow:   !!fmpCashFlow,
       fmpEarnings:   earns.length > 0,
     },
   }

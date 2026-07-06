@@ -1,18 +1,16 @@
 /**
  * MODULE: CONTEXT / AuthContext.jsx
  *
- * Lock triggers:
- *  ✓ Page reload    — sessionStorage cleared automatically by browser
- *  ✓ Tab/window close — same
- *  ✓ Away for >30 min — timer-based lock (security for long absences)
- *  ✗ Tab switch      — NO lock (grace period)
- *  ✗ Minimize/maximize — NO lock (grace period)
+ * Lock behavior:
+ *  ✓ Page reload (any type)  — React state resets to false → lock screen
+ *  ✓ Browser/tab close      — React state lost → lock screen on reopen
+ *  ✓ Away >30 min           — visibility timer fires → lock
+ *  ✗ Tab switch             — no lock (grace period active)
+ *  ✗ Minimize/maximize      — no lock (grace period active)
  *
- * The 30-minute grace period means:
- *  · Switching tabs briefly: stays unlocked
- *  · Minimizing the window: stays unlocked
- *  · Leaving the computer for >30 min: locks automatically
- *  · Reloading the page: always locks (sessionStorage)
+ * Key insight: NO sessionStorage needed.
+ * React in-memory state handles "stay authenticated while browsing"
+ * and resets on every page reload automatically.
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
@@ -24,99 +22,66 @@ import {
   clearPasskeyRegistration,
 } from '../auth/webauthn.js'
 
-const SESSION_KEY  = 'tp_session'
-const LOCK_TIMEOUT = 30 * 60 * 1000   // 30 minutes of inactivity → lock
+const LOCK_TIMEOUT = 30 * 60 * 1000   // 30 minutes hidden → lock
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [authenticated, setAuthenticated] = useState(
-    () => sessionStorage.getItem(SESSION_KEY) === '1'
-  )
-  const [hasPasskey, setHasPasskey] = useState(hasRegisteredPasskey)
-  const [webAuthnOk, setWebAuthnOk] = useState(isWebAuthnSupported)
+  // Always starts as false — forces passkey on every page load/reload
+  const [authenticated, setAuthenticated] = useState(false)
+  const [hasPasskey,    setHasPasskey]    = useState(hasRegisteredPasskey)
+  const [webAuthnOk,    setWebAuthnOk]    = useState(isWebAuthnSupported)
   const lockTimerRef = useRef(null)
 
-  /* ── Start/reset the 30-min inactivity timer ── */
+  /* ── 30-min inactivity timer when tab is hidden ── */
   const resetLockTimer = useCallback(() => {
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current)
-    lockTimerRef.current = setTimeout(() => {
-      sessionStorage.removeItem(SESSION_KEY)
-      setAuthenticated(false)
-    }, LOCK_TIMEOUT)
+    lockTimerRef.current = setTimeout(() => setAuthenticated(false), LOCK_TIMEOUT)
   }, [])
 
   const clearLockTimer = useCallback(() => {
-    if (lockTimerRef.current) {
-      clearTimeout(lockTimerRef.current)
-      lockTimerRef.current = null
-    }
+    if (lockTimerRef.current) { clearTimeout(lockTimerRef.current); lockTimerRef.current = null }
   }, [])
 
-  /* ── Visibility change: start timer when hidden, cancel when visible ── */
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        // Start the 30-min countdown — does NOT lock immediately
-        resetLockTimer()
-      } else {
-        // User came back before 30 min — cancel the lock
-        clearLockTimer()
-      }
+      if (document.visibilityState === 'hidden') resetLockTimer()
+      else clearLockTimer()
     }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility)
-      clearLockTimer()
-    }
+    return () => { document.removeEventListener('visibilitychange', handleVisibility); clearLockTimer() }
   }, [resetLockTimer, clearLockTimer])
 
-  /* ── Register new passkey ── */
+  /* ── Auth actions ── */
   const register = useCallback(async () => {
     await registerPasskey()
-    sessionStorage.setItem(SESSION_KEY, '1')
     setHasPasskey(true)
-    setAuthenticated(true)
-  }, [])
-
-  /* ── Authenticate with existing passkey ── */
-  const unlock = useCallback(async () => {
-    await authenticatePasskey()
-    sessionStorage.setItem(SESSION_KEY, '1')
     clearLockTimer()
     setAuthenticated(true)
   }, [clearLockTimer])
 
-  /* ── Bypass for unsupported browsers ── */
+  const unlock = useCallback(async () => {
+    await authenticatePasskey()
+    clearLockTimer()
+    setAuthenticated(true)
+  }, [clearLockTimer])
+
   const bypassUnsupported = useCallback(() => {
-    sessionStorage.setItem(SESSION_KEY, '1')
     setAuthenticated(true)
   }, [])
 
-  /* ── Delete profile & clear ALL data ── */
   const deleteProfile = useCallback(() => {
     clearPasskeyRegistration()
     clearLockTimer()
     const allKeys = []
-    for (let i = 0; i < localStorage.length; i++) {
-      allKeys.push(localStorage.key(i))
-    }
+    for (let i = 0; i < localStorage.length; i++) allKeys.push(localStorage.key(i))
     allKeys.forEach(k => localStorage.removeItem(k))
-    sessionStorage.removeItem(SESSION_KEY)
     setAuthenticated(false)
     setHasPasskey(false)
   }, [clearLockTimer])
 
   return (
-    <AuthContext.Provider value={{
-      authenticated,
-      hasPasskey,
-      webAuthnOk,
-      register,
-      unlock,
-      bypassUnsupported,
-      deleteProfile,
-    }}>
+    <AuthContext.Provider value={{ authenticated, hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile }}>
       {children}
     </AuthContext.Provider>
   )
