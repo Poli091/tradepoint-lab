@@ -55,7 +55,7 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     { id: 'positions', label: t.navPositions,  Icon: Briefcase       },
     { id: 'watchlist', label: t.navWatchlist,  Icon: Eye             },
     { id: 'calendar',     label: t.navCalendar,     Icon: CalendarDays },
-  { id: 'diagnostics',  label: 'Model Diagnostics', Icon: Activity     },
+  { id: 'diagnostics',  label: 'Model Diagnostics', Icon: BarChart2    },
   { id: 'conviction', label: 'Conviction',     Icon: BarChart3       },
   ]
 
