@@ -11,13 +11,6 @@ export function fUSD(value) {
   })
 }
 
-/** Format as compact USD for large numbers (e.g. $1.23K, $4.56M) */
-export function fUSDCompact(value) {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`
-  if (value >= 1_000)     return `$${(value / 1_000).toFixed(2)}K`
-  return fUSD(value)
-}
-
 /** Format as percentage with optional + sign (e.g. +3.45% or -1.20%) */
 export function fPct(value, showSign = true) {
   const sign = showSign && value > 0 ? '+' : ''
@@ -30,7 +23,33 @@ export function fSignedUSD(value) {
   return `${sign}${fUSD(value)}`
 }
 
-/** Format a date as "Jul 4" */
-export function fDateShort(date) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+
+/** Format a decimal as signed percentage: 0.122 → "+12.2%" */
+export function fPctVal(v) {
+  if (v == null) return '—'
+  const pct = v * 100
+  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%'
+}
+
+/** Format as multiple: 42.1 → "42.1×" */
+export function fMult(v) {
+  if (v == null) return '—'
+  return v.toFixed(1) + '×'
+}
+
+/** Format large number as compact: 45000000000 → "$45.0B" */
+export function fBig(v) {
+  if (v == null) return '—'
+  const abs = Math.abs(v)
+  if (abs >= 1e12) return `$${(v / 1e12).toFixed(1)}T`
+  if (abs >= 1e9)  return `$${(v / 1e9).toFixed(1)}B`
+  if (abs >= 1e6)  return `$${(v / 1e6).toFixed(1)}M`
+  return `$${v.toFixed(0)}`
+}
+
+/** Format a plain ratio: 4.17 → "4.2" */
+export function fRatio(v, decimals = 1) {
+  if (v == null) return '—'
+  return v.toFixed(decimals)
 }

@@ -1,39 +1,43 @@
 /**
  * MODULE: VIEWS / DashboardView.jsx
- * Responsive dashboard:
- *  Desktop: 4-col cards · chart+order side by side · positions+watchlist side by side
- *  Tablet:  2-col cards · chart+order stacked · positions+watchlist stacked
- *  Mobile:  2-col cards · everything stacked
+ * Main dashboard. Clicking a position row opens the TickerDetailPanel.
  */
 
+import { useState } from 'react'
 import { Wallet, TrendingUp, Trophy, Target } from 'lucide-react'
-import StatCard         from '../components/ui/StatCard.jsx'
-import PriceChart       from '../components/widgets/PriceChart.jsx'
-import OrderPanel       from '../components/widgets/OrderPanel.jsx'
-import PositionsTable   from '../components/widgets/PositionsTable.jsx'
-import WatchlistPanel   from '../components/widgets/WatchlistPanel.jsx'
-import { useBreakpoint } from '../hooks/useBreakpoint.js'
-import { calcPnL }      from '../utils/finance.js'
-import { fUSD, fPct }   from '../utils/format.js'
+import StatCard            from '../components/ui/StatCard.jsx'
+import PriceChart          from '../components/widgets/PriceChart.jsx'
+import OrderPanel          from '../components/widgets/OrderPanel.jsx'
+import PositionsTable      from '../components/widgets/PositionsTable.jsx'
+import WatchlistPanel      from '../components/widgets/WatchlistPanel.jsx'
+import TickerDetailPanel   from '../components/widgets/TickerDetailPanel.jsx'
+import { useBreakpoint }   from '../hooks/useBreakpoint.js'
+import { calcPnL }         from '../utils/finance.js'
+import { fUSD, fPct }      from '../utils/format.js'
 
 const PAD = 14
 
 export default function DashboardView({
-  visiblePositions, portfolioStats,
+  visiblePositions, portfolioStats, prices = {},
   ticker, setTicker, range, setRange,
   sortBy, sortDir, handleSort,
   side, setSide, orderType, setOrderType,
   qty, incQty, decQty, limitPrice, setLimitPrice,
-  prices = {},
 }) {
   const { isMobile, isNarrow } = useBreakpoint()
   const { totalValue, totalGain, gainPct, avgConviction, best } = portfolioStats
+  const [detailOpen, setDetailOpen] = useState(false)
+
+  /* Selecting a ticker opens both the chart and the detail panel */
+  const handleSelectTicker = (t) => {
+    setTicker(t)
+    setDetailOpen(true)
+  }
 
   return (
     <div style={{
       padding: PAD,
       display: 'flex', flexDirection: 'column', gap: PAD,
-      // Extra bottom padding on mobile so content clears the fixed bottom nav
       paddingBottom: isMobile ? 72 : PAD,
     }}>
 
@@ -57,7 +61,11 @@ export default function DashboardView({
 
       {/* ── Chart + Order panel ── */}
       <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: PAD }}>
-        <PriceChart ticker={ticker} onTickerChange={setTicker} range={range} onRangeChange={setRange} prices={prices} />
+        <PriceChart
+          ticker={ticker} onTickerChange={setTicker}
+          range={range}   onRangeChange={setRange}
+          prices={prices}
+        />
         <OrderPanel
           ticker={ticker} side={side} setSide={setSide}
           orderType={orderType} setOrderType={setOrderType}
@@ -70,12 +78,22 @@ export default function DashboardView({
       {/* ── Positions + Watchlist ── */}
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: PAD }}>
         <PositionsTable
-          positions={visiblePositions} sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
-          selectedTicker={ticker} onSelectTicker={setTicker}
+          positions={visiblePositions}
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
+          selectedTicker={ticker}
+          onSelectTicker={handleSelectTicker}
         />
         <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} />
       </div>
 
+      {/* ── Ticker detail panel (slide-in from right) ── */}
+      {detailOpen && (
+        <TickerDetailPanel
+          ticker={ticker}
+          prices={prices}
+          onClose={() => setDetailOpen(false)}
+        />
+      )}
     </div>
   )
 }
