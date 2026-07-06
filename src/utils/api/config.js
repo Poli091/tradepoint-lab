@@ -48,3 +48,6 @@ export const ENDPOINTS = {
   fmp:     'https://financialmodelingprep.com/api/v3',
   groq:    'https://api.groq.com/openai/v1',
 }
+
+/** localStorage key for the Worker URL */
+export const LS_WORKER_URL_KEY = 'tp_worker_url'

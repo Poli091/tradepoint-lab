@@ -1,0 +1,37 @@
+# TradePoint Lab — Cloudflare Worker configuration
+# Docs: https://developers.cloudflare.com/workers/configuration/
+
+name            = "tradepoint-worker"
+main            = "worker/index.js"
+compatibility_date = "2024-09-23"
+
+# ── KV Namespace ──────────────────────────────────────────────
+# SETUP STEPS:
+# 1. Create the namespace:
+#    npx wrangler kv:namespace create TRADEPOINT_KV
+# 2. Copy the id from the output and paste it below.
+# 3. For local dev also run:
+#    npx wrangler kv:namespace create TRADEPOINT_KV --preview
+#    and paste the preview_id below.
+
+[[kv_namespaces]]
+binding    = "TRADEPOINT_KV"
+id         = "b6b9ac8b3fa84c45a396ab2b9f036b72"
+# preview_id = "REPLACE_WITH_PREVIEW_ID"   # only needed for `wrangler dev`
+
+# ── API Key Secrets ───────────────────────────────────────────
+# Set these ONCE via wrangler CLI — they are never stored in this file.
+# Run each command and paste the key when prompted:
+#
+#   npx wrangler secret put FINNHUB_KEY
+#   npx wrangler secret put FMP_KEY
+#   npx wrangler secret put ALPACA_KEY
+#   npx wrangler secret put ALPACA_SECRET
+#   npx wrangler secret put GROQ_KEY
+#
+# Alternatively set them in Cloudflare Dashboard:
+#   Workers & Pages → tradepoint-worker → Settings → Variables → Secrets
+
+# ── Optional: restrict CORS to your Pages domain ──────────────
+# [vars]
+# ALLOWED_ORIGIN = "https://tradepoint-lab.pages.dev"

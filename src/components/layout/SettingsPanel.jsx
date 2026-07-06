@@ -7,9 +7,80 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Eye, EyeOff, Check, Trash2, Globe, Key } from 'lucide-react'
+import { X, Eye, EyeOff, Check, Trash2, Globe, Key, Link, CheckCircle, XCircle } from 'lucide-react'
 import { useLang } from '../../context/LanguageContext.jsx'
 import { LS_KEYS, getApiStatus } from '../../utils/api/config.js'
+import { getWorkerUrl, setWorkerUrl, workerAPI } from '../../utils/api/worker.js'
+
+
+/* ── Worker URL field ──────────────────────────────────── */
+function WorkerUrlField() {
+  const [url,     setUrl]     = useState(() => getWorkerUrl() || '')
+  const [saved,   setSaved]   = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testOk,  setTestOk]  = useState(null)
+
+  const handleSave = () => {
+    setWorkerUrl(url)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2200)
+  }
+
+  const handleTest = async () => {
+    setTesting(true); setTestOk(null)
+    try {
+      const res = await workerAPI.status()
+      setTestOk(res?.ok === true)
+    } catch { setTestOk(false) }
+    setTesting(false)
+  }
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginBottom: 7 }}>
+        Deploy the Worker and paste its URL here. All data will sync across devices via Cloudflare KV.
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <input
+          type="url"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSave()}
+          placeholder="https://tradepoint-worker.yourname.workers.dev"
+          style={{
+            flex: 1, padding: '8px 11px',
+            background: 'var(--surface-up)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', fontFamily: 'var(--mono)', fontSize: 11,
+            color: 'var(--txt)', boxSizing: 'border-box',
+          }}
+        />
+        <button onClick={handleSave} style={{
+          padding: '0 14px', borderRadius: 'var(--radius)', border: 'none',
+          cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
+          background: saved ? 'var(--green-dim)' : 'var(--accent-dim)',
+          color:      saved ? 'var(--green)'     : 'var(--accent)',
+          transition: 'all 0.18s', whiteSpace: 'nowrap',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          {saved ? <><Check size={12} />Saved</> : 'Save'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={handleTest} disabled={!url || testing} style={{
+          padding: '5px 12px', borderRadius: 'var(--radius)',
+          border: '1px solid var(--border)', background: 'transparent',
+          color: 'var(--txt-sec)', fontSize: 11, cursor: url ? 'pointer' : 'not-allowed',
+          fontFamily: 'var(--sans)', display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          <Link size={11} />
+          {testing ? 'Testing…' : 'Test connection'}
+        </button>
+        {testOk === true  && <span style={{ fontSize: 11, color: 'var(--green)',    display:'flex', alignItems:'center', gap:4 }}><CheckCircle size={11} />Connected</span>}
+        {testOk === false && <span style={{ fontSize: 11, color: 'var(--red)',      display:'flex', alignItems:'center', gap:4 }}><XCircle size={11} />Failed — check URL</span>}
+      </div>
+    </div>
+  )
+}
 
 /* ── Key field definitions ─────────────────────────────── */
 const KEY_FIELDS = [
@@ -240,6 +311,9 @@ export default function SettingsPanel({ open, onClose }) {
           </div>
 
           {/* ── API Keys ── */}
+          {sectionLabel(<><Globe size={13} />Data sync (Cloudflare Worker)</>)}
+          <WorkerUrlField />
+
           {sectionLabel(<><Key size={13} />{t.sectionApiKeys}</>)}
 
           {KEY_FIELDS.map(({ label: labelKey, lsKey, desc }) => (
