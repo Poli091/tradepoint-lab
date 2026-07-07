@@ -16,6 +16,7 @@ import PositionsView              from './views/PositionsView.jsx'
 import WatchlistView              from './views/WatchlistView.jsx'
 import CalendarView               from './views/CalendarView.jsx'
 import DiagnosticsView            from './views/DiagnosticsView.jsx'
+import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { useMarketData }          from './hooks/useMarketData.js'
 import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
@@ -94,6 +95,8 @@ function AppInner() {
         return <WatchlistView />
       case 'calendar':
         return <CalendarView />
+      case 'scan':
+        return <ScanView />
       case 'diagnostics':
         return (
           <DiagnosticsView

@@ -4,7 +4,7 @@
  * Mobile:  fixed bottom navigation bar.
  */
 
-import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Settings, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Search, Settings, Sun, Moon } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint.js'
 import { useLang }        from '../../context/LanguageContext.jsx'
 
@@ -63,6 +63,7 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     { id: 'watchlist',   label: t.navWatchlist,     Icon: Eye             },
     { id: 'calendar',    label: t.navCalendar,      Icon: CalendarDays    },
     { id: 'diagnostics', label: 'Model Diagnostics', Icon: BarChart3      },
+  { id: 'scan',        label: 'Ticker Scanner',   Icon: Search         },
   ]
 
   /* ── Mobile: fixed bottom nav bar ── */

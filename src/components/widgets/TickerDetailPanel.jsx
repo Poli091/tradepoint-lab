@@ -121,7 +121,7 @@ function FreshnessRow({ label, freshness }) {
 /* ═══════════════════════════════════════════════════════
    MAIN PANEL
 ═══════════════════════════════════════════════════════ */
-export default function TickerDetailPanel({ ticker, onClose, prices = {} }) {
+export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedded = false }) {
   const { isMobile } = useBreakpoint()
   const { result, loading, error, recompute } = useConviction(ticker, prices)
 
@@ -131,11 +131,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {} }) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:149, background:'rgba(0,0,0,0.3)' }} />
+      {/* Backdrop — only in overlay mode */}
+      {!embedded && <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:149, background:'rgba(0,0,0,0.3)' }} />}
 
       {/* Panel */}
-      <div style={{
+      <div style={embedded ? {
+        flex:1, display:'flex', flexDirection:'column',
+        overflowY:'auto', minWidth:0,
+      } : {
         position:'fixed', top:0, right:0,
         width: isMobile ? '100vw' : 440,
         height:'100vh',
