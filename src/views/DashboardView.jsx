@@ -23,6 +23,7 @@ export default function DashboardView({
   sortBy, sortDir, handleSort,
   side, setSide, orderType, setOrderType,
   qty, incQty, decQty, limitPrice, setLimitPrice,
+  convictionResults = {}, convictionLoading = false,
 }) {
   const { isMobile, isNarrow } = useBreakpoint()
   const { totalValue, totalGain, gainPct, avgConviction, best } = portfolioStats
