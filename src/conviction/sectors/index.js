@@ -12,6 +12,7 @@
 export const DEFAULT = {
   name: 'default',
   gate1DebtMax: 4,
+  riskDebtMax:  3.0,   // D/E above this triggers Risk penalty
   strengthBrackets: {
     debtEquity: [
       { threshold: 0.5,      type: 'max', pts: 5 },
@@ -39,6 +40,7 @@ export const DEFAULT = {
 export const UTILITIES = {
   name: 'utilities',
   gate1DebtMax: 6,
+  riskDebtMax:  5.0,   // Utilities can carry more debt — penalty threshold higher than default
   strengthBrackets: {
     debtEquity: [
       { threshold: 1.5,      type: 'max', pts: 5 },
@@ -66,6 +68,7 @@ export const UTILITIES = {
 export const REIT = {
   name: 'reit',
   gate1DebtMax: 10,
+  riskDebtMax:  8.0,   // REITs are capital-intensive by nature
   strengthBrackets: {
     debtEquity: [
       { threshold: 3.0,      type: 'max', pts: 5 },

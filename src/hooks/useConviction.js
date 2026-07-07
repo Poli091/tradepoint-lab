@@ -47,6 +47,10 @@ export function useConviction(ticker, prices = {}) {
       })
 
       setResult(conviction)
+
+      // Auto-save to D1 — silent failure, never blocks the UI
+      workerAPI.saveAnalysis(ticker, conviction).catch(() => {})
+
     } catch (err) {
       console.error('[useConviction]', ticker, err.message)
       setError(err.message)

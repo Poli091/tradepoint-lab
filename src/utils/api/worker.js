@@ -63,6 +63,32 @@ export const workerAPI = {
   status: () =>
     workerGet('/api/status'),
 
+  /**
+   * Save a conviction result to D1.
+   * Called automatically after every engine run.
+   * Silent failure — never blocks the UI.
+   */
+  saveAnalysis: async (ticker, result) => {
+    const base = getWorkerUrl()
+    if (!base) return null
+    try {
+      const res = await fetch(`${base.replace(/\/$/, '')}/api/save/${ticker}`, {
+        method:  'POST',
+        headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
+        body:    JSON.stringify(result),
+      })
+      return res.ok ? res.json() : null
+    } catch { return null }
+  },
+
+  /** Get analysis history for a ticker from D1. */
+  getHistory: (ticker, limit = 90) =>
+    workerGet(`/api/history/${ticker}?limit=${limit}`),
+
+  /** Get aggregate stats across all stored analyses. */
+  getAllHistory: () =>
+    workerGet('/api/history'),
+
   /** Full fundamentals: Finnhub (growth, quality, strength, valuation, consensus)
    *  + FMP (ROIC, PEG, beat history). Cached 90 days in KV. */
   fundamentals: (ticker, forceRefresh = false) =>

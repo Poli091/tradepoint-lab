@@ -22,7 +22,7 @@ const TTL = {
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': [
     'Content-Type',
     'X-Finnhub-Key', 'X-FMP-Key',
@@ -354,6 +354,107 @@ async function handleDebug(ticker, keys) {
   })
 }
 
+
+/* ════════════════════════════════════════════════════════════
+   MODULE D1 — DATABASE HANDLERS
+════════════════════════════════════════════════════════════ */
+
+/** POST /api/save/:ticker — persist conviction result to D1 */
+async function handleSaveAnalysis(ticker, request, db) {
+  if (!db) return json({ error: 'D1 database not configured in Worker' }, 503)
+
+  let body
+  try { body = await request.json() }
+  catch { return json({ error: 'Invalid JSON body' }, 400) }
+
+  const r   = body
+  const now = new Date()
+  const bd  = r.breakdown ?? {}
+  const nullFields = (bd.growth?.nullFields ?? 0) + (bd.quality?.nullFields ?? 0)
+    + (bd.valuation?.nullFields ?? 0) + (bd.technical?.nullFields ?? 0)
+
+  try {
+    await db.prepare(`
+      INSERT INTO analyses (
+        ticker, analysis_date, timestamp_ms,
+        raw_score, risk_penalty, final_score, gate_cap, active_gate,
+        grade, confidence, model_version,
+        growth_score, quality_score, strength_score, valuation_score, technical_score, valuation_metric,
+        price, spy_price,
+        target_mean, upside_pct, analysts,
+        rsi, ema200, rs_weighted,
+        sector_profile, null_fields, full_json
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(
+      ticker.toUpperCase(),
+      now.toISOString().split('T')[0],
+      now.getTime(),
+      r.rawScore        ?? null, r.riskPenalty    ?? null, r.finalScore ?? null,
+      r.gateCap         ?? null, r.activeGate     ?? null,
+      r.grade           ?? null, r.confidence     ?? null,
+      r.audit?.modelVersion ?? 'v1.0',
+      bd.growth?.score    ?? null, bd.quality?.score  ?? null,
+      bd.strength?.score  ?? null, bd.valuation?.score ?? null,
+      bd.technical?.score ?? null, bd.valuation?.metric ?? null,
+      r.technical?.currentPrice ?? null, null,
+      r.wallStreet?.targetMean ?? null, r.wallStreet?.upside ?? null,
+      r.wallStreet?.analysts   ?? null,
+      r.technical?.rsi        ?? null, r.technical?.ema200      ?? null,
+      r.technical?.relStrengthWeighted ?? null,
+      r.sectorProfile ?? null, nullFields,
+      JSON.stringify(r)
+    ).run()
+
+    return json({ saved: true, ticker: ticker.toUpperCase(), date: now.toISOString().split('T')[0] })
+  } catch (err) {
+    console.error('[D1 save]', err.message)
+    return json({ error: 'Database write failed: ' + err.message }, 500)
+  }
+}
+
+/** GET /api/history/:ticker — retrieve analysis history from D1 */
+async function handleGetHistory(ticker, db, limit = 90) {
+  if (!db) return json({ error: 'D1 database not configured in Worker' }, 503)
+
+  try {
+    const rows = await db.prepare(`
+      SELECT id, ticker, analysis_date, final_score, grade, confidence,
+             growth_score, quality_score, strength_score, valuation_score, technical_score,
+             active_gate, price, target_mean, upside_pct, rsi, rs_weighted, model_version
+      FROM analyses WHERE ticker = ?
+      ORDER BY timestamp_ms DESC LIMIT ?
+    `).bind(ticker.toUpperCase(), limit).all()
+
+    return json({ ticker: ticker.toUpperCase(), history: rows.results ?? [], count: rows.results?.length ?? 0 })
+  } catch (err) {
+    return json({ error: 'Database read failed: ' + err.message }, 500)
+  }
+}
+
+/** GET /api/history — aggregate stats across all tickers */
+async function handleGetAllHistory(db) {
+  if (!db) return json({ error: 'D1 database not configured in Worker' }, 503)
+  try {
+    const stats = await db.prepare(`
+      SELECT
+        COUNT(*)                          AS total_analyses,
+        COUNT(DISTINCT ticker)            AS unique_tickers,
+        AVG(final_score)                  AS avg_score,
+        MIN(analysis_date)                AS earliest,
+        MAX(analysis_date)                AS latest,
+        SUM(CASE WHEN grade='STRONG BUY'  THEN 1 ELSE 0 END) AS strong_buy_count,
+        SUM(CASE WHEN grade='BUY'         THEN 1 ELSE 0 END) AS buy_count,
+        SUM(CASE WHEN grade='HOLD'        THEN 1 ELSE 0 END) AS hold_count,
+        SUM(CASE WHEN grade='SELL'        THEN 1 ELSE 0 END) AS sell_count,
+        SUM(CASE WHEN grade='STRONG SELL' THEN 1 ELSE 0 END) AS strong_sell_count
+      FROM analyses
+    `).first()
+    return json({ stats })
+  } catch (err) {
+    return json({ error: err.message }, 500)
+  }
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -374,6 +475,7 @@ export default {
     }
 
     const kv      = env.TRADEPOINT_KV
+    const db      = env.TRADEPOINT_DB ?? null
     const keys    = getKeys(request, env)
     const refresh = url.searchParams.get('refresh') === '1'
 
@@ -397,6 +499,11 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'save':
+          return await handleSaveAnalysis(param1, request, db)
+        case 'history':
+          if (!param1) return await handleGetAllHistory(db)
+          return await handleGetHistory(param1, db)
         case 'cache':
           if (param1 === 'info')  return await handleCacheInfo(param2, kv)
           if (param1 === 'clear') return await handleCacheClear(param2, kv)

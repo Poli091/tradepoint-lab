@@ -35,3 +35,15 @@ id         = "b6b9ac8b3fa84c45a396ab2b9f036b72"
 # ── Optional: restrict CORS to your Pages domain ──────────────
 # [vars]
 # ALLOWED_ORIGIN = "https://tradepoint-lab.pages.dev"
+
+# ── D1 Database ───────────────────────────────────────────────
+# SETUP STEPS:
+# 1. Create:  npx wrangler d1 create tradepoint-db
+# 2. Paste the database_id below
+# 3. Create tables: npx wrangler d1 execute tradepoint-db --file=worker/schema.sql
+# 4. Deploy: npx wrangler deploy
+
+[[d1_databases]]
+binding       = "TRADEPOINT_DB"
+database_name = "tradepoint-db"
+database_id   = "ba122b9c-4352-4ec5-8683-8a6999b44dfb"
