@@ -429,7 +429,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           Groq · Llama 3.3-70B
                           {aiData.expiresAt && (
                             <span style={{ marginLeft:6 }}>
-                              · {Math.max(0, Math.ceil((aiData.expiresAt - Date.now()) / 86_400_000))}d left
+                              · {Math.max(0, Math.ceil((aiData.expiresAt - Date.now()) / 86400000))}d left
                             </span>
                           )}
                         </span>
@@ -447,7 +447,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           </div>
                           {(data?.bullets ?? []).map((bullet, i) => (
                             <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7,
-                              marginBottom:i < (data.bullets.length-1) ? 6 : 0, paddingLeft:4,
+                              marginBottom:i < (data.bullets.length-1) ? 6 : 0,
                               borderLeft:'2px solid var(--border)', paddingLeft:8 }}>
                               {bullet}
                             </div>
