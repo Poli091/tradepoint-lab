@@ -47,3 +47,10 @@ id         = "b6b9ac8b3fa84c45a396ab2b9f036b72"
 binding       = "TRADEPOINT_DB"
 database_name = "tradepoint-db"
 database_id   = "ba122b9c-4352-4ec5-8683-8a6999b44dfb"
+
+# ── Cron Trigger — Weekly Snapshots ──────────────────────────
+# Runs every Sunday at 00:00 UTC
+# Scans all tickers cached in KV and saves conviction scores to D1
+
+[triggers]
+crons = ["0 0 * * SUN"]

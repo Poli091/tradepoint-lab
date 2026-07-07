@@ -1,3 +1,5 @@
+import { computeConviction } from './conviction.js'
+
 /**
  * TradePoint Lab — Cloudflare Worker v1.1
  * Fix: all handler calls now use `await` to properly catch async errors.
@@ -455,12 +457,127 @@ async function handleGetAllHistory(db) {
   }
 }
 
+
+/* ════════════════════════════════════════════════════════════
+   CRON — WEEKLY SNAPSHOT ENGINE
+   Runs every Sunday via Cloudflare Cron Trigger.
+   Only processes tickers already cached in KV (from user scans).
+   Zero external API calls — all data from cache.
+════════════════════════════════════════════════════════════ */
+
+async function handleWeeklySnapshot(env) {
+  const kv = env.TRADEPOINT_KV
+  const db = env.TRADEPOINT_DB
+  if (!db) { console.error('[Cron] D1 not configured'); return }
+
+  const today = new Date().toISOString().split('T')[0]
+  console.log(`[Cron] Starting weekly snapshot — ${today}`)
+
+  // List all tickers with cached fundamentals (90d TTL)
+  const listed = await kv.list({ prefix: 'fund:' })
+  const tickers = listed.keys.map(k => k.name.replace('fund:', ''))
+  if (!tickers.length) { console.log('[Cron] No cached fundamentals found'); return }
+
+  // Fetch SPY OHLCV once — shared baseline for RS calculation
+  const spyRaw = await kv.get('ohlcv:SPY:1Y', 'json')
+  const spyOhlcv = spyRaw ?? []
+
+  let saved = 0, skipped = 0, errors = 0
+
+  // Process in batches of 10 (all from cache, very fast)
+  for (let i = 0; i < tickers.length; i += 10) {
+    const batch = tickers.slice(i, i + 10)
+
+    await Promise.all(batch.map(async ticker => {
+      try {
+        // Get fundamentals from KV (instant — always available if in list)
+        const fund = await kv.get(`fund:${ticker}`, 'json')
+        if (!fund) { skipped++; return }
+
+        // Get OHLCV from KV (may be expired — that's OK, technical gets null)
+        const ohlcv = await kv.get(`ohlcv:${ticker}:1Y`, 'json') ?? []
+
+        // Get current price from KV (5min TTL — may be stale)
+        const priceData = await kv.get(`price:${ticker}`, 'json')
+        const price = priceData?.price ?? null
+
+        // Compute conviction score
+        const result = computeConviction(fund, ohlcv, spyOhlcv, price)
+
+        // Save to D1 snapshots (UNIQUE constraint prevents duplicate per week)
+        await db.prepare(`
+          INSERT OR REPLACE INTO snapshots (
+            ticker, snapshot_date, price, score, grade, confidence,
+            raw_score, risk_penalty, active_gate,
+            growth_score, quality_score, strength_score, valuation_score, technical_score,
+            rsi, ema200, above_ema200, rs_weighted,
+            upside_pct, analysts, sector_profile, model_version, breakdown_json
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `).bind(
+          ticker, today, price, result.finalScore, result.grade, result.confidence,
+          result.rawScore, result.riskPenalty, result.activeGate,
+          result.breakdown.growth.score, result.breakdown.quality.score,
+          result.breakdown.strength.score, result.breakdown.valuation.score,
+          result.breakdown.technical.score,
+          result.technical.rsi, result.technical.ema200,
+          result.technical.aboveEMA200 ? 1 : 0, result.technical.relStrengthWeighted,
+          result.wallStreet.upside, result.wallStreet.analysts,
+          result.sectorProfile, result.modelVersion,
+          JSON.stringify(result.breakdown)
+        ).run()
+
+        saved++
+      } catch (err) {
+        console.error('[Cron]', ticker, err.message)
+        errors++
+      }
+    }))
+  }
+
+  console.log(`[Cron] Done — saved: ${saved}, skipped: ${skipped}, errors: ${errors}`)
+}
+
+/* ── GET /api/snapshots/:ticker — score history from D1 ── */
+async function handleGetSnapshots(ticker, db, limit=52) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  try {
+    const rows = await db.prepare(
+      'SELECT snapshot_date, score, grade, confidence, growth_score, quality_score, strength_score, valuation_score, technical_score, active_gate, price, upside_pct, rsi, rs_weighted, model_version FROM snapshots WHERE ticker=? ORDER BY snapshot_date DESC LIMIT ?'
+    ).bind(ticker.toUpperCase(), limit).all()
+    return json({ ticker: ticker.toUpperCase(), snapshots: rows.results ?? [], count: rows.results?.length ?? 0 })
+  } catch (err) { return json({ error: err.message }, 500) }
+}
+
+/* ── GET /api/snapshots — aggregate snapshot stats ── */
+async function handleSnapshotStats(db) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  try {
+    const stats = await db.prepare(`
+      SELECT COUNT(*) AS total, COUNT(DISTINCT ticker) AS tickers,
+        COUNT(DISTINCT snapshot_date) AS weeks,
+        AVG(score) AS avg_score, MIN(snapshot_date) AS earliest, MAX(snapshot_date) AS latest,
+        SUM(CASE WHEN grade='STRONG BUY' THEN 1 ELSE 0 END) AS strong_buy,
+        SUM(CASE WHEN grade='BUY'        THEN 1 ELSE 0 END) AS buy,
+        SUM(CASE WHEN grade='HOLD'       THEN 1 ELSE 0 END) AS hold,
+        SUM(CASE WHEN grade='SELL'       THEN 1 ELSE 0 END) AS sell,
+        SUM(CASE WHEN grade='STRONG SELL'THEN 1 ELSE 0 END) AS strong_sell
+      FROM snapshots
+    `).first()
+    return json({ stats })
+  } catch (err) { return json({ error: err.message }, 500) }
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
    properly caught by the outer try-catch.
 ════════════════════════════════════════════════════════════ */
 export default {
+  // Cron Trigger — runs every Sunday at 00:00 UTC
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(handleWeeklySnapshot(env))
+  },
+
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS })
@@ -499,6 +616,9 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'snapshots':
+          if (!param1) return await handleSnapshotStats(db)
+          return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
         case 'history':
