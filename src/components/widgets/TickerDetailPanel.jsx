@@ -13,7 +13,7 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 import { useConviction }  from '../../hooks/useConviction.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
