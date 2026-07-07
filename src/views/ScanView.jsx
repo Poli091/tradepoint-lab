@@ -36,6 +36,11 @@ const SECTOR_GROUPS = [
   { label: 'Energy',          color: '#34D399',       tickers: ['XOM','CVX','COP','EOG','SLB','MPC','VLO','PSX','HAL','OXY'] },
   { label: 'Materials',       color: '#CBD5E1',       tickers: ['LIN','APD','SHW','FCX','NEM','NUE','ALB','DD','PPG','VMC'] },
   { label: 'AI / Data',       color: '#818CF8',       tickers: ['PLTR','APP','TTD','CRWD','PANW','ZS','NET','PATH','AI','GTLB'] },
+  { label: 'Health Care',     color: '#FB7185',       tickers: ['LLY','UNH','ABBV','MRK','AMGN','GILD','REGN','ABT','SYK','ISRG'] },
+  { label: 'Semis — Equip.',  color: '#7DD3FC',       tickers: ['AMAT','LRCX','KLAC','MRVL','TXN','MCHP','ON','MPWR','SWKS','WOLF'] },
+  { label: 'Software — Ent.', color: '#C4B5FD',       tickers: ['ORCL','INTU','WDAY','SAP','HUBS','BILL','MDB','ESTC','CFLT','TYL'] },
+  { label: 'Consumer Tech',   color: '#6EE7B7',       tickers: ['AAPL','SHOP','UBER','SE','BABA','GRAB','MELI','DASH','ABNB','LYFT'] },
+  { label: 'Banks — Large',   color: '#93C5FD',       tickers: ['JPM','BAC','WFC','C','USB','TFC','RF','FITB','CFG','KEY'] },
 ]
 
 /* ── Single scan result badge ─────────────────────────────── */

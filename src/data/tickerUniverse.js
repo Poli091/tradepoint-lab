@@ -273,6 +273,63 @@ export const UNIVERSE = [
   { ticker:'AI',   name:'C3.ai',              sector:'Information Technology', industry:'AI Software',         sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
   { ticker:'GTLB', name:'GitLab',             sector:'Information Technology', industry:'DevOps',              sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
 
+
+  /* ══════════════════════════════════════════════════════
+     HEALTH CARE LARGE CAP — XLV
+  ══════════════════════════════════════════════════════ */
+  { ticker:'LLY',  name:'Eli Lilly',             sector:'Health Care', industry:'Pharmaceuticals',    sectorEtf:'XLV', inSPY:true, inQQQ:false, spyWeight:1.80 },
+  { ticker:'UNH',  name:'UnitedHealth',           sector:'Health Care', industry:'Health Insurance',   sectorEtf:'XLV', inSPY:true, inQQQ:false, spyWeight:1.30 },
+  { ticker:'ABBV', name:'AbbVie',                 sector:'Health Care', industry:'Pharmaceuticals',    sectorEtf:'XLV', inSPY:true, inQQQ:false, spyWeight:0.70 },
+  { ticker:'MRK',  name:'Merck',                  sector:'Health Care', industry:'Pharmaceuticals',    sectorEtf:'XLV', inSPY:true, inQQQ:false, spyWeight:0.55 },
+  { ticker:'AMGN', name:'Amgen',                  sector:'Health Care', industry:'Biotech',            sectorEtf:'XLV', inSPY:true, inQQQ:true,  spyWeight:0.40 },
+  { ticker:'GILD', name:'Gilead Sciences',        sector:'Health Care', industry:'Biotech',            sectorEtf:'XLV', inSPY:true, inQQQ:true,  spyWeight:0.30 },
+  { ticker:'REGN', name:'Regeneron',              sector:'Health Care', industry:'Biotech',            sectorEtf:'XLV', inSPY:true, inQQQ:true,  spyWeight:0.28 },
+  { ticker:'ABT',  name:'Abbott Laboratories',    sector:'Health Care', industry:'Medical Devices',    sectorEtf:'XLV', inSPY:true, inQQQ:false, spyWeight:0.50 },
+
+  /* ══════════════════════════════════════════════════════
+     SEMICONDUCTORS — EQUIPMENT (XLK)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'MCHP', name:'Microchip Technology',   sector:'Information Technology', industry:'Semiconductors',         sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.20 },
+  { ticker:'ON',   name:'ON Semiconductor',       sector:'Information Technology', industry:'Semiconductors',         sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.15 },
+  { ticker:'MPWR', name:'Monolithic Power',       sector:'Information Technology', industry:'Semiconductors',         sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.15 },
+  { ticker:'SWKS', name:'Skyworks Solutions',     sector:'Information Technology', industry:'Semiconductors',         sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.10 },
+  { ticker:'WOLF', name:'Wolfspeed',              sector:'Information Technology', industry:'Semiconductors',         sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+
+  /* ══════════════════════════════════════════════════════
+     SOFTWARE — ENTERPRISE
+  ══════════════════════════════════════════════════════ */
+  { ticker:'ORCL', name:'Oracle',                 sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.80 },
+  { ticker:'INTU', name:'Intuit',                 sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.45 },
+  { ticker:'WDAY', name:'Workday',                sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.20 },
+  { ticker:'SAP',  name:'SAP SE',                 sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'HUBS', name:'HubSpot',                sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.12 },
+  { ticker:'BILL', name:'Bill Holdings',          sector:'Information Technology', industry:'Software',               sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'MDB',  name:'MongoDB',                sector:'Information Technology', industry:'Database Software',      sectorEtf:'XLK', inSPY:false,inQQQ:true,  spyWeight:0 },
+  { ticker:'CFLT', name:'Confluent',              sector:'Information Technology', industry:'Data Streaming',         sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'TYL',  name:'Tyler Technologies',     sector:'Information Technology', industry:'Gov Software',           sectorEtf:'XLK', inSPY:true, inQQQ:false, spyWeight:0.10 },
+
+  /* ══════════════════════════════════════════════════════
+     CONSUMER TECH / PLATFORMS
+  ══════════════════════════════════════════════════════ */
+  { ticker:'AAPL', name:'Apple',                  sector:'Information Technology', industry:'Technology Hardware',    sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:7.10 },
+  { ticker:'SHOP', name:'Shopify',                sector:'Consumer Discretionary', industry:'E-Commerce Infra',      sectorEtf:'XLY', inSPY:false,inQQQ:true,  spyWeight:0 },
+  { ticker:'GRAB', name:'Grab Holdings',          sector:'Consumer Discretionary', industry:'Super App SEA',         sectorEtf:'XLY', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'DASH', name:'DoorDash',               sector:'Consumer Discretionary', industry:'Food Delivery',         sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.12 },
+  { ticker:'ABNB', name:'Airbnb',                 sector:'Consumer Discretionary', industry:'Travel Platform',       sectorEtf:'XLY', inSPY:true, inQQQ:true,  spyWeight:0.18 },
+  { ticker:'LYFT', name:'Lyft',                   sector:'Consumer Discretionary', industry:'Ride-Sharing',          sectorEtf:'XLY', inSPY:false,inQQQ:false, spyWeight:0 },
+
+  /* ══════════════════════════════════════════════════════
+     BANKS — REGIONAL & MID-CAP
+  ══════════════════════════════════════════════════════ */
+  { ticker:'WFC',  name:'Wells Fargo',            sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.50 },
+  { ticker:'C',    name:'Citigroup',              sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.30 },
+  { ticker:'USB',  name:'U.S. Bancorp',           sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.20 },
+  { ticker:'TFC',  name:'Truist Financial',       sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'RF',   name:'Regions Financial',      sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.10 },
+  { ticker:'FITB', name:'Fifth Third Bancorp',    sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.10 },
+  { ticker:'CFG',  name:'Citizens Financial',     sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.08 },
+  { ticker:'KEY',  name:'KeyCorp',                sector:'Financials', industry:'Banks',                             sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.08 },
+
   /* ══════════════════════════════════════════════════════
      BENCHMARKS & ETFs — not in SPY/QQQ sector ETFs
   ══════════════════════════════════════════════════════ */
