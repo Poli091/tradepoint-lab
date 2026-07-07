@@ -413,20 +413,42 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
                   {aiData && (
                     <div style={{ display:'flex', flexDirection:'column', gap:12, marginTop:4 }}>
+                      {/* Metadata row */}
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                        padding:'6px 10px', background:'var(--surface-up)', borderRadius:6,
+                        fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+                        <span>
+                          {aiData.fromCache ? '📦 From cache' : '✨ Just generated'}
+                          {aiData.generatedAt && (
+                            <span style={{ marginLeft:8 }}>
+                              {new Date(aiData.generatedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+                            </span>
+                          )}
+                        </span>
+                        <span>
+                          Groq · Llama 3.3-70B
+                          {aiData.expiresAt && (
+                            <span style={{ marginLeft:6 }}>
+                              · {Math.max(0, Math.ceil((aiData.expiresAt - Date.now()) / 86_400_000))}d left
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
                       {[
-                        { key:'moat',      icon:'🏰', label:'Economic Moat',    data:aiData.moat,      ttl:'30d' },
-                        { key:'bear',      icon:'⚠️',  label:'Bear Case Risks', data:aiData.bear,      ttl:'7d'  },
-                        { key:'catalysts', icon:'⚡',  label:'Near-Term Catalysts', data:aiData.catalysts, ttl:'7d' },
-                      ].map(({ key, icon, label, data, ttl }) => (
+                        { key:'moat',      icon:'🏰', label:'Economic Moat',        data:aiData.moat,      note:'Refreshes every 30 days' },
+                        { key:'bear',      icon:'⚠️',  label:'Bear Case Risks',      data:aiData.bear,      note:'Refreshes every 7 days'  },
+                        { key:'catalysts', icon:'⚡',  label:'Near-Term Catalysts',  data:aiData.catalysts, note:'Refreshes every 7 days'  },
+                      ].map(({ key, icon, label, data, note }) => (
                         <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
                           <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:8, display:'flex', justifyContent:'space-between' }}>
                             <span>{icon} {label}</span>
-                            <span style={{ fontSize:10, color:'var(--txt-muted)', fontWeight:400 }}>
-                              {aiData.fromCache ? `cached ${ttl}` : 'just generated'}
-                            </span>
+                            <span style={{ fontSize:9, color:'var(--txt-muted)', fontWeight:400 }}>{note}</span>
                           </div>
                           {(data?.bullets ?? []).map((bullet, i) => (
-                            <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.6, marginBottom:i < (data.bullets.length-1) ? 6 : 0, paddingLeft:4 }}>
+                            <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7,
+                              marginBottom:i < (data.bullets.length-1) ? 6 : 0, paddingLeft:4,
+                              borderLeft:'2px solid var(--border)', paddingLeft:8 }}>
                               {bullet}
                             </div>
                           ))}
@@ -435,8 +457,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           )}
                         </div>
                       ))}
-                      <div style={{ fontSize:10, color:'var(--txt-muted)', textAlign:'center' }}>
-                        Powered by Groq · Llama 3.3-70B · AI explains, not decides
+
+                      {/* Disclaimer */}
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', textAlign:'center',
+                        padding:'8px', background:'var(--surface-up)', borderRadius:6,
+                        lineHeight:1.5, fontStyle:'italic' }}>
+                        AI commentary complements the quantitative model and does not affect the Conviction Score.
                       </div>
                     </div>
                   )}

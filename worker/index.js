@@ -265,10 +265,42 @@ async function handleNews(ticker, keys, kv) {
   return json({ data, meta: meta2 })
 }
 
-const GROQ_PROMPTS = {
-  moat:      t => `Analyze the economic moat of ${t} in exactly 3 bullet points. Format: "• [Moat type]: [one sentence]". Focus: switching costs, network effects, cost advantages. Max 120 words.`,
-  bear:      t => `List the 3 biggest risks for ${t} in exactly 3 bullet points. Format: "• [Risk]: [one sentence]". Max 120 words.`,
-  catalysts: t => `List the 3 biggest near-term catalysts for ${t} in exactly 3 bullet points including timeframe. Format: "• [Catalyst]: [explanation + timeframe]". Max 120 words.`,
+function buildPrompt(type, ticker, fund) {
+  // Build a data context string from cached fundamentals so Groq
+  // cannot contradict the quantitative model
+  const ctx = fund ? `
+Financial data (do NOT contradict these):
+Revenue Growth YoY: ${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% | 3Y: ${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}%
+Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}%
+ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | Debt/Equity: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'}
+P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'}
+Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy · ${fund.hold??0} Hold · ${(fund.sell??0)+(fund.strongSell??0)} Sell
+Consensus Target: $${fund.targetMean?.toFixed(2) ?? 'N/A'}
+Consecutive Earnings Beats: ${fund.consecutiveBeats ?? 'N/A'}
+` : ''
+
+  const PROMPTS = {
+    moat: `You are a senior equity analyst. ${ctx}
+Analyze the economic moat of ${ticker} in exactly 3 bullet points.
+Each bullet: one sentence, specific, consistent with the financial data above.
+Format: "• [Moat type]: [explanation]"
+Focus on: switching costs, network effects, cost advantages, intangible assets, efficient scale.
+Do NOT recommend buying or selling. Max 150 words.`,
+
+    bear: `You are a bear case analyst. ${ctx}
+List the 3 biggest risks for ${ticker} in exactly 3 bullet points.
+Each bullet: one sentence, specific, consistent with the financial data above.
+Format: "• [Risk]: [explanation]"
+If margins are strong, do not invent margin risk. Reflect the actual data.
+Do NOT recommend buying or selling. Max 150 words.`,
+
+    catalysts: `You are a growth analyst. ${ctx}
+List the 3 biggest near-term catalysts for ${ticker} in exactly 3 bullet points, each with a timeframe.
+Format: "• [Catalyst]: [explanation — Q/timeframe]"
+Be consistent with the financial data above.
+Do NOT recommend buying or selling. Max 150 words.`,
+  }
+  return PROMPTS[type]
 }
 
 async function handleGroq(ticker, type, keys, kv) {
@@ -276,7 +308,9 @@ async function handleGroq(ticker, type, keys, kv) {
   const { value, metadata } = await kvGet(kv, kvKey)
   if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
   if (!keys.groq) return json({ error: 'Groq key not configured' }, 401)
-  const prompt = GROQ_PROMPTS[type]?.(t)
+  // Read cached fundamentals to ground the prompt (prevents contradicting the model)
+  const fund = await kv.get(`fund:${t}`, 'json').catch(() => null)
+  const prompt = buildPrompt(type, t, fund)
   if (!prompt) return json({ error: `Unknown AI type: ${type}` }, 400)
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
