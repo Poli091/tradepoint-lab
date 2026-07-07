@@ -131,6 +131,34 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const f       = result?.fundamentalsData ?? null
   const freshness = cache.infoFund(ticker)
 
+  // ── Groq AI state ────────────────────────────────────────
+  const [aiData,    setAiData]    = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError,   setAiError]   = useState(null)
+
+  const generateAI = async () => {
+    setAiLoading(true); setAiError(null)
+    try {
+      const [moat, bear, cats] = await Promise.all([
+        workerAPI.moat(ticker),
+        workerAPI.bear(ticker),
+        workerAPI.catalysts(ticker),
+      ])
+      setAiData({
+        moat:       moat?.data,
+        bear:       bear?.data,
+        catalysts:  cats?.data,
+        fromCache:  moat?.meta?.fromCache,
+        generatedAt: moat?.meta?.fetchedAt,
+        expiresAt:   bear?.meta?.expiresAt,
+      })
+    } catch (err) {
+      setAiError(err.message)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   return (
     <>
       {/* Backdrop — only in overlay mode */}
