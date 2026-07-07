@@ -13,12 +13,13 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
-import { useEffect }     from 'react'
-import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Target } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 import { useConviction }  from '../../hooks/useConviction.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
 import { POSITIONS }      from '../../data/positions.js'
 import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
+import { workerAPI }       from '../../utils/api/worker.js'
 import { cache }          from '../../utils/cache.js'
 
 /* ── Color helpers (values in % form from Finnhub) ─────── */
@@ -378,6 +379,67 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
                   </div>
+
+                  {/* ══ AI ANALYSIS ══ */}
+                  <SectionHeader icon={Zap} label="AI Analysis — Groq Llama 3.3 70B" />
+
+                  {!aiData && !aiLoading && (
+                    <button onClick={generateAI} style={{
+                      width:'100%', padding:'10px', borderRadius:8,
+                      border:'1px dashed var(--border)', background:'transparent',
+                      cursor:'pointer', color:'var(--txt-sec)', fontSize:12,
+                      fontFamily:'var(--sans)', display:'flex', alignItems:'center',
+                      justifyContent:'center', gap:8, transition:'all 0.15s',
+                    }}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--txt-sec)'}}>
+                      <Zap size={13} />
+                      Generate Moat · Bear Case · Catalysts
+                    </button>
+                  )}
+
+                  {aiLoading && (
+                    <div style={{ textAlign:'center', padding:'16px 0', color:'var(--txt-muted)', fontSize:12 }}>
+                      <div style={{ fontSize:18, marginBottom:8 }}>↻</div>
+                      Groq is thinking…
+                    </div>
+                  )}
+
+                  {aiError && (
+                    <div style={{ fontSize:11, color:'var(--red)', padding:'8px', background:'var(--red-dim)', borderRadius:6, marginTop:4 }}>
+                      ⚠ {aiError}
+                    </div>
+                  )}
+
+                  {aiData && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:12, marginTop:4 }}>
+                      {[
+                        { key:'moat',      icon:'🏰', label:'Economic Moat',    data:aiData.moat,      ttl:'30d' },
+                        { key:'bear',      icon:'⚠️',  label:'Bear Case Risks', data:aiData.bear,      ttl:'7d'  },
+                        { key:'catalysts', icon:'⚡',  label:'Near-Term Catalysts', data:aiData.catalysts, ttl:'7d' },
+                      ].map(({ key, icon, label, data, ttl }) => (
+                        <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:8, display:'flex', justifyContent:'space-between' }}>
+                            <span>{icon} {label}</span>
+                            <span style={{ fontSize:10, color:'var(--txt-muted)', fontWeight:400 }}>
+                              {aiData.fromCache ? `cached ${ttl}` : 'just generated'}
+                            </span>
+                          </div>
+                          {(data?.bullets ?? []).map((bullet, i) => (
+                            <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.6, marginBottom:i < (data.bullets.length-1) ? 6 : 0, paddingLeft:4 }}>
+                              {bullet}
+                            </div>
+                          ))}
+                          {(!data?.bullets?.length) && (
+                            <div style={{ fontSize:11, color:'var(--txt-muted)' }}>No data returned</div>
+                          )}
+                        </div>
+                      ))}
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', textAlign:'center' }}>
+                        Powered by Groq · Llama 3.3-70B · AI explains, not decides
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </>
