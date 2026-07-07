@@ -19,6 +19,8 @@ export default function PositionsView({
         positions={visiblePositions}
         sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
         selectedTicker={ticker} onSelectTicker={setTicker}
+        convictionResults={convictionResults}
+        convictionLoading={convictionLoading}
       />
     </div>
   )
