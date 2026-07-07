@@ -171,6 +171,108 @@ export const UNIVERSE = [
   { ticker:'PLD',  name:'Prologis',              sector:'Real Estate', industry:'Industrial REITs',                sectorEtf:'XLRE',inSPY:true, inQQQ:false, spyWeight:0.28 },
   { ticker:'EQIX', name:'Equinix',               sector:'Real Estate', industry:'Data Center REITs',               sectorEtf:'XLRE',inSPY:true, inQQQ:false, spyWeight:0.22 },
 
+
+  /* ══════════════════════════════════════════════════════
+     INDUSTRIALS — XLI (~8% of SPY)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'CAT',  name:'Caterpillar',       sector:'Industrials', industry:'Machinery',           sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.55 },
+  { ticker:'HON',  name:'Honeywell',          sector:'Industrials', industry:'Conglomerate',        sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'DE',   name:'Deere & Company',    sector:'Industrials', industry:'Agriculture Machinery',sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.35 },
+  { ticker:'ETN',  name:'Eaton',              sector:'Industrials', industry:'Power Management',    sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.38 },
+  { ticker:'PH',   name:'Parker Hannifin',    sector:'Industrials', industry:'Industrial Motion',   sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.28 },
+  { ticker:'EMR',  name:'Emerson Electric',   sector:'Industrials', industry:'Automation',          sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.22 },
+  { ticker:'ITW',  name:'Illinois Tool Works', sector:'Industrials', industry:'Diversified Mfg',   sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.28 },
+  { ticker:'MMM',  name:'3M',                 sector:'Industrials', industry:'Diversified',         sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'CARR', name:'Carrier Global',     sector:'Industrials', industry:'HVAC',                sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'TT',   name:'Trane Technologies', sector:'Industrials', industry:'Climate Solutions',   sectorEtf:'XLI', inSPY:true, inQQQ:false, spyWeight:0.22 },
+
+  /* ══════════════════════════════════════════════════════
+     FINANCIALS — XLF (non-payment, non-fintech)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'GS',   name:'Goldman Sachs',      sector:'Financials', industry:'Investment Banking',   sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.50 },
+  { ticker:'MS',   name:'Morgan Stanley',     sector:'Financials', industry:'Investment Banking',   sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'BLK',  name:'BlackRock',          sector:'Financials', industry:'Asset Management',     sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'SCHW', name:'Charles Schwab',     sector:'Financials', industry:'Brokerage',            sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.28 },
+  { ticker:'CB',   name:'Chubb',              sector:'Financials', industry:'Insurance',            sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.28 },
+  { ticker:'AXP',  name:'American Express',   sector:'Financials', industry:'Credit Services',      sectorEtf:'XLF', inSPY:true, inQQQ:false, spyWeight:0.35 },
+
+  /* ══════════════════════════════════════════════════════
+     CONSUMER DISCRETIONARY — XLY
+  ══════════════════════════════════════════════════════ */
+  { ticker:'TSLA', name:'Tesla',              sector:'Consumer Discretionary', industry:'Electric Vehicles',  sectorEtf:'XLY', inSPY:true, inQQQ:true,  spyWeight:1.50 },
+  { ticker:'HD',   name:'Home Depot',         sector:'Consumer Discretionary', industry:'Home Improvement',   sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.70 },
+  { ticker:'BKNG', name:'Booking Holdings',   sector:'Consumer Discretionary', industry:'Online Travel',      sectorEtf:'XLY', inSPY:true, inQQQ:true,  spyWeight:0.50 },
+  { ticker:'MCD',  name:"McDonald's",         sector:'Consumer Discretionary', industry:'Fast Food',          sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.45 },
+  { ticker:'NKE',  name:'Nike',               sector:'Consumer Discretionary', industry:'Footwear',           sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.25 },
+  { ticker:'LOW',  name:"Lowe's",             sector:'Consumer Discretionary', industry:'Home Improvement',   sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'SBUX', name:'Starbucks',          sector:'Consumer Discretionary', industry:'Coffee Retail',      sectorEtf:'XLY', inSPY:true, inQQQ:true,  spyWeight:0.22 },
+  { ticker:'TJX',  name:'TJX Companies',      sector:'Consumer Discretionary', industry:'Off-Price Retail',   sectorEtf:'XLY', inSPY:true, inQQQ:false, spyWeight:0.38 },
+  { ticker:'LULU', name:'Lululemon',           sector:'Consumer Discretionary', industry:'Athleisure',         sectorEtf:'XLY', inSPY:true, inQQQ:true,  spyWeight:0.15 },
+
+  /* ══════════════════════════════════════════════════════
+     COMMUNICATION SERVICES — XLC
+  ══════════════════════════════════════════════════════ */
+  { ticker:'GOOGL',name:'Alphabet Class A',   sector:'Communication Services', industry:'Internet Services',  sectorEtf:'XLC', inSPY:true, inQQQ:true,  spyWeight:2.10 },
+  { ticker:'GOOG', name:'Alphabet Class C',   sector:'Communication Services', industry:'Internet Services',  sectorEtf:'XLC', inSPY:true, inQQQ:true,  spyWeight:1.80 },
+  { ticker:'NFLX', name:'Netflix',            sector:'Communication Services', industry:'Streaming',          sectorEtf:'XLC', inSPY:true, inQQQ:true,  spyWeight:0.75 },
+  { ticker:'DIS',  name:'Walt Disney',        sector:'Communication Services', industry:'Entertainment',       sectorEtf:'XLC', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'T',    name:'AT&T',               sector:'Communication Services', industry:'Telecom',            sectorEtf:'XLC', inSPY:true, inQQQ:false, spyWeight:0.35 },
+  { ticker:'VZ',   name:'Verizon',            sector:'Communication Services', industry:'Telecom',            sectorEtf:'XLC', inSPY:true, inQQQ:false, spyWeight:0.30 },
+  { ticker:'CHTR', name:'Charter Communications',sector:'Communication Services',industry:'Cable',            sectorEtf:'XLC', inSPY:true, inQQQ:true,  spyWeight:0.18 },
+  { ticker:'SPOT', name:'Spotify',            sector:'Communication Services', industry:'Music Streaming',    sectorEtf:'XLC', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'PINS', name:'Pinterest',          sector:'Communication Services', industry:'Social Media',       sectorEtf:'XLC', inSPY:false,inQQQ:false, spyWeight:0 },
+
+  /* ══════════════════════════════════════════════════════
+     CONSUMER STAPLES — XLP
+  ══════════════════════════════════════════════════════ */
+  { ticker:'PM',   name:'Philip Morris',      sector:'Consumer Staples', industry:'Tobacco',          sectorEtf:'XLP', inSPY:true, inQQQ:false, spyWeight:0.40 },
+  { ticker:'MO',   name:'Altria',             sector:'Consumer Staples', industry:'Tobacco',          sectorEtf:'XLP', inSPY:true, inQQQ:false, spyWeight:0.22 },
+  { ticker:'CL',   name:'Colgate-Palmolive',  sector:'Consumer Staples', industry:'Household Products',sectorEtf:'XLP', inSPY:true, inQQQ:false, spyWeight:0.20 },
+  { ticker:'MDLZ', name:'Mondelez',           sector:'Consumer Staples', industry:'Snacks',           sectorEtf:'XLP', inSPY:true, inQQQ:true,  spyWeight:0.22 },
+  { ticker:'EL',   name:"Estée Lauder",       sector:'Consumer Staples', industry:'Beauty',           sectorEtf:'XLP', inSPY:true, inQQQ:false, spyWeight:0.12 },
+
+  /* ══════════════════════════════════════════════════════
+     REAL ESTATE — XLRE (REIT profile)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'CCI',  name:'Crown Castle',       sector:'Real Estate', industry:'Cell Tower REITs',     sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'PSA',  name:'Public Storage',     sector:'Real Estate', industry:'Storage REITs',        sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'WELL', name:'Welltower',          sector:'Real Estate', industry:'Healthcare REITs',     sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'SPG',  name:'Simon Property',     sector:'Real Estate', industry:'Retail REITs',         sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'DLR',  name:'Digital Realty',     sector:'Real Estate', industry:'Data Center REITs',    sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'O',    name:'Realty Income',      sector:'Real Estate', industry:'Net Lease REITs',      sectorEtf:'XLRE', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'CSGP', name:'CoStar Group',       sector:'Real Estate', industry:'Real Estate Data',     sectorEtf:'XLRE', inSPY:true, inQQQ:true,  spyWeight:0.12 },
+
+  /* ══════════════════════════════════════════════════════
+     ENERGY — XLE (oil & gas, not utilities)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'SLB',  name:'SLB',                sector:'Energy', industry:'Oilfield Services',        sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.22 },
+  { ticker:'MPC',  name:'Marathon Petroleum', sector:'Energy', industry:'Refining',                 sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.22 },
+  { ticker:'VLO',  name:'Valero Energy',      sector:'Energy', industry:'Refining',                 sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.20 },
+  { ticker:'PSX',  name:'Phillips 66',        sector:'Energy', industry:'Refining',                 sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.18 },
+  { ticker:'HAL',  name:'Halliburton',        sector:'Energy', industry:'Oilfield Services',        sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'OXY',  name:'Occidental',         sector:'Energy', industry:'Oil & Gas',               sectorEtf:'XLE', inSPY:true, inQQQ:false, spyWeight:0.18 },
+
+  /* ══════════════════════════════════════════════════════
+     MATERIALS — XLB
+  ══════════════════════════════════════════════════════ */
+  { ticker:'SHW',  name:'Sherwin-Williams',   sector:'Materials', industry:'Paints & Coatings',    sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.28 },
+  { ticker:'NEM',  name:'Newmont',            sector:'Materials', industry:'Gold Mining',           sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.15 },
+  { ticker:'NUE',  name:'Nucor',              sector:'Materials', industry:'Steel',                 sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.12 },
+  { ticker:'ALB',  name:'Albemarle',          sector:'Materials', industry:'Lithium',               sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.10 },
+  { ticker:'DD',   name:'DuPont',             sector:'Materials', industry:'Specialty Chemicals',   sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.12 },
+  { ticker:'PPG',  name:'PPG Industries',     sector:'Materials', industry:'Coatings',              sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.10 },
+  { ticker:'VMC',  name:'Vulcan Materials',   sector:'Materials', industry:'Construction Materials',sectorEtf:'XLB', inSPY:true, inQQQ:false, spyWeight:0.12 },
+
+  /* ══════════════════════════════════════════════════════
+     AI / DATA (cross-sector, high conviction watchlist)
+  ══════════════════════════════════════════════════════ */
+  { ticker:'CRWD', name:'CrowdStrike',        sector:'Information Technology', industry:'Cybersecurity',       sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.30 },
+  { ticker:'PANW', name:'Palo Alto Networks', sector:'Information Technology', industry:'Cybersecurity',       sectorEtf:'XLK', inSPY:true, inQQQ:true,  spyWeight:0.35 },
+  { ticker:'TTD',  name:'The Trade Desk',     sector:'Communication Services', industry:'Ad-Tech',             sectorEtf:'XLC', inSPY:false,inQQQ:true,  spyWeight:0 },
+  { ticker:'PATH', name:'UiPath',             sector:'Information Technology', industry:'RPA/AI',              sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'AI',   name:'C3.ai',              sector:'Information Technology', industry:'AI Software',         sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+  { ticker:'GTLB', name:'GitLab',             sector:'Information Technology', industry:'DevOps',              sectorEtf:'XLK', inSPY:false,inQQQ:false, spyWeight:0 },
+
   /* ══════════════════════════════════════════════════════
      BENCHMARKS & ETFs — not in SPY/QQQ sector ETFs
   ══════════════════════════════════════════════════════ */

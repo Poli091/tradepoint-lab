@@ -19,12 +19,23 @@ import { getGrade }       from '../conviction/grade/index.js'
 
 /* ── Quick-access sector groups ──────────────────────────── */
 const SECTOR_GROUPS = [
-  { label: 'Utilities',      color: 'var(--amber)',  tickers: ['VST','CEG','NEE','DUK','SO','NRG','PCG','ETR'] },
-  { label: 'Semiconductors', color: 'var(--accent)', tickers: ['NVDA','AVGO','AMD','TSM','MU','ARM','QCOM','INTC'] },
-  { label: 'Software',       color: 'var(--purple)', tickers: ['NOW','CRM','TEAM','VEEV','SNOW','DDOG','MSFT','ADBE'] },
-  { label: 'Fintech',        color: 'var(--green)',  tickers: ['MELI','V','MA','FICO','PYPL','SQ','SOFI','NU'] },
-  { label: 'MedTech',        color: '#F472B6',       tickers: ['PODD','ISRG','BSX','DXCM','EW','MDT','SYK','VRTX'] },
-  { label: 'Defense',        color: '#94A3B8',       tickers: ['AXON','LMT','NOC','RTX','GD','GE'] },
+  // ── Already scanned ──────────────────────────────────────
+  { label: 'Utilities',       color: 'var(--amber)',  tickers: ['VST','CEG','NEE','DUK','SO','NRG','PCG','ETR'] },
+  { label: 'Semiconductors',  color: 'var(--accent)', tickers: ['NVDA','AVGO','AMD','TSM','MU','ARM','QCOM','INTC'] },
+  { label: 'Software / SaaS', color: 'var(--purple)', tickers: ['NOW','CRM','TEAM','VEEV','SNOW','DDOG','MSFT','ADBE'] },
+  { label: 'Fintech',         color: 'var(--green)',  tickers: ['MELI','V','MA','FICO','PYPL','SQ','SOFI','NU'] },
+  { label: 'MedTech',         color: '#F472B6',       tickers: ['PODD','ISRG','BSX','DXCM','EW','MDT','SYK','VRTX'] },
+  { label: 'Defense',         color: '#94A3B8',       tickers: ['AXON','LMT','NOC','RTX','GD','GE'] },
+  // ── Pending ───────────────────────────────────────────────
+  { label: 'Industrials',     color: '#FB923C',       tickers: ['CAT','HON','DE','ETN','PH','EMR','ITW','MMM','CARR','TT'] },
+  { label: 'Financials',      color: '#60A5FA',       tickers: ['JPM','BAC','GS','MS','BLK','SCHW','SPGI','MCO','CB','AXP'] },
+  { label: 'Consumer Disc.',  color: '#A78BFA',       tickers: ['AMZN','TSLA','HD','BKNG','MCD','NKE','LOW','SBUX','TJX','LULU'] },
+  { label: 'Comm. Services',  color: '#F87171',       tickers: ['META','GOOGL','GOOG','NFLX','DIS','T','VZ','CHTR','SPOT','PINS'] },
+  { label: 'Consumer Staples',color: '#86EFAC',       tickers: ['WMT','COST','PG','KO','PEP','PM','MO','CL','MDLZ','EL'] },
+  { label: 'Real Estate',     color: '#FCD34D',       tickers: ['AMT','PLD','EQIX','CCI','PSA','WELL','SPG','DLR','O','CSGP'] },
+  { label: 'Energy',          color: '#34D399',       tickers: ['XOM','CVX','COP','EOG','SLB','MPC','VLO','PSX','HAL','OXY'] },
+  { label: 'Materials',       color: '#CBD5E1',       tickers: ['LIN','APD','SHW','FCX','NEM','NUE','ALB','DD','PPG','VMC'] },
+  { label: 'AI / Data',       color: '#818CF8',       tickers: ['PLTR','APP','TTD','CRWD','PANW','ZS','NET','PATH','AI','GTLB'] },
 ]
 
 /* ── Single scan result badge ─────────────────────────────── */
