@@ -70,6 +70,8 @@ function RefreshBtn({ ticker, onRefreshed }) {
 export default function PositionsTable({
   positions, sortBy, sortDir, onSort,
   selectedTicker, onSelectTicker,
+  convictionResults = {},   // { [ticker]: { finalScore, grade } } from engine
+  convictionLoading = false,
 }) {
   const [refreshTick, setRefreshTick] = useState(0)
 
@@ -152,7 +154,12 @@ export default function PositionsTable({
                   {/* Conviction ring */}
                   <td style={{ padding: '9px 10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <ConvictionRing score={pos.conviction} size={36} />
+                      <ConvictionRing
+                          score={convictionResults[pos.ticker]?.finalScore ?? (convictionLoading && !convictionResults[pos.ticker] ? null : pos.conviction)}
+                          grade={convictionResults[pos.ticker]?.grade ?? null}
+                          loading={convictionLoading && !convictionResults[pos.ticker]}
+                          size={36}
+                        />
                     </div>
                   </td>
                   {/* Fundamentals cache status + refresh */}

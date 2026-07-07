@@ -18,6 +18,7 @@ import CalendarView               from './views/CalendarView.jsx'
 import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
+import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { useMarketData }          from './hooks/useMarketData.js'
 import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
 
@@ -60,6 +61,12 @@ function AppInner() {
     [liveVisiblePositions]
   )
 
+  /* ── Conviction scores for all positions ── */
+  const {
+    results: convictionResults,
+    loading: convictionLoading,
+  } = useAllConvictions(liveVisiblePositions, prices)
+
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
@@ -81,6 +88,8 @@ function AppInner() {
             orderType={orderType} setOrderType={setOrderType}
             qty={qty} incQty={incQty} decQty={decQty}
             limitPrice={limitPrice} setLimitPrice={setLimitPrice}
+            convictionResults={convictionResults}
+            convictionLoading={convictionLoading}
           />
         )
       case 'positions':
@@ -89,6 +98,8 @@ function AppInner() {
             visiblePositions={liveVisiblePositions}
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
             ticker={ticker} setTicker={setTicker}
+            convictionResults={convictionResults}
+            convictionLoading={convictionLoading}
           />
         )
       case 'watchlist':

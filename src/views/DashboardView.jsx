@@ -82,6 +82,8 @@ export default function DashboardView({
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           selectedTicker={ticker}
           onSelectTicker={handleSelectTicker}
+          convictionResults={convictionResults}
+          convictionLoading={convictionLoading}
         />
         <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} />
       </div>

@@ -8,6 +8,7 @@ import PositionsTable from '../components/widgets/PositionsTable.jsx'
 export default function PositionsView({
   visiblePositions, sortBy, sortDir, handleSort,
   ticker, setTicker,
+  convictionResults = {}, convictionLoading = false,
 }) {
   return (
     <div style={{ padding: 16 }}>
