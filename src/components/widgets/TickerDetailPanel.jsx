@@ -13,6 +13,7 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
+import { useEffect }     from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Target } from 'lucide-react'
 import { useConviction }  from '../../hooks/useConviction.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
@@ -121,7 +122,7 @@ function FreshnessRow({ label, freshness }) {
 /* ═══════════════════════════════════════════════════════
    MAIN PANEL
 ═══════════════════════════════════════════════════════ */
-export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedded = false }) {
+export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedded = false, onResult }) {
   const { isMobile } = useBreakpoint()
   const { result, loading, error, recompute } = useConviction(ticker, prices)
 

@@ -14,7 +14,6 @@
 import { useState, useRef } from 'react'
 import { Search, X, Clock, ChevronRight } from 'lucide-react'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
-import { useConviction }  from '../hooks/useConviction.js'
 import { SECTORS }        from '../data/tickerUniverse.js'
 import { getGrade }       from '../conviction/grade/index.js'
 
@@ -202,21 +201,17 @@ export default function ScanView() {
   )
 }
 
-/* ── Scan result — runs conviction engine for arbitrary ticker ── */
+/* ── Scan result — TickerDetailPanel handles the engine internally ── */
 function ScanResult({ ticker, onResult }) {
-  const { result, loading, error, recompute } = useConviction(ticker, {})
-
-  // Notify parent when result arrives (to update badges)
-  if (result && !loading) {
-    onResult(result.finalScore, result.grade)
-  }
-
+  // No duplicate useConviction here — TickerDetailPanel runs it once
+  // and calls onResult when done via the onResult prop
   return (
     <TickerDetailPanel
       ticker={ticker}
       prices={{}}
       embedded={true}
       onClose={() => {}}
+      onResult={onResult}
     />
   )
 }
