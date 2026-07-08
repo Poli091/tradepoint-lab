@@ -111,16 +111,15 @@ function WorkerUrlField() {
 }
 
 /* ── Key field definitions ─────────────────────────────── */
+// Non-Alpaca keys (single field each)
 const KEY_FIELDS = [
-  { label: 'alpacaKey',    lsKey: LS_KEYS.alpacaKey,    desc: 'alpaca.markets → Paper & live trading' },
-  { label: 'alpacaSecret', lsKey: LS_KEYS.alpacaSecret, desc: 'Alpaca secret key (pair with Key above)' },
-  { label: 'finnhubKey',   lsKey: LS_KEYS.finnhub,      desc: 'finnhub.io → Prices, analyst targets, news' },
-  { label: 'fmpKey',       lsKey: LS_KEYS.fmp,          desc: 'financialmodelingprep.com → Fundamentals (90-day cache)' },
-  { label: 'groqKey',      lsKey: LS_KEYS.groq,         desc: 'groq.com → AI analysis (Llama 3.3 70B)' },
+  { label: 'finnhubKey', lsKey: LS_KEYS.finnhub },
+  { label: 'fmpKey',     lsKey: LS_KEYS.fmp     },
+  { label: 'groqKey',    lsKey: LS_KEYS.groq     },
 ]
 
 /* ── Single key field component ────────────────────────── */
-function KeyField({ labelKey, lsKey, desc, t }) {
+function KeyField({ labelKey, lsKey, t, subLabel }) {
   const [value,   setValue]   = useState('')
   const [visible, setVisible] = useState(false)
   const [saved,   setSaved]   = useState(false)
@@ -140,23 +139,27 @@ function KeyField({ labelKey, lsKey, desc, t }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      {/* Label + status badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>
-          {t[labelKey]}
-        </span>
-        <span style={{
-          fontSize: 10, padding: '1px 7px', borderRadius: 4,
-          fontFamily: 'var(--mono)', fontWeight: 600,
-          background: isConfigured ? 'var(--green-dim)' : 'var(--surface-up)',
-          color:      isConfigured ? 'var(--green)'     : 'var(--txt-muted)',
-        }}>
-          {isConfigured ? t.configured : t.notConfigured}
-        </span>
-      </div>
-
-      {/* Description */}
-      <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginBottom: 7 }}>{desc}</div>
+      {/* Label + status badge — hide if using subLabel (inside Alpaca group) */}
+      {!subLabel && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>
+            {t[labelKey]}
+          </span>
+          <span style={{
+            fontSize: 10, padding: '1px 7px', borderRadius: 4,
+            fontFamily: 'var(--mono)', fontWeight: 600,
+            background: isConfigured ? 'var(--green-dim)' : 'var(--surface-up)',
+            color:      isConfigured ? 'var(--green)'     : 'var(--txt-muted)',
+          }}>
+            {isConfigured ? t.configured : t.notConfigured}
+          </span>
+        </div>
+      )}
+      {subLabel && (
+        <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginBottom: 5, fontWeight: 500 }}>
+          {subLabel}
+        </div>
+      )}
 
       {/* Input row */}
       <div style={{ display: 'flex', gap: 6 }}>
@@ -344,12 +347,28 @@ export default function SettingsPanel({ open, onClose }) {
 
           {sectionLabel(<><Key size={13} />{t.sectionApiKeys}</>)}
 
-          {KEY_FIELDS.map(({ label: labelKey, lsKey, desc }) => (
+          {/* Alpaca Keys — grouped */}
+          <div style={{ marginBottom: 18, background: 'var(--surface-up)', borderRadius: 8, padding: '12px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>Alpaca Keys</span>
+              <span style={{
+                fontSize: 10, padding: '1px 7px', borderRadius: 4,
+                fontFamily: 'var(--mono)', fontWeight: 600,
+                background: localStorage.getItem(LS_KEYS.alpacaKey) ? 'var(--green-dim)' : 'var(--surface)',
+                color:      localStorage.getItem(LS_KEYS.alpacaKey) ? 'var(--green)'     : 'var(--txt-muted)',
+              }}>
+                {localStorage.getItem(LS_KEYS.alpacaKey) ? t.configured : t.notConfigured}
+              </span>
+            </div>
+            <KeyField labelKey="alpacaKey"    lsKey={LS_KEYS.alpacaKey}    t={t} subLabel="API Key" />
+            <KeyField labelKey="alpacaSecret" lsKey={LS_KEYS.alpacaSecret} t={t} subLabel="Secret Key" />
+          </div>
+
+          {KEY_FIELDS.map(({ label: labelKey, lsKey }) => (
             <KeyField
               key={lsKey + '_' + (clearedMsg ? 'c' : 'n')}
               labelKey={labelKey}
               lsKey={lsKey}
-              desc={desc}
               t={t}
             />
           ))}
