@@ -15,15 +15,29 @@ import { getWorkerUrl, setWorkerUrl, workerAPI } from '../../utils/api/worker.js
 
 /* ── Worker URL field ──────────────────────────────────── */
 function WorkerUrlField() {
-  const [url,     setUrl]     = useState(() => getWorkerUrl() || '')
-  const [saved,   setSaved]   = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testOk,  setTestOk]  = useState(null)
+  const [url,      setUrl]      = useState(() => getWorkerUrl() || '')
+  const [saved,    setSaved]    = useState(false)
+  const [testing,  setTesting]  = useState(false)
+  const [testOk,   setTestOk]   = useState(null)
+  const [advanced, setAdvanced] = useState(false)
+
+  // Auto-test on mount
+  useEffect(() => {
+    const autoTest = async () => {
+      setTesting(true)
+      try {
+        const res = await workerAPI.status()
+        setTestOk(res?.ok === true)
+      } catch { setTestOk(false) }
+      setTesting(false)
+    }
+    autoTest()
+  }, [])
 
   const handleSave = () => {
     setWorkerUrl(url)
     setSaved(true)
-    setTimeout(() => setSaved(false), 2200)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   const handleTest = async () => {
@@ -37,47 +51,61 @@ function WorkerUrlField() {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginBottom: 7 }}>
-        Deploy the Worker and paste its URL here. All data will sync across devices via Cloudflare KV.
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <input
-          type="url"
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSave()}
-          placeholder="https://tradepoint-worker.yourname.workers.dev"
-          style={{
-            flex: 1, padding: '8px 11px',
-            background: 'var(--surface-up)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', fontFamily: 'var(--mono)', fontSize: 11,
-            color: 'var(--txt)', boxSizing: 'border-box',
-          }}
-        />
-        <button onClick={handleSave} style={{
-          padding: '0 14px', borderRadius: 'var(--radius)', border: 'none',
-          cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
-          background: saved ? 'var(--green-dim)' : 'var(--accent-dim)',
-          color:      saved ? 'var(--green)'     : 'var(--accent)',
-          transition: 'all 0.18s', whiteSpace: 'nowrap',
-          display: 'flex', alignItems: 'center', gap: 4,
+      {/* Status line — always visible */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {testing && <span style={{ fontSize: 11, color: 'var(--amber)', display:'flex', alignItems:'center', gap:4 }}>↻ Connecting…</span>}
+          {!testing && testOk === true  && <span style={{ fontSize: 11, color: 'var(--green)', display:'flex', alignItems:'center', gap:4 }}><CheckCircle size={11} /> Worker connected</span>}
+          {!testing && testOk === false && <span style={{ fontSize: 11, color: 'var(--red)',   display:'flex', alignItems:'center', gap:4 }}><XCircle size={11} /> Connection failed</span>}
+          {!testing && testOk === null  && <span style={{ fontSize: 11, color: 'var(--txt-muted)' }}>Checking…</span>}
+        </div>
+        <button onClick={() => setAdvanced(v => !v)} style={{
+          fontSize: 10, color: 'var(--txt-muted)', background: 'transparent',
+          border: 'none', cursor: 'pointer', padding: '2px 6px',
         }}>
-          {saved ? <><Check size={12} />Saved</> : 'Save'}
+          {advanced ? '▲ Hide URL' : '▼ Change URL'}
         </button>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button onClick={handleTest} disabled={!url || testing} style={{
-          padding: '5px 12px', borderRadius: 'var(--radius)',
-          border: '1px solid var(--border)', background: 'transparent',
-          color: 'var(--txt-sec)', fontSize: 11, cursor: url ? 'pointer' : 'not-allowed',
-          fontFamily: 'var(--sans)', display: 'flex', alignItems: 'center', gap: 5,
-        }}>
-          <Link size={11} />
-          {testing ? 'Testing…' : 'Test connection'}
-        </button>
-        {testOk === true  && <span style={{ fontSize: 11, color: 'var(--green)',    display:'flex', alignItems:'center', gap:4 }}><CheckCircle size={11} />Connected</span>}
-        {testOk === false && <span style={{ fontSize: 11, color: 'var(--red)',      display:'flex', alignItems:'center', gap:4 }}><XCircle size={11} />Failed — check URL</span>}
-      </div>
+
+      {/* Advanced: URL field — hidden by default */}
+      {advanced && (
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--txt-muted)', marginBottom: 6 }}>
+            Cloudflare Worker URL — all data syncs through this endpoint.
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input
+              type="url"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              placeholder="https://tradepoint-worker.yourname.workers.dev"
+              style={{
+                flex: 1, padding: '7px 10px',
+                background: 'var(--surface-up)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)', fontFamily: 'var(--mono)', fontSize: 11,
+                color: 'var(--txt)', boxSizing: 'border-box',
+              }}
+            />
+            <button onClick={handleSave} style={{
+              padding: '0 12px', borderRadius: 'var(--radius)', border: 'none',
+              cursor: 'pointer', fontSize: 11, fontWeight: 600,
+              background: saved ? 'var(--green-dim)' : 'var(--accent-dim)',
+              color:      saved ? 'var(--green)'     : 'var(--accent)',
+            }}>
+              {saved ? '✓' : 'Save'}
+            </button>
+            <button onClick={handleTest} disabled={testing} style={{
+              padding: '0 12px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)', background: 'transparent',
+              color: 'var(--txt-sec)', fontSize: 11, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <Link size={10} /> Test
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

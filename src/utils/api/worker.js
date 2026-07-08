@@ -21,7 +21,7 @@ export const LS_WORKER_URL = 'tp_worker_url'
 export function getWorkerUrl() {
   return localStorage.getItem(LS_WORKER_URL)
     || import.meta.env.VITE_WORKER_URL
-    || null
+    || 'https://tradepoint-worker.cpolinotto.workers.dev'  // default
 }
 
 export function setWorkerUrl(url) {
