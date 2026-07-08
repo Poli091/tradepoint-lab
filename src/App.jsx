@@ -19,6 +19,7 @@ import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { useAllConvictions }     from './hooks/useAllConvictions.js'
+import { WATCHLIST }             from './data/watchlist.js'
 import { useMarketData }          from './hooks/useMarketData.js'
 import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
 
@@ -67,6 +68,9 @@ function AppInner() {
     loading: convictionLoading,
   } = useAllConvictions(liveVisiblePositions, prices)
 
+  /* ── Conviction scores for watchlist ── */
+  const { results: watchlistResults } = useAllConvictions(WATCHLIST, prices)
+
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
@@ -86,6 +90,7 @@ function AppInner() {
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
             convictionResults={convictionResults}
             convictionLoading={convictionLoading}
+            watchlistResults={watchlistResults}
           />
         )
       case 'positions':
@@ -96,10 +101,11 @@ function AppInner() {
             ticker={ticker} setTicker={setTicker}
             convictionResults={convictionResults}
             convictionLoading={convictionLoading}
+            watchlistResults={watchlistResults}
           />
         )
       case 'watchlist':
-        return <WatchlistView />
+        return <WatchlistView convictionResults={watchlistResults} />
       case 'calendar':
         return <CalendarView />
       case 'scan':

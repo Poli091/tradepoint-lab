@@ -25,6 +25,7 @@ export default function DashboardView({
   ticker, setTicker, range, setRange,
   sortBy, sortDir, handleSort,
   convictionResults = {}, convictionLoading = false,
+  watchlistResults = {},
 }) {
   const { isMobile } = useBreakpoint()
   const { totalValue, totalGain, gainPct, best } = portfolioStats
@@ -95,7 +96,7 @@ export default function DashboardView({
           convictionResults={convictionResults}
           convictionLoading={convictionLoading}
         />
-        <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} />
+        <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} convictionResults={watchlistResults} />
       </div>
 
       {/* ── Ticker detail panel ── */}
