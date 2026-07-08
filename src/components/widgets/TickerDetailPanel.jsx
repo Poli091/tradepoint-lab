@@ -120,6 +120,8 @@ function FreshnessRow({ label, freshness }) {
   )
 }
 
+
+
 /* ═══════════════════════════════════════════════════════
    MAIN PANEL
 ═══════════════════════════════════════════════════════ */
@@ -127,11 +129,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const { isMobile } = useBreakpoint()
   const { result, loading, error, recompute } = useConviction(ticker, prices)
 
-  const pos     = POSITIONS.find(p => p.ticker === ticker)
-  const f       = result?.fundamentalsData ?? null
+  const pos       = POSITIONS.find(p => p.ticker === ticker)
+  const f         = result?.fundamentalsData ?? null
   const freshness = cache.infoFund(ticker)
 
-  // ── Groq AI state ────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('score')
   const [aiData,    setAiData]    = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
@@ -145,10 +147,10 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         workerAPI.catalysts(ticker),
       ])
       setAiData({
-        moat:       moat?.data,
-        bear:       bear?.data,
-        catalysts:  cats?.data,
-        fromCache:  moat?.meta?.fromCache,
+        moat:        moat?.data,
+        bear:        bear?.data,
+        catalysts:   cats?.data,
+        fromCache:   moat?.meta?.fromCache,
         generatedAt: moat?.meta?.fetchedAt,
         expiresAt:   bear?.meta?.expiresAt,
       })
@@ -161,13 +163,10 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   return (
     <>
-      {/* Backdrop — only in overlay mode */}
       {!embedded && <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:149, background:'rgba(0,0,0,0.3)' }} />}
 
-      {/* Panel */}
       <div style={embedded ? {
-        flex:1, display:'flex', flexDirection:'column',
-        overflowY:'auto', minWidth:0,
+        flex:1, display:'flex', flexDirection:'column', minWidth:0,
       } : {
         position:'fixed', top:0, right:0,
         width: isMobile ? '100vw' : 440,
@@ -175,32 +174,61 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         background:'var(--surface)',
         borderLeft: isMobile ? 'none' : '1px solid var(--border)',
         zIndex:150, display:'flex', flexDirection:'column',
-        overflowY:'auto',
         boxShadow:'-8px 0 32px rgba(0,0,0,0.4)',
       }}>
-        {/* ── Header ── */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid var(--border)', flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10 }}>
+
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'14px 16px', borderBottom:'1px solid var(--border)',
+          flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10 }}>
           <div>
             <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8 }}>
-            <button onClick={recompute} disabled={loading} title="Recompute conviction"
-              style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', cursor:loading ? 'wait' : 'pointer', color:loading ? 'var(--accent)' : 'var(--txt-muted)', display:'flex', alignItems:'center', justifyContent:'center', animation:loading ? 'tp-spin 1s linear infinite' : 'none' }}>
+            <button onClick={recompute} disabled={loading}
+              style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
+                background:'transparent', cursor:loading?'wait':'pointer',
+                color:loading?'var(--accent)':'var(--txt-muted)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                animation:loading?'tp-spin 1s linear infinite':'none' }}>
               <RotateCcw size={14} />
             </button>
-            <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', cursor:'pointer', color:'var(--txt-muted)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <X size={14} />
-            </button>
+            {!embedded && (
+              <button onClick={onClose}
+                style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
+                  background:'transparent', cursor:'pointer', color:'var(--txt-muted)',
+                  display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <X size={14} />
+              </button>
+            )}
           </div>
         </div>
 
         <style>{`@keyframes tp-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
-        {/* ── Body ── */}
-        <div style={{ padding:'14px 16px', flex:1 }}>
+        {/* Tab Bar */}
+        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', flexShrink:0, background:'var(--surface)' }}>
+          {[
+            { id:'score',        label:'Score'        },
+            { id:'fundamentals', label:'Fundamentals' },
+            { id:'ai',           label:'AI Analysis'  },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+              flex:1, padding:'10px 0', fontSize:11, fontWeight:600,
+              border:'none', background:'transparent', cursor:'pointer',
+              color: activeTab === tab.id ? 'var(--accent)' : 'var(--txt-muted)',
+              borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
+              transition:'all 0.15s', fontFamily:'var(--sans)',
+            }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Loading */}
+        {/* Body */}
+        <div style={{ padding:'14px 16px', flex:1, overflowY:'auto' }}>
+
           {loading && !result && (
             <div style={{ textAlign:'center', padding:'40px 0', color:'var(--txt-muted)', fontSize:13 }}>
               <div style={{ fontSize:24, marginBottom:12 }}>↻</div>
@@ -209,16 +237,18 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </div>
           )}
 
-          {/* Error */}
           {error && !result && (
-            <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:8, padding:'12px', marginBottom:16, fontSize:12, color:'var(--red)' }}>
+            <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)',
+              borderRadius:8, padding:'12px', marginBottom:16, fontSize:12, color:'var(--red)' }}>
               ⚠ {error}
             </div>
           )}
 
           {result && (
             <>
-              {/* ══ SECTION 1: CONVICTION SCORE ══ */}
+              {activeTab === 'score' && (
+                <>
+{/* ══ SECTION 1: CONVICTION SCORE ══ */}
               <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:12, padding:'16px', marginBottom:16 }}>
                 {/* Score + Grade + Confidence */}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
@@ -342,8 +372,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   )}
                 </div>
               )}
+                </>
+              )}
 
-              {/* ══ SECTIONS 4-6: FUNDAMENTALS DETAIL ══ */}
+              {activeTab === 'fundamentals' && (
+                <>
+{/* ══ SECTIONS 4-6: FUNDAMENTALS DETAIL ══ */}
               {f && (
                 <>
                   <SectionHeader icon={TrendingUp} label="Growth" />
@@ -408,6 +442,16 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
                   </div>
 
+                </>
+              )}
+                  <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+                    Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'ai' && (
+                <>
                   {/* ══ AI ANALYSIS ══ */}
                   <SectionHeader icon={Zap} label="AI Analysis — Groq Llama 3.3 70B" />
                   <div style={{ fontSize:11, color:'var(--txt-muted)', fontStyle:'italic',
