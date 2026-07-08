@@ -11,7 +11,7 @@ import { WATCHLIST }   from '../../data/watchlist.js'
 import { genSparklines } from '../../utils/chartData.js'
 import { fUSD, fPct }  from '../../utils/format.js'
 
-export default function WatchlistPanel({ style = {}, convictionResults = {} }) {
+export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker }) {
   const sparklines = useMemo(() => genSparklines(WATCHLIST, 21), [])
 
   return (

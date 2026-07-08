@@ -96,7 +96,7 @@ export default function DashboardView({
           convictionResults={convictionResults}
           convictionLoading={convictionLoading}
         />
-        <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} convictionResults={watchlistResults} />
+        <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} convictionResults={watchlistResults} onSelectTicker={handleSelectTicker} />
       </div>
 
       {/* ── Ticker detail panel ── */}

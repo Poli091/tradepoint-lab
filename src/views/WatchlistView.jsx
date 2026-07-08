@@ -3,16 +3,18 @@
  * Full-page watchlist with conviction rings from the engine.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Sparkline       from '../components/ui/Sparkline.jsx'
 import Badge           from '../components/ui/Badge.jsx'
 import ConvictionRing  from '../components/ui/ConvictionRing.jsx'
 import { WATCHLIST }   from '../data/watchlist.js'
 import { genSparklines } from '../utils/chartData.js'
 import { fUSD, fPct }  from '../utils/format.js'
+import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 
-export default function WatchlistView({ convictionResults = {} }) {
+export default function WatchlistView({ convictionResults = {}, prices = {} }) {
   const sparklines = useMemo(() => genSparklines(WATCHLIST, 21), [])
+  const [activeTicker, setActiveTicker] = useState(null)
 
   return (
     <div style={{ padding: 16 }}>
@@ -27,13 +29,18 @@ export default function WatchlistView({ convictionResults = {} }) {
           const cv    = convictionResults[item.ticker]
 
           return (
-            <div key={item.ticker} style={{
-              background: 'var(--surface)',
-              border: `1px solid ${cv?.gradeColor ? cv.gradeColor + '33' : 'var(--border)'}`,
-              borderRadius: 'var(--radius-lg)',
-              padding: 16,
-              transition: 'border-color 0.3s',
-            }}>
+            <div key={item.ticker}
+              onClick={() => setActiveTicker(item.ticker)}
+              style={{
+                background: 'var(--surface)',
+                border: `1px solid ${cv?.gradeColor ? cv.gradeColor + '33' : 'var(--border)'}`,
+                borderRadius: 'var(--radius-lg)',
+                padding: 16,
+                transition: 'all 0.15s',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-up)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div>
@@ -106,6 +113,14 @@ export default function WatchlistView({ convictionResults = {} }) {
           )
         })}
       </div>
+
+      {activeTicker && (
+        <TickerDetailPanel
+          ticker={activeTicker}
+          prices={prices}
+          onClose={() => setActiveTicker(null)}
+        />
+      )}
     </div>
   )
 }
