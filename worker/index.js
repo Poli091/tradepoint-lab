@@ -270,98 +270,101 @@ function buildPrompt(type, ticker, fund, score) {
   const techScore   = bd?.technical?.score  ?? 'N/A'
   const techMax     = bd?.technical?.max    ?? 15
   const techWeak    = (bd?.technical?.score ?? 0) < 8
-  const growthScore = bd?.growth?.score     ?? 'N/A'
-  const qualScore   = bd?.quality?.score    ?? 'N/A'
-  const strScore    = bd?.strength?.score   ?? 'N/A'
   const valScore    = bd?.valuation?.score  ?? 'N/A'
   const valMetric   = bd?.valuation?.metric ?? 'N/A'
-  const valValue    = bd?.valuation?.value?.toFixed(2) ?? 'N/A'
   const riskPenalty = bd?.risk?.penalty     ?? 0
+  const finalScore  = score?.finalScore     ?? 'N/A'
+  const grade       = score?.grade          ?? 'N/A'
 
-  // ── Section 1: Authoritative quantitative output ─────────────
-  // These numbers are FINAL — Groq must explain them, not recompute them
-  const quantSnapshot = score ? `
-╔══════════════════════════════════════════════════════════════╗
-║  AUTHORITATIVE QUANTITATIVE OUTPUT — TradePoint Lab Engine  ║
-╠══════════════════════════════════════════════════════════════╣
-║  Growth:    ${String(growthScore).padEnd(5)} / 25   Revenue +${fund?.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% YoY, EPS +${fund?.epsGrowthYoY?.toFixed(1) ?? 'N/A'}%
-║  Quality:   ${String(qualScore).padEnd(5)} / 20   ROE ${fund?.roe?.toFixed(1) ?? 'N/A'}%, Gross Margin ${fund?.grossMargin?.toFixed(1) ?? 'N/A'}%
-║  Strength:  ${String(strScore).padEnd(5)} / 15   D/E ${fund?.debtToEquity?.toFixed(2) ?? 'N/A'}, Interest Coverage ${fund?.interestCoverage?.toFixed(1) ?? 'N/A'}x
-║  Valuation: ${String(valScore).padEnd(5)} / 15   via ${valMetric} = ${valValue}
-║  Technical: ${String(techScore).padEnd(5)} / 15   ${techWeak ? '← WEAK — RS vs SPY negative, momentum poor' : '← acceptable'}
-║  Risk:      ${String(riskPenalty).padEnd(5)}        ${bd?.risk?.flags?.join(', ') ?? 'none'}
-╠══════════════════════════════════════════════════════════════╣
-║  FINAL SCORE: ${score.finalScore}/100  |  GRADE: ${score.grade}${score.activeGate ? '  |  ' + score.activeGate.toUpperCase() + ' ACTIVE' : ''}
-╚══════════════════════════════════════════════════════════════╝
-CRITICAL: These numbers are the OUTPUT of the quantitative engine.
-NEVER estimate, infer, modify or recompute any of these values.
-Your ONLY role is to EXPLAIN why the model produced this score.
-` : ''
+  // Find weakest positive component
+  const posComps = [
+    { name: 'Growth',    score: bd?.growth?.score,    max: 25 },
+    { name: 'Quality',   score: bd?.quality?.score,   max: 20 },
+    { name: 'Strength',  score: bd?.strength?.score,  max: 15 },
+    { name: 'Valuation', score: bd?.valuation?.score, max: 15 },
+    { name: 'Technical', score: bd?.technical?.score, max: 15 },
+  ].filter(c => c.score != null)
+  const weakest = posComps.sort((a,b) => (a.score/a.max) - (b.score/b.max))[0]
 
-  // ── Section 2: Financial context ─────────────────────────────
-  const ctx = fund ? `
-FINANCIAL DATA (verified — do not contradict):
-Revenue Growth: ${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% YoY | 3Y: ${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}% | 5Y: ${fund.revenueGrowth5Y?.toFixed(1) ?? 'N/A'}%
-Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}% | Operating Margin: ${fund.operatingMargin?.toFixed(1) ?? 'N/A'}%
-ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | D/E: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'} | Beta: ${fund.beta?.toFixed(2) ?? 'N/A'}
-P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'} | EV/EBITDA: ${fund.evEbitda?.toFixed(1) ?? 'N/A'}x
-Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy · ${fund.hold??0} Hold · ${(fund.sell??0)+(fund.strongSell??0)} Sell | Target: $${fund.targetMean?.toFixed(2) ?? 'N/A'}
-Consecutive Earnings Beats: ${fund.consecutiveBeats ?? 'N/A'}
-` : ''
+  const snap = score ? [
+    '=== TRADEPOINT LAB QUANTITATIVE ENGINE OUTPUT ===',
+    `Ticker: ${ticker} | Final Score: ${finalScore}/100 | Grade: ${grade}`,
+    `Growth:    ${bd?.growth?.score ?? 'N/A'}/25`,
+    `Quality:   ${bd?.quality?.score ?? 'N/A'}/20`,
+    `Strength:  ${bd?.strength?.score ?? 'N/A'}/15`,
+    `Valuation: ${valScore}/15 via ${valMetric}`,
+    `Technical: ${techScore}/${techMax}${techWeak ? ' [WEAKEST COMPONENT]' : ''}`,
+    `Risk penalty: ${riskPenalty} (${bd?.risk?.flags?.join(', ') || 'none'})`,
+    '===================================================',
+  ].join('\n') : ''
 
-  const PROMPTS = {
-    // ── MOAT: explain why Growth/Quality are high ─────────────
-    moat: `You are explaining the output of TradePoint Lab's quantitative engine for ${ticker}.
-${quantSnapshot}${ctx}
-Your task: Explain WHY ${ticker} scores well (or poorly) on Economic Moat, based ONLY on the data above.
+  const ctx = fund ? [
+    'FINANCIAL DATA:',
+    `Revenue Growth YoY: +${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% | 3Y: +${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}%`,
+    `Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}%`,
+    `ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | D/E: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'} | Beta: ${fund.beta?.toFixed(2) ?? 'N/A'}`,
+    `P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'}`,
+    `Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy / ${fund.hold??0} Hold / ${(fund.sell??0)+(fund.strongSell??0)} Sell`,
+    '',
+  ].join('\n') : ''
 
-Write exactly 3 bullet points following the pattern:
-  EVIDENCE → CONCLUSION
+  // WHY THE SCORE IS HIGH (was: moat)
+  const moatPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
 
-Example format:
-"• [Moat type]: [specific evidence from the data] — [conclusion about competitive advantage]"
+${snap}
+${ctx}
+Task: Write 3 bullets explaining WHY ${ticker} scored ${finalScore}/100 (${grade}).
+Each bullet must reference a specific component score AND its underlying financial data.
 
-Rules:
-- Reference ${ticker}'s SPECIFIC products, technology, or market position by name
-- Every conclusion must be supported by a number from the supplied data
-- Do NOT invent analysis not supported by the supplied context
-- Never mention: acquisitions, lawsuits, investigations, or regulatory actions unless explicitly in the supplied data above
-- Do NOT recommend buying or selling
-- Max 180 words`,
-
-    // ── BEAR: focus on weak components + specific risks ────────
-    bear: `You are explaining the risks captured by TradePoint Lab's quantitative engine for ${ticker}.
-${quantSnapshot}${ctx}
-Your task: Explain the 3 most significant risks visible in the quantitative data above.
-
-${techWeak ? `IMPORTANT: Technical score is ${techScore}/${techMax} — this is the weakest component. One of your 3 bullets MUST explain what is driving weak technical momentum (RS vs SPY negative, price near/below EMA200).` : ''}
-
-Write exactly 3 bullet points following the pattern:
-  EVIDENCE → RISK
+Format (use • for each bullet):
+• [Component name] (score/max): [what the number means in plain language] — [why this reflects competitive quality]
 
 Rules:
-- Each risk must reference a specific number or component from the quantitative snapshot above
-- Name actual current competitors or threats by name (e.g. AMD MI300X, Google TPU, Amazon Trainium)
-- NEVER mention: past acquisitions, resolved lawsuits, historical regulatory actions, or any event not derivable from the supplied data
-- If the data shows strong margins, do NOT invent margin risk
-- Do NOT recommend buying or selling
-- Max 180 words`,
+- Reference only the engine output and financial data above
+- Use EXACT score numbers — never round or estimate them differently
+- Do NOT recommend buying or selling`
 
-    // ── CATALYSTS: what could move the weak components ────────
-    catalysts: `You are explaining near-term catalysts identified by TradePoint Lab's quantitative engine for ${ticker}.
-${quantSnapshot}${ctx}
-Your task: Identify 3 concrete, specific catalysts that could improve the weakest components of the Conviction Score shown above.
+  // WHY IT ISN'T HIGHER (was: bear)
+  const bearPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
 
-Write exactly 3 bullet points:
-- Reference SPECIFIC upcoming products, events, or announcements by name (not generic "product launches")
-- Include a concrete timeframe for each (e.g. Q3 2026, November earnings, GTC conference)
-- Focus on catalysts that would directly improve the weaker score components
-- Base every catalyst on ${ticker}'s actual known business trajectory, not generic industry trends
-- NEVER mention events not logically derivable from the supplied financial data
-- Do NOT recommend buying or selling
-- Max 180 words`,
-  }
-  return PROMPTS[type]
+${snap}
+${ctx}
+Task: Write 3 bullets explaining WHY ${ticker} did NOT score higher than ${finalScore}/100.
+
+Bullet 1 (required): Explain the weakest engine component: ${weakest?.name ?? 'Technical'} (${weakest?.score ?? techScore}/${weakest?.max ?? techMax}).
+${techWeak ? `This MUST mention that Technical score reflects RS vs SPY underperformance and weak momentum.` : ''}
+Bullet 2: Reference the risk penalty (${riskPenalty}) or a specific data weakness in the snapshot.
+Bullet 3: You may mention ONE widely known CURRENT external risk for ${ticker} (e.g. specific competitor product, macro headwind) — but never reference resolved lawsuits, past acquisitions, or events from more than 12 months ago.
+
+Format (use • for each bullet):
+• [Reason]: [explanation with specific number from engine] — [implication]
+
+Rules:
+- Lead with engine data, supplement with one external fact if needed
+- Do NOT recommend buying or selling`
+
+  // WHAT COULD IMPROVE THE SCORE (was: catalysts)
+  const catPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
+
+${snap}
+${ctx}
+Task: Write 3 bullets explaining what would increase ${ticker}'s score from ${finalScore}/100.
+Focus on improving the WEAKEST components: ${weakest?.name} (${weakest?.score}/${weakest?.max})${techWeak ? ` and Technical (${techScore}/${techMax})` : ''}.
+
+Bullet 1: What specific event or development would most improve the weakest component?
+Bullet 2: What near-term catalyst could reduce the risk penalty or strengthen other components?
+Bullet 3: You may reference one widely known upcoming event for ${ticker} (earnings date, product launch, conference) with a specific timeframe.
+
+Format (use • for each bullet):
+• [Specific catalyst]: [how it improves a specific score component] — [timeframe]
+
+Rules:
+- Connect every catalyst to a specific engine component
+- Use specific names for products/events when widely known (e.g. "Blackwell B200", "GTC", "Q3 earnings")
+- Do NOT recommend buying or selling`
+
+  const map = { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }
+  return map[type] ?? null
 }
 
 async function handleGroq(ticker, type, keys, kv) {
@@ -381,12 +384,12 @@ async function handleGroq(ticker, type, keys, kv) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keys.groq}` },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 600, temperature: 0.3, messages: [{ role: 'user', content: prompt }] }),
   })
   if (!res.ok) throw new Error(`Groq ${res.status}`)
   const gd = await res.json()
   const text = gd.choices?.[0]?.message?.content || ''
-  const bullets = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('•'))
+  const bullets = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^\d+\./.test(l)).map(l => l.replace(/^[-*•]\s*|^\d+\.\s*/, '• '))
   const data = { ticker: t, type, text, bullets }
   const meta2 = buildMeta(t, type, ttl, false)
   await kvSet(kv, kvKey, data, ttl, meta2)
