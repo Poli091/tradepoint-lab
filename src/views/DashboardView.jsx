@@ -1,17 +1,20 @@
 /**
  * MODULE: VIEWS / DashboardView.jsx
- * Main dashboard. Clicking a position row opens the TickerDetailPanel.
+ * Main dashboard.
+ * - Order Entry removed (not used for actual trading)
+ * - AVG CONVICTION shows real computed average from engine
+ * - Chart takes full width
  */
 
-import { useState } from 'react'
-import { Wallet, TrendingUp, Trophy, Target } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Wallet, TrendingUp, Trophy, Zap } from 'lucide-react'
 import StatCard            from '../components/ui/StatCard.jsx'
 import PriceChart          from '../components/widgets/PriceChart.jsx'
-import OrderPanel          from '../components/widgets/OrderPanel.jsx'
 import PositionsTable      from '../components/widgets/PositionsTable.jsx'
 import WatchlistPanel      from '../components/widgets/WatchlistPanel.jsx'
 import TickerDetailPanel   from '../components/widgets/TickerDetailPanel.jsx'
 import { useBreakpoint }   from '../hooks/useBreakpoint.js'
+import { getGrade }        from '../conviction/grade/index.js'
 import { calcPnL }         from '../utils/finance.js'
 import { fUSD, fPct }      from '../utils/format.js'
 
@@ -21,15 +24,23 @@ export default function DashboardView({
   visiblePositions, portfolioStats, prices = {},
   ticker, setTicker, range, setRange,
   sortBy, sortDir, handleSort,
-  side, setSide, orderType, setOrderType,
-  qty, incQty, decQty, limitPrice, setLimitPrice,
   convictionResults = {}, convictionLoading = false,
 }) {
-  const { isMobile, isNarrow } = useBreakpoint()
-  const { totalValue, totalGain, gainPct, avgConviction, best } = portfolioStats
+  const { isMobile } = useBreakpoint()
+  const { totalValue, totalGain, gainPct, best } = portfolioStats
   const [detailOpen, setDetailOpen] = useState(false)
 
-  /* Selecting a ticker opens both the chart and the detail panel */
+  /* ── Real avg conviction from engine results ── */
+  const liveConviction = useMemo(() => {
+    const scores = Object.values(convictionResults)
+      .map(r => r.finalScore)
+      .filter(s => s != null)
+    if (scores.length === 0) return null
+    const avg   = Math.round(scores.reduce((a,b) => a+b,0) / scores.length * 10) / 10
+    const grade = getGrade(avg)
+    return { score: avg, label: grade.label, color: grade.color }
+  }, [convictionResults])
+
   const handleSelectTicker = (t) => {
     setTicker(t)
     setDetailOpen(true)
@@ -37,47 +48,45 @@ export default function DashboardView({
 
   return (
     <div style={{
-      padding: PAD,
-      display: 'flex', flexDirection: 'column', gap: PAD,
+      padding: PAD, display: 'flex', flexDirection: 'column', gap: PAD,
       paddingBottom: isMobile ? 72 : PAD,
     }}>
 
       {/* ── Metric cards ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))',
+        gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))',
         gap: PAD,
       }}>
-        <StatCard icon={Wallet}     label="Portfolio value" value={fUSD(totalValue)}
+        <StatCard icon={Wallet}    label="Portfolio value"
+          value={fUSD(totalValue)}
           sub={`${totalGain >= 0 ? '+' : ''}${fUSD(totalGain)} all-time`}
           subColor={totalGain >= 0 ? 'var(--green)' : 'var(--red)'} />
-        <StatCard icon={TrendingUp} label="Total return"    value={fPct(gainPct)}
+
+        <StatCard icon={TrendingUp} label="Total return"
+          value={fPct(gainPct)}
           sub={`${visiblePositions.length} positions`} />
-        <StatCard icon={Trophy}     label="Best performer"  value={best ? best.ticker : '—'}
-          sub={best ? `+${calcPnL(best).gainPct.toFixed(1)}% gain` : ''} subColor="var(--green)" />
-        <StatCard icon={Target}     label="Avg conviction"  value={`${avgConviction}/100`}
-          sub={avgConviction >= 76 ? 'Strong' : avgConviction >= 60 ? 'Moderate' : 'Weak'}
-          subColor={avgConviction >= 76 ? 'var(--green)' : avgConviction >= 60 ? 'var(--amber)' : 'var(--red)'} />
+
+        <StatCard icon={Trophy}     label="Best performer"
+          value={best ? best.ticker : '—'}
+          sub={best ? `+${calcPnL(best).gainPct.toFixed(1)}% gain` : ''}
+          subColor="var(--green)" />
+
+        <StatCard icon={Zap}        label="Avg conviction"
+          value={liveConviction ? `${liveConviction.score}/100` : `${portfolioStats.avgConviction}/100`}
+          sub={liveConviction ? liveConviction.label : 'Computing…'}
+          subColor={liveConviction ? liveConviction.color : 'var(--txt-muted)'} />
       </div>
 
-      {/* ── Chart + Order panel ── */}
-      <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', gap: PAD }}>
-        <PriceChart
-          ticker={ticker} onTickerChange={setTicker}
-          range={range}   onRangeChange={setRange}
-          prices={prices}
-        />
-        <OrderPanel
-          ticker={ticker} side={side} setSide={setSide}
-          orderType={orderType} setOrderType={setOrderType}
-          qty={qty} incQty={incQty} decQty={decQty}
-          limitPrice={limitPrice} setLimitPrice={setLimitPrice}
-          style={{ width: isNarrow ? '100%' : 250 }}
-        />
-      </div>
+      {/* ── Chart — full width now that Order Entry is removed ── */}
+      <PriceChart
+        ticker={ticker} onTickerChange={setTicker}
+        range={range}   onRangeChange={setRange}
+        prices={prices}
+      />
 
       {/* ── Positions + Watchlist ── */}
-      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: PAD }}>
+      <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', gap: PAD }}>
         <PositionsTable
           positions={visiblePositions}
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
@@ -89,7 +98,7 @@ export default function DashboardView({
         <WatchlistPanel style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }} />
       </div>
 
-      {/* ── Ticker detail panel (slide-in from right) ── */}
+      {/* ── Ticker detail panel ── */}
       {detailOpen && (
         <TickerDetailPanel
           ticker={ticker}

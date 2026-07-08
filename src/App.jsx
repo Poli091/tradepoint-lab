@@ -84,10 +84,6 @@ function AppInner() {
             ticker={ticker} setTicker={setTicker}
             range={range}   setRange={setRange}
             sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
-            side={side} setSide={setSide}
-            orderType={orderType} setOrderType={setOrderType}
-            qty={qty} incQty={incQty} decQty={decQty}
-            limitPrice={limitPrice} setLimitPrice={setLimitPrice}
             convictionResults={convictionResults}
             convictionLoading={convictionLoading}
           />
