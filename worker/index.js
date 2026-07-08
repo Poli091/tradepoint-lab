@@ -313,15 +313,23 @@ function buildPrompt(type, ticker, fund, score) {
 
 ${snap}
 ${ctx}
-Task: Write 3 bullets explaining WHY ${ticker} scored ${finalScore}/100 (${grade}).
-Each bullet must reference a specific component score AND its underlying financial data.
+Task: Write 3 bullets identifying the STRONGEST components in ${ticker}'s score of ${finalScore}/100.
+Pick the 3 components with the highest efficiency (score / max).
 
-Format (use • for each bullet):
-• [Component name] (score/max): [what the number means in plain language] — [why this reflects competitive quality]
+FORMAT RULES (very important):
+- Each bullet must be ONE short sentence — maximum 25 words
+- Start DIRECTLY with the metric — NO preambles like "A score of X indicates" or "This reflects"
+- NO repeated phrases across bullets
+- Format: "• [Component] ([score]/[max]): [specific financial evidence] — [brief implication]"
+
+Example of what we want:
+"• Growth (21/25): Revenue +70.7% YoY and +100% over 3Y — exceptional business expansion."
+
+Example of what we DO NOT want:
+"• Growth (21/25): A score of 21 out of 25 indicates strong revenue growth, as evidenced by... — this reflects competitive quality."
 
 Rules:
-- Reference only the engine output and financial data above
-- Use EXACT score numbers — never round or estimate them differently
+- Use EXACT numbers from the engine output above
 - Do NOT recommend buying or selling`
 
   // CURRENT CONSTRAINTS (was: bear)
@@ -329,18 +337,16 @@ Rules:
 
 ${snap}
 ${ctx}
-Task: Write 3 bullets explaining WHY ${ticker} did NOT score higher than ${finalScore}/100.
+Task: Write 3 bullets explaining the LIMITS on ${ticker}'s score of ${finalScore}/100.
 
-Bullet 1 (required): Explain the weakest engine component: ${weakest?.name ?? 'Technical'} (${weakest?.score ?? techScore}/${weakest?.max ?? techMax}).
-${techWeak ? `This MUST mention that Technical score reflects RS vs SPY underperformance and weak momentum.` : ''}
-Bullet 2: Reference the risk penalty (${riskPenalty}) or a specific data weakness in the snapshot.
-Bullet 3: You may mention ONE widely known CURRENT external risk for ${ticker} (e.g. specific competitor product, macro headwind) — but never reference resolved lawsuits, past acquisitions, or events from more than 12 months ago.
+Bullet 1 (required): The weakest component is ${weakest?.name} (${weakest?.score}/${weakest?.max}).${techWeak ? ` Mention RS vs SPY underperformance and price near/below EMA200.` : ''}
+Bullet 2 (required): Explain the risk penalty of ${riskPenalty}. Note that Beta is a statistical measure of volatility — it is NOT directly changed by business events.
+Bullet 3 (required): Name ONE specific, current, widely-known external competitive risk for ${ticker}. Use product names (e.g. "AMD Instinct MI300X", "Google TPU v5", "Amazon Trainium2", "Intel Gaudi3") — NOT generic phrases like "macroeconomic uncertainty" or "competitive pressures".
 
-Format (use • for each bullet):
-• [Reason]: [explanation with specific number from engine] — [implication]
-
-Rules:
-- Lead with engine data, supplement with one external fact if needed
+FORMAT RULES:
+- Each bullet: ONE sentence, maximum 30 words
+- Start DIRECTLY with the constraint — no preambles
+- Format: "• [Constraint]: [specific evidence or named risk] — [brief implication]"
 - Do NOT recommend buying or selling`
 
   // POTENTIAL SCORE DRIVERS (was: catalysts)
@@ -348,20 +354,18 @@ Rules:
 
 ${snap}
 ${ctx}
-Task: Write 3 bullets identifying what could materially improve ${ticker}'s Conviction Score from ${finalScore}/100.
-The weakest components are: ${weakest?.name} (${weakest?.score}/${weakest?.max})${techWeak ? ` and Technical (${techScore}/${techMax})` : ''}.
+Task: Write 3 bullets describing conditions that would strengthen ${ticker}'s weakest score components (${weakest?.name}: ${weakest?.score}/${weakest?.max}${techWeak ? `, Technical: ${techScore}/${techMax}` : ''}).
 
-Bullet 1: What would most improve the weakest component? Describe the condition, not an exact point impact.
-Bullet 2: What development could reduce the risk penalty or strengthen momentum? (e.g. Beta naturally decreases over time if volatility reduces — do NOT say specific events will change Beta directly)
-Bullet 3: Reference one widely known upcoming event for ${ticker} with a specific timeframe — phrase it as "could" or "may" improve, never as a guarantee.
+Bullet 1: Describe what market or price behavior would improve the weakest component. Phrase as a condition ("sustained outperformance would...") not a promise.
+Bullet 2: Describe what fundamental or momentum development would reduce constraints. Remember: Beta is statistical — only sustained lower volatility reduces it over time, not specific events.
+Bullet 3: Name ONE specific upcoming known event for ${ticker} and how it could improve a specific component — with a timeframe. Use specific names (e.g. "Blackwell ramp", "Q3 earnings", "GTC conference").
 
-Format (use • for each bullet):
-• [Driver]: [what needs to happen and which component it would improve] — [timeframe if applicable]
-
-Rules:
-- Never state exact point changes (e.g. do NOT say "would add 5 points") — say "would materially improve" or "could strengthen"
-- Beta is statistical — events do not directly reduce Beta; only sustained lower volatility does
-- Use specific names for products/events when widely known (e.g. "Blackwell ramp", "Q3 earnings")
+FORMAT RULES:
+- Each bullet: ONE or TWO sentences, maximum 30 words total
+- No preambles — start directly with the driver
+- Format: "• [Driver]: [condition needed] — [component improved, timeframe if applicable]"
+- Use "would", "could", "may" — never make guarantees
+- Never say "would add X points" — say "would materially strengthen" or "would improve"
 - Do NOT recommend buying or selling`
 
   const map = { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }

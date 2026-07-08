@@ -410,6 +410,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
                   {/* ══ AI ANALYSIS ══ */}
                   <SectionHeader icon={Zap} label="AI Analysis — Groq Llama 3.3 70B" />
+                  <div style={{ fontSize:11, color:'var(--txt-muted)', fontStyle:'italic',
+                    padding:'6px 10px', background:'var(--surface-up)', borderRadius:6,
+                    marginBottom:8, textAlign:'center', lineHeight:1.5 }}>
+                    AI explains the Conviction Score. It never changes the score itself.
+                  </div>
 
                   {!aiData && !aiLoading && (
                     <button onClick={generateAI} style={{
@@ -463,28 +468,60 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         </span>
                       </div>
 
-                      {[
-                        { key:'moat',      icon:'📊', label:'Quantitative Strengths',   data:aiData.moat,      note:'30d cache' },
-                        { key:'bear',      icon:'📉',  label:'Current Constraints',    data:aiData.bear,      note:'7d cache'  },
-                        { key:'catalysts', icon:'🎯',  label:'Potential Score Drivers', data:aiData.catalysts, note:'7d cache'  },
-                      ].map(({ key, icon, label, data, note }) => (
-                        <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:8, display:'flex', justifyContent:'space-between' }}>
-                            <span>{icon} {label}</span>
-                            <span style={{ fontSize:9, color:'var(--txt-muted)', fontWeight:400 }}>{note}</span>
+                      {(() => {
+                        const DIMS = [
+                          { k:'growth',    s:result.breakdown.growth.score,    m:25, label:'Growth'    },
+                          { k:'quality',   s:result.breakdown.quality.score,   m:20, label:'Quality'   },
+                          { k:'strength',  s:result.breakdown.strength.score,  m:15, label:'Strength'  },
+                          { k:'valuation', s:result.breakdown.valuation.score, m:15, label:'Valuation' },
+                          { k:'technical', s:result.breakdown.technical.score, m:15, label:'Technical' },
+                        ].filter(d => d.s != null)
+                        const sorted = [...DIMS].sort((a,b) => (b.s/b.m)-(a.s/a.m))
+                        const top3   = sorted.slice(0,3)
+                        const bottom2 = sorted.slice(-2)
+
+                        const MiniBar = ({ dims }) => (
+                          <div style={{ marginBottom:8 }}>
+                            {dims.map(d => {
+                              const pct = Math.min((d.s/d.m)*100, 100)
+                              const col = pct>=75?'var(--green)':pct>=50?'var(--amber)':'var(--red)'
+                              return (
+                                <div key={d.k} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                                  <span style={{ fontSize:9, color:'var(--txt-muted)', width:54, textAlign:'right', flexShrink:0 }}>{d.label}</span>
+                                  <div style={{ flex:1, height:4, background:'var(--border)', borderRadius:2 }}>
+                                    <div style={{ height:'100%', width:`${pct}%`, background:col, borderRadius:2 }} />
+                                  </div>
+                                  <span style={{ fontSize:9, fontFamily:'var(--mono)', color:col, width:30, flexShrink:0 }}>{d.s}/{d.m}</span>
+                                </div>
+                              )
+                            })}
                           </div>
-                          {(data?.bullets ?? []).map((bullet, i) => (
-                            <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7,
-                              marginBottom:i < (data.bullets.length-1) ? 6 : 0,
-                              borderLeft:'2px solid var(--border)', paddingLeft:8 }}>
-                              {bullet}
+                        )
+
+                        return [
+                          { key:'moat',      icon:'📊', label:'Quantitative Strengths',  data:aiData.moat,      note:'30d', dims:top3    },
+                          { key:'bear',      icon:'📉', label:'Current Constraints',      data:aiData.bear,      note:'7d',  dims:bottom2 },
+                          { key:'catalysts', icon:'🎯', label:'Potential Score Drivers',  data:aiData.catalysts, note:'7d',  dims:bottom2 },
+                        ].map(({ key, icon, label, data, note, dims }) => (
+                          <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
+                            <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:6, display:'flex', justifyContent:'space-between' }}>
+                              <span>{icon} {label}</span>
+                              <span style={{ fontSize:9, color:'var(--txt-muted)', fontWeight:400 }}>{note} cache</span>
                             </div>
-                          ))}
-                          {(!data?.bullets?.length) && (
-                            <div style={{ fontSize:11, color:'var(--txt-muted)' }}>No data returned</div>
-                          )}
-                        </div>
-                      ))}
+                            <MiniBar dims={dims} />
+                            {(data?.bullets ?? []).map((bullet, i) => (
+                              <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7,
+                                marginBottom:i < (data.bullets.length-1) ? 6 : 0,
+                                borderLeft:'2px solid var(--border)', paddingLeft:8 }}>
+                                {bullet}
+                              </div>
+                            ))}
+                            {(!data?.bullets?.length) && (
+                              <div style={{ fontSize:11, color:'var(--txt-muted)' }}>No data returned</div>
+                            )}
+                          </div>
+                        ))
+                      })()}
 
                       {/* Disclaimer */}
                       <div style={{ fontSize:10, color:'var(--txt-muted)', textAlign:'center',
