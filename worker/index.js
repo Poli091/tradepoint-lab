@@ -265,40 +265,101 @@ async function handleNews(ticker, keys, kv) {
   return json({ data, meta: meta2 })
 }
 
-function buildPrompt(type, ticker, fund) {
-  // Build a data context string from cached fundamentals so Groq
-  // cannot contradict the quantitative model
+function buildPrompt(type, ticker, fund, score) {
+  const bd = score?.breakdown
+  const techScore   = bd?.technical?.score  ?? 'N/A'
+  const techMax     = bd?.technical?.max    ?? 15
+  const techWeak    = (bd?.technical?.score ?? 0) < 8
+  const growthScore = bd?.growth?.score     ?? 'N/A'
+  const qualScore   = bd?.quality?.score    ?? 'N/A'
+  const strScore    = bd?.strength?.score   ?? 'N/A'
+  const valScore    = bd?.valuation?.score  ?? 'N/A'
+  const valMetric   = bd?.valuation?.metric ?? 'N/A'
+  const valValue    = bd?.valuation?.value?.toFixed(2) ?? 'N/A'
+  const riskPenalty = bd?.risk?.penalty     ?? 0
+
+  // ── Section 1: Authoritative quantitative output ─────────────
+  // These numbers are FINAL — Groq must explain them, not recompute them
+  const quantSnapshot = score ? `
+╔══════════════════════════════════════════════════════════════╗
+║  AUTHORITATIVE QUANTITATIVE OUTPUT — TradePoint Lab Engine  ║
+╠══════════════════════════════════════════════════════════════╣
+║  Growth:    ${String(growthScore).padEnd(5)} / 25   Revenue +${fund?.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% YoY, EPS +${fund?.epsGrowthYoY?.toFixed(1) ?? 'N/A'}%
+║  Quality:   ${String(qualScore).padEnd(5)} / 20   ROE ${fund?.roe?.toFixed(1) ?? 'N/A'}%, Gross Margin ${fund?.grossMargin?.toFixed(1) ?? 'N/A'}%
+║  Strength:  ${String(strScore).padEnd(5)} / 15   D/E ${fund?.debtToEquity?.toFixed(2) ?? 'N/A'}, Interest Coverage ${fund?.interestCoverage?.toFixed(1) ?? 'N/A'}x
+║  Valuation: ${String(valScore).padEnd(5)} / 15   via ${valMetric} = ${valValue}
+║  Technical: ${String(techScore).padEnd(5)} / 15   ${techWeak ? '← WEAK — RS vs SPY negative, momentum poor' : '← acceptable'}
+║  Risk:      ${String(riskPenalty).padEnd(5)}        ${bd?.risk?.flags?.join(', ') ?? 'none'}
+╠══════════════════════════════════════════════════════════════╣
+║  FINAL SCORE: ${score.finalScore}/100  |  GRADE: ${score.grade}${score.activeGate ? '  |  ' + score.activeGate.toUpperCase() + ' ACTIVE' : ''}
+╚══════════════════════════════════════════════════════════════╝
+CRITICAL: These numbers are the OUTPUT of the quantitative engine.
+NEVER estimate, infer, modify or recompute any of these values.
+Your ONLY role is to EXPLAIN why the model produced this score.
+` : ''
+
+  // ── Section 2: Financial context ─────────────────────────────
   const ctx = fund ? `
-Financial data (do NOT contradict these):
-Revenue Growth YoY: ${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% | 3Y: ${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}%
-Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}%
-ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | Debt/Equity: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'}
-P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'}
-Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy · ${fund.hold??0} Hold · ${(fund.sell??0)+(fund.strongSell??0)} Sell
-Consensus Target: $${fund.targetMean?.toFixed(2) ?? 'N/A'}
+FINANCIAL DATA (verified — do not contradict):
+Revenue Growth: ${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% YoY | 3Y: ${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}% | 5Y: ${fund.revenueGrowth5Y?.toFixed(1) ?? 'N/A'}%
+Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}% | Operating Margin: ${fund.operatingMargin?.toFixed(1) ?? 'N/A'}%
+ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | D/E: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'} | Beta: ${fund.beta?.toFixed(2) ?? 'N/A'}
+P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'} | EV/EBITDA: ${fund.evEbitda?.toFixed(1) ?? 'N/A'}x
+Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy · ${fund.hold??0} Hold · ${(fund.sell??0)+(fund.strongSell??0)} Sell | Target: $${fund.targetMean?.toFixed(2) ?? 'N/A'}
 Consecutive Earnings Beats: ${fund.consecutiveBeats ?? 'N/A'}
 ` : ''
 
   const PROMPTS = {
-    moat: `You are a senior equity analyst. ${ctx}
-Analyze the economic moat of ${ticker} in exactly 3 bullet points.
-Each bullet: one sentence, specific, consistent with the financial data above.
-Format: "• [Moat type]: [explanation]"
-Focus on: switching costs, network effects, cost advantages, intangible assets, efficient scale.
-Do NOT recommend buying or selling. Max 150 words.`,
+    // ── MOAT: explain why Growth/Quality are high ─────────────
+    moat: `You are explaining the output of TradePoint Lab's quantitative engine for ${ticker}.
+${quantSnapshot}${ctx}
+Your task: Explain WHY ${ticker} scores well (or poorly) on Economic Moat, based ONLY on the data above.
 
-    bear: `You are a bear case analyst. ${ctx}
-List the 3 biggest risks for ${ticker} in exactly 3 bullet points.
-Each bullet: one sentence, specific, consistent with the financial data above.
-Format: "• [Risk]: [explanation]"
-If margins are strong, do not invent margin risk. Reflect the actual data.
-Do NOT recommend buying or selling. Max 150 words.`,
+Write exactly 3 bullet points following the pattern:
+  EVIDENCE → CONCLUSION
 
-    catalysts: `You are a growth analyst. ${ctx}
-List the 3 biggest near-term catalysts for ${ticker} in exactly 3 bullet points, each with a timeframe.
-Format: "• [Catalyst]: [explanation — Q/timeframe]"
-Be consistent with the financial data above.
-Do NOT recommend buying or selling. Max 150 words.`,
+Example format:
+"• [Moat type]: [specific evidence from the data] — [conclusion about competitive advantage]"
+
+Rules:
+- Reference ${ticker}'s SPECIFIC products, technology, or market position by name
+- Every conclusion must be supported by a number from the supplied data
+- Do NOT invent analysis not supported by the supplied context
+- Never mention: acquisitions, lawsuits, investigations, or regulatory actions unless explicitly in the supplied data above
+- Do NOT recommend buying or selling
+- Max 180 words`,
+
+    // ── BEAR: focus on weak components + specific risks ────────
+    bear: `You are explaining the risks captured by TradePoint Lab's quantitative engine for ${ticker}.
+${quantSnapshot}${ctx}
+Your task: Explain the 3 most significant risks visible in the quantitative data above.
+
+${techWeak ? `IMPORTANT: Technical score is ${techScore}/${techMax} — this is the weakest component. One of your 3 bullets MUST explain what is driving weak technical momentum (RS vs SPY negative, price near/below EMA200).` : ''}
+
+Write exactly 3 bullet points following the pattern:
+  EVIDENCE → RISK
+
+Rules:
+- Each risk must reference a specific number or component from the quantitative snapshot above
+- Name actual current competitors or threats by name (e.g. AMD MI300X, Google TPU, Amazon Trainium)
+- NEVER mention: past acquisitions, resolved lawsuits, historical regulatory actions, or any event not derivable from the supplied data
+- If the data shows strong margins, do NOT invent margin risk
+- Do NOT recommend buying or selling
+- Max 180 words`,
+
+    // ── CATALYSTS: what could move the weak components ────────
+    catalysts: `You are explaining near-term catalysts identified by TradePoint Lab's quantitative engine for ${ticker}.
+${quantSnapshot}${ctx}
+Your task: Identify 3 concrete, specific catalysts that could improve the weakest components of the Conviction Score shown above.
+
+Write exactly 3 bullet points:
+- Reference SPECIFIC upcoming products, events, or announcements by name (not generic "product launches")
+- Include a concrete timeframe for each (e.g. Q3 2026, November earnings, GTC conference)
+- Focus on catalysts that would directly improve the weaker score components
+- Base every catalyst on ${ticker}'s actual known business trajectory, not generic industry trends
+- NEVER mention events not logically derivable from the supplied financial data
+- Do NOT recommend buying or selling
+- Max 180 words`,
   }
   return PROMPTS[type]
 }
@@ -308,9 +369,14 @@ async function handleGroq(ticker, type, keys, kv) {
   const { value, metadata } = await kvGet(kv, kvKey)
   if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
   if (!keys.groq) return json({ error: 'Groq key not configured' }, 401)
-  // Read cached fundamentals to ground the prompt (prevents contradicting the model)
-  const fund = await kv.get(`fund:${t}`, 'json').catch(() => null)
-  const prompt = buildPrompt(type, t, fund)
+  // Read cached fundamentals + OHLCV to compute score and ground the prompt
+  const fund     = await kv.get(`fund:${t}`, 'json').catch(() => null)
+  const ohlcv    = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => [])
+  const spyOhlcv = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => [])
+  const priceD   = await kv.get(`price:${t}`, 'json').catch(() => null)
+  // Compute conviction score so Groq knows Technical/Valuation breakdown
+  const score = fund ? computeConviction(fund, ohlcv ?? [], spyOhlcv ?? [], priceD?.price ?? null) : null
+  const prompt = buildPrompt(type, t, fund, score)
   if (!prompt) return json({ error: `Unknown AI type: ${type}` }, 400)
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',

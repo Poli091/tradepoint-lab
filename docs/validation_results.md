@@ -148,3 +148,45 @@ This is by design, not a bug. Whether GARP outperforms pure growth or pure value
 ---
 
 *"El algoritmo decide. La IA explica. Nunca al revés."*
+
+---
+
+## AI Integration Philosophy (added 2026-07-07)
+
+> *"The quantitative engine is the only source of investment decisions.*
+> *AI may explain, summarize or contextualize those decisions,*
+> *but it must never create, override or modify them."*
+
+### Architecture
+
+```
+Market Data (Finnhub + FMP + Alpaca)
+          ↓
+Conviction Engine (deterministic, reproducible)
+          ↓
+Score + Grade + Breakdown (authoritative)
+          ↓
+Groq LLM (explains the score, not the stock)
+          ↓
+Moat / Bear Case / Catalysts (interpretation only)
+```
+
+### Prompt Design Principles (v1.1)
+
+1. **Authoritative Snapshot** — all score components passed as final outputs the LLM cannot modify
+2. **Evidence → Conclusion** — every statement must be anchored in a supplied number
+3. **No hallucination** — LLM may not reference acquisitions, lawsuits, or events not in the supplied context
+4. **Interpreter, not analyst** — Groq explains WHY the engine produced the score, not its own thesis
+5. **Scalability** — when the engine improves (v1.1, v1.2), Groq improves automatically without prompt changes
+
+### Open Research Questions for Backtesting
+
+| RQ | Question | Method |
+|---|---|---|
+| RQ-001 | Do STRONG BUY signals outperform SPY 12 months? | Compare score at signal date vs price 12M later |
+| RQ-002 | Does Technical block add predictive alpha? | Compare model with/without Technical component |
+| RQ-003 | Do Gates improve risk-adjusted returns? | Compare capped vs uncapped scores |
+| RQ-004 | Does Confidence >90% improve win rate? | Segment returns by confidence level |
+| RQ-005 | Does Valuation systematically penalize SaaS? | Compare SaaS returns vs model prediction |
+
+*Rule: No model changes until backtesting evidence justifies them.*
