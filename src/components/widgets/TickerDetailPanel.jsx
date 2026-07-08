@@ -464,9 +464,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
 
                       {[
-                        { key:'moat',      icon:'📊', label:'Why the score is high',    data:aiData.moat,      note:'30d cache' },
-                        { key:'bear',      icon:'📉',  label:'Why it isn\'t higher',   data:aiData.bear,      note:'7d cache'  },
-                        { key:'catalysts', icon:'🎯',  label:'What could improve it', data:aiData.catalysts, note:'7d cache'  },
+                        { key:'moat',      icon:'📊', label:'Quantitative Strengths',   data:aiData.moat,      note:'30d cache' },
+                        { key:'bear',      icon:'📉',  label:'Current Constraints',    data:aiData.bear,      note:'7d cache'  },
+                        { key:'catalysts', icon:'🎯',  label:'Potential Score Drivers', data:aiData.catalysts, note:'7d cache'  },
                       ].map(({ key, icon, label, data, note }) => (
                         <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
                           <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:8, display:'flex', justifyContent:'space-between' }}>

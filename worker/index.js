@@ -308,7 +308,7 @@ function buildPrompt(type, ticker, fund, score) {
     '',
   ].join('\n') : ''
 
-  // WHY THE SCORE IS HIGH (was: moat)
+  // QUANTITATIVE STRENGTHS (was: moat)
   const moatPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
 
 ${snap}
@@ -324,7 +324,7 @@ Rules:
 - Use EXACT score numbers — never round or estimate them differently
 - Do NOT recommend buying or selling`
 
-  // WHY IT ISN'T HIGHER (was: bear)
+  // CURRENT CONSTRAINTS (was: bear)
   const bearPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
 
 ${snap}
@@ -343,24 +343,25 @@ Rules:
 - Lead with engine data, supplement with one external fact if needed
 - Do NOT recommend buying or selling`
 
-  // WHAT COULD IMPROVE THE SCORE (was: catalysts)
+  // POTENTIAL SCORE DRIVERS (was: catalysts)
   const catPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
 
 ${snap}
 ${ctx}
-Task: Write 3 bullets explaining what would increase ${ticker}'s score from ${finalScore}/100.
-Focus on improving the WEAKEST components: ${weakest?.name} (${weakest?.score}/${weakest?.max})${techWeak ? ` and Technical (${techScore}/${techMax})` : ''}.
+Task: Write 3 bullets identifying what could materially improve ${ticker}'s Conviction Score from ${finalScore}/100.
+The weakest components are: ${weakest?.name} (${weakest?.score}/${weakest?.max})${techWeak ? ` and Technical (${techScore}/${techMax})` : ''}.
 
-Bullet 1: What specific event or development would most improve the weakest component?
-Bullet 2: What near-term catalyst could reduce the risk penalty or strengthen other components?
-Bullet 3: You may reference one widely known upcoming event for ${ticker} (earnings date, product launch, conference) with a specific timeframe.
+Bullet 1: What would most improve the weakest component? Describe the condition, not an exact point impact.
+Bullet 2: What development could reduce the risk penalty or strengthen momentum? (e.g. Beta naturally decreases over time if volatility reduces — do NOT say specific events will change Beta directly)
+Bullet 3: Reference one widely known upcoming event for ${ticker} with a specific timeframe — phrase it as "could" or "may" improve, never as a guarantee.
 
 Format (use • for each bullet):
-• [Specific catalyst]: [how it improves a specific score component] — [timeframe]
+• [Driver]: [what needs to happen and which component it would improve] — [timeframe if applicable]
 
 Rules:
-- Connect every catalyst to a specific engine component
-- Use specific names for products/events when widely known (e.g. "Blackwell B200", "GTC", "Q3 earnings")
+- Never state exact point changes (e.g. do NOT say "would add 5 points") — say "would materially improve" or "could strengthen"
+- Beta is statistical — events do not directly reduce Beta; only sustained lower volatility does
+- Use specific names for products/events when widely known (e.g. "Blackwell ramp", "Q3 earnings")
 - Do NOT recommend buying or selling`
 
   const map = { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }
