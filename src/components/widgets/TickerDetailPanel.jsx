@@ -138,6 +138,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
   const [news,      setNews]      = useState(null)
+  const [scoreHistory, setScoreHistory] = useState(null)
 
   const generateAI = async () => {
     setAiLoading(true); setAiError(null)
@@ -168,6 +169,15 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
       generateAI()
     }
   }, [activeTab, result]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load score history from D1 when Score tab opens
+  useEffect(() => {
+    if (activeTab === 'score' && !scoreHistory && ticker) {
+      workerAPI.getHistory(ticker)
+        .then(r => setScoreHistory(r?.history ?? []))
+        .catch(() => setScoreHistory([]))
+    }
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load news when fundamentals tab opens
   useEffect(() => {
@@ -320,6 +330,52 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   {result.breakdown.valuation.value != null ? ` (${result.breakdown.valuation.value.toFixed(2)})` : ''}
                 </div>
               </div>
+
+              {/* ══ SCORE HISTORY ══ */}
+              {scoreHistory && scoreHistory.length >= 2 && (() => {
+                const pts   = [...scoreHistory].reverse()
+                const first = pts[0]?.final_score ?? 0
+                const last  = pts[pts.length-1]?.final_score ?? 0
+                const delta = last - first
+                const max   = Math.max(...pts.map(p => p.final_score ?? 0), 1)
+                const h     = 32
+                const w     = 160
+                return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:8,
+                    padding:'10px 14px', marginBottom:10,
+                    display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div>
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:4, fontWeight:600,
+                        textTransform:'uppercase', letterSpacing:'0.06em' }}>Score trend</div>
+                      <div style={{ fontSize:11, color: delta >= 0 ? 'var(--green)' : 'var(--red)', fontWeight:700 }}>
+                        {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)} pts
+                        <span style={{ color:'var(--txt-muted)', fontWeight:400, marginLeft:6 }}>
+                          ({pts.length} snapshots)
+                        </span>
+                      </div>
+                    </div>
+                    <svg width={w} height={h} style={{ overflow:'visible' }}>
+                      {pts.length >= 2 && pts.map((p, i) => {
+                        if (i === 0) return null
+                        const x1 = ((i-1)/(pts.length-1))*w
+                        const x2 = (i/(pts.length-1))*w
+                        const y1 = h - ((pts[i-1].final_score??0)/max)*h
+                        const y2 = h - ((p.final_score??0)/max)*h
+                        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                          stroke="var(--accent)" strokeWidth={1.5} />
+                      })}
+                      {pts.map((p, i) => (
+                        <circle key={i}
+                          cx={(i/(pts.length-1))*w}
+                          cy={h-((p.final_score??0)/max)*h}
+                          r={i===pts.length-1?3:2}
+                          fill={i===pts.length-1?'var(--accent)':'var(--surface)'}
+                          stroke="var(--accent)" strokeWidth={1.5} />
+                      ))}
+                    </svg>
+                  </div>
+                )
+              })()}
 
               {/* ══ SECTION 2: GATES ══ */}
               <div style={{ display:'flex', gap:8, marginBottom:16 }}>

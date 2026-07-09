@@ -21,7 +21,7 @@ function getDayChange(positions) {
   }, 0)
 }
 
-export default function Header({ account, setAccount, visiblePositions, portfolioStats, liveBadge }) {
+export default function Header({ account, setAccount, visiblePositions, portfolioStats, liveBadge, convictionAvg }) {
   const { isMobile } = useBreakpoint()
   const dayChange = getDayChange(visiblePositions)
   const dayPct    = portfolioStats.totalValue > 0 ? (dayChange / portfolioStats.totalValue) * 100 : 0
@@ -77,6 +77,7 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
 
       {/* All-time P&L */}
       {!isMobile && (
+        <>
         <div style={{
           background: portfolioStats.totalGain >= 0 ? 'var(--green-dim)' : 'var(--red-dim)',
           borderRadius:6, padding:'4px 10px',
@@ -86,7 +87,17 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
         }}>
           {fSignedUSD(portfolioStats.totalGain)} all-time
         </div>
+        {convictionAvg && (
+          <div style={{ fontSize:10, fontFamily:'var(--mono)',
+            color: convictionAvg.color, fontWeight:700,
+            background: `${convictionAvg.color}18`, padding:'2px 8px',
+            borderRadius:4, marginTop:2, display:'inline-block' }}>
+            ⚡ {convictionAvg.score}/100 {convictionAvg.label}
+          </div>
+        )}
+        </>
       )}
+
 
       <div style={{ flex:1 }} />
 

@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis,
+  AreaChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { POSITIONS }              from '../../data/positions.js'
@@ -139,6 +139,16 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
               fontFamily:'var(--mono)', fontSize:11, fontWeight:600, transition:'all 0.12s',
             }}>{r}</button>
           ))}
+        {/* SPY toggle */}
+          <button onClick={() => setShowSpy(v => !v)} style={{
+            padding:'4px 10px', borderRadius:6, border:'none', cursor:'pointer',
+            background: showSpy ? 'var(--surface-hov)' : 'transparent',
+            color:      showSpy ? 'var(--txt)' : 'var(--txt-muted)',
+            fontFamily:'var(--mono)', fontSize:10, fontWeight:600,
+            transition:'all 0.12s', display:'flex', alignItems:'center', gap:4,
+          }}>
+            vs SPY
+          </button>
         </div>
       </div>
 

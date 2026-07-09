@@ -24,6 +24,7 @@ import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { WATCHLIST }             from './data/watchlist.js'
 import { useMarketData }          from './hooks/useMarketData.js'
 import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
+import { getGrade } from './conviction/grade/index.js'
 
 /* ── Live data badge ───────────────────────────────────── */
 function LiveBadge({ loading, lastUpdated, error }) {
@@ -77,6 +78,14 @@ function AppInner() {
     results: convictionResults,
     loading: convictionLoading,
   } = useAllConvictions(liveVisiblePositions, prices)
+
+  const convictionAvg = useMemo(() => {
+    const scores = Object.values(convictionResults).map(r => r.finalScore).filter(s => s != null)
+    if (!scores.length) return null
+    const avg   = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*10)/10
+    const grade = getGrade(avg)
+    return { score: avg, label: grade.label, color: grade.color }
+  }, [convictionResults])
 
   /* ── Conviction scores for watchlist ── */
   const { results: watchlistResults } = useAllConvictions(WATCHLIST, prices)
@@ -152,6 +161,7 @@ function AppInner() {
           visiblePositions={liveVisiblePositions}
           portfolioStats={portfolioStats}
           liveBadge={<LiveBadge loading={pricesLoading} lastUpdated={lastUpdated} error={pricesError} />}
+          convictionAvg={convictionAvg}
         />
         <main className="app-content">{renderView()}</main>
       </div>
