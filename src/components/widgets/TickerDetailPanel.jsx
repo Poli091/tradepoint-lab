@@ -377,6 +377,89 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 )
               })()}
 
+              {/* ══ POINTS TO NEXT GRADE ══ */}
+              {(() => {
+                const GRADE_THRESHOLDS = [
+                  { min:85, label:'STRONG BUY', color:'#22C55E' },
+                  { min:70, label:'BUY',        color:'#86EFAC' },
+                  { min:55, label:'HOLD',        color:'#FBBF24' },
+                  { min:40, label:'SELL',        color:'#F97316' },
+                  { min:0,  label:'STRONG SELL', color:'#EF4444' },
+                ]
+                const next = GRADE_THRESHOLDS.find(g => g.min > result.finalScore)
+                if (!next) return null
+                const pts = next.min - result.finalScore
+                return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'8px 12px',
+                    marginBottom:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontSize:11, color:'var(--txt-muted)' }}>
+                      Next grade: <span style={{ color:next.color, fontWeight:700 }}>{next.label}</span>
+                    </span>
+                    <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color:next.color }}>
+                      +{pts} pts needed
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {/* ══ SUB-SCORE BREAKDOWN (computed from fundamentals) ══ */}
+              {f && (() => {
+                const sRev = v => v==null?null : v>25?8:v>=15?6:v>=10?4:v>=0?2:0
+                const sFCF = v => v==null?null : v>20?5:v>=10?3:v>=0?2:0
+                const sROI = v => v==null?null : v>20?8:v>=15?6:v>=10?4:v>=8?2:0
+                const sNM  = v => v==null?null : v>25?7:v>=15?5:v>=10?3:v>=0?1:0
+                const sGM  = v => v==null?null : v>60?5:v>=40?3:v>=20?2:0
+                const col  = (s,m) => s==null?'var(--border)' : s>=m*0.6?'var(--green)':s>=m*0.3?'var(--amber)':'var(--red)'
+
+                const Row = ({label, val, s, m}) => s==null?null:(
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                    <span style={{ fontSize:9, color:'var(--txt-muted)', width:80, textAlign:'right', flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:9, color:'var(--txt-sec)', width:56, textAlign:'right', fontFamily:'var(--mono)', flexShrink:0 }}>{val}</span>
+                    <div style={{ flex:1, height:3, background:'var(--border)', borderRadius:2 }}>
+                      <div style={{ height:'100%', width:`${Math.min((s/m)*100,100)}%`, background:col(s,m), borderRadius:2 }} />
+                    </div>
+                    <span style={{ fontSize:9, fontFamily:'var(--mono)', color:col(s,m), width:28, textAlign:'right', flexShrink:0 }}>{s}/{m}</span>
+                  </div>
+                )
+
+                const bestROI = Math.max(f.roic??-Infinity, f.roi??-Infinity, f.roe??-Infinity)
+                const deS = f.debtToEquity==null?null:f.debtToEquity<=0.5?5:f.debtToEquity<=1?4:f.debtToEquity<=2?3:f.debtToEquity<=4?1:0
+                const crS = f.currentRatio==null?null:f.currentRatio>=2?5:f.currentRatio>=1.5?4:f.currentRatio>=1?3:f.currentRatio>=0.8?1:0
+                const icS = f.interestCoverage==null?null:f.interestCoverage>=10?5:f.interestCoverage>=5?4:f.interestCoverage>=3?3:f.interestCoverage>=1?1:0
+
+                return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px', marginBottom:10 }}>
+                    <div style={{ fontSize:10, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase',
+                      letterSpacing:'0.06em', marginBottom:8 }}>Score computation detail</div>
+
+                    {[
+                      { label:'↳ Growth',    rows:[
+                        {label:'Revenue YoY', val:`+${fPctRaw(f.revenueGrowthYoY)}%`, s:sRev(f.revenueGrowthYoY), m:8},
+                        {label:'EPS YoY',     val:`${fPctRaw(f.epsGrowthYoY)}%`,       s:sRev(f.epsGrowthYoY),     m:8},
+                        {label:'FCF CAGR',    val:`${fPctRaw(f.fcfGrowth5Y)}%`,         s:sFCF(f.fcfGrowth5Y),      m:5},
+                      ]},
+                      { label:'↳ Quality',   rows:[
+                        {label:'ROE/ROIC',    val:`${isFinite(bestROI)?fPctRaw(bestROI):'—'}%`, s:sROI(isFinite(bestROI)?bestROI:null), m:8},
+                        {label:'Net Margin',  val:`${fPctRaw(f.netMargin)}%`,  s:sNM(f.netMargin),  m:7},
+                        {label:'Gross Margin',val:`${fPctRaw(f.grossMargin)}%`,s:sGM(f.grossMargin),m:5},
+                      ]},
+                      !result.breakdown.strength.skipped && { label:'↳ Strength', rows:[
+                        {label:'D/E Ratio',    val:`${f.debtToEquity?.toFixed(2)??'—'}`,  s:deS, m:5},
+                        {label:'Current Ratio',val:`${f.currentRatio?.toFixed(1)??'—'}`,  s:crS, m:5},
+                        {label:'Interest Cov.',val:`${f.interestCoverage?.toFixed(1)??'—'}x`, s:icS, m:5},
+                      ]},
+                    ].filter(Boolean).map(section => (
+                      <div key={section.label} style={{ marginBottom:6 }}>
+                        <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)', marginBottom:3, letterSpacing:'0.04em' }}>
+                          {section.label}
+                        </div>
+                        {section.rows.map(r => r.s != null && <Row key={r.label} {...r} />)}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
               {/* ══ SECTION 2: GATES ══ */}
               <div style={{ display:'flex', gap:8, marginBottom:16 }}>
                 {[

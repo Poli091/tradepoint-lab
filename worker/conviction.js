@@ -293,7 +293,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       growth:    { score:gw.score,    max:25, nullFields:gw.nullFields },
       quality:   { score:ql.score,    max:20, nullFields:ql.nullFields },
       strength:  { score:st.score,    max:15, nullFields:st.nullFields, skipped:st.skipped },
-      valuation: { score:vl.score,    max:15, metric:vl.metric },
+      valuation: { score:vl.score,    max:15, metric:vl.metric, value:vl.value },
       technical: { score:tc.score,    max:15, nullFields:tc.nullFields },
       risk:      { penalty:rk.penalty, flags:rk.flags },
     },
