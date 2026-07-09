@@ -46,6 +46,8 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
   const [chartData,  setChartData]  = useState(null)
   const [isLive,     setIsLive]     = useState(false)
   const [chartLoad,  setChartLoad]  = useState(false)
+  const [spyData,    setSpyData]    = useState([])
+  const [showSpy,    setShowSpy]    = useState(false)
 
   /* ── Load OHLCV: cache → Worker → generated fallback ── */
   useEffect(() => {
