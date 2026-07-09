@@ -54,6 +54,11 @@ function AppInner() {
 
   const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
 
+  // State declarations must come BEFORE useMemos that reference them
+  const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [editorOpen,    setEditorOpen]    = useState(false)
+  const [positionSeed,  setPositionSeed]  = useState(0)
+
   // Use localStorage overrides if available (bridge before multi-user D1)
   const basePositions = useMemo(() => loadOverrides() ?? null, [positionSeed])
 
@@ -75,10 +80,6 @@ function AppInner() {
 
   /* ── Conviction scores for watchlist ── */
   const { results: watchlistResults } = useAllConvictions(WATCHLIST, prices)
-
-  const [settingsOpen,  setSettingsOpen]  = useState(false)
-  const [editorOpen,    setEditorOpen]    = useState(false)
-  const [positionSeed,  setPositionSeed]  = useState(0)  // increment to reload positions
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
