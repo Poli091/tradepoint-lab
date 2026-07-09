@@ -11,8 +11,6 @@ import { X, Eye, EyeOff, Check, Trash2, Globe, Key, Link, CheckCircle, XCircle }
 import { useLang } from '../../context/LanguageContext.jsx'
 import { LS_KEYS } from '../../utils/api/config.js'
 import { getWorkerUrl, setWorkerUrl, workerAPI } from '../../utils/api/worker.js'
-import { WATCHLIST } from '../../data/watchlist.js'
-import { runConviction } from '../../conviction/index.js'
 
 
 /* ── Worker URL field ──────────────────────────────────── */
@@ -260,6 +258,8 @@ export default function SettingsPanel({ open, onClose }) {
   }
 
   const handleScanWatchlist = async () => {
+    const { WATCHLIST }    = await import('../../data/watchlist.js')
+    const { runConviction } = await import('../../conviction/index.js')
     setScanning(true)
     setScanProgress({ done: 0, total: WATCHLIST.length })
     try {
