@@ -272,7 +272,7 @@ function buildPrompt(type, ticker, fund, score) {
   const tech       = score?.technical  ?? {}
   const f          = fund ?? {}
 
-  // ── Classify components ───────────────────────────────────────────────
+  // ── Component classification ──────────────────────────────────────────
   const DIMS = [
     { name:'Growth',    score: bd?.growth?.score,    max:25 },
     { name:'Quality',   score: bd?.quality?.score,   max:20 },
@@ -287,16 +287,11 @@ function buildPrompt(type, ticker, fund, score) {
   const best   = [...DIMS].sort((a,b) => eff(b)-eff(a))[0]
   const riskPen = bd?.risk?.penalty ?? 0
 
-  // ── Valuation: actual metric only ─────────────────────────────────────
+  // ── Valuation: only the metric actually used ──────────────────────────
   const valMetric = bd?.valuation?.metric
   const valValue  = bd?.valuation?.value
-  const valLine   = (valMetric && valValue != null)
-    ? `Valuation — engine used: ${valMetric} = ${valValue.toFixed(1)}x → score ${bd?.valuation?.score}/15`
-    : valMetric
-      ? `Valuation — engine used: ${valMetric} (value unavailable) → score ${bd?.valuation?.score??'?'}/15`
-      : `Valuation — no reliable metric available → score ${bd?.valuation?.score??'?'}/15`
 
-  // ── Sub-component reason codes ─────────────────────────────────────────
+  // ── Sub-score computation trace (deterministic — same logic as engine) ─
   const sRev = v => v==null?null : v>25?8:v>=15?6:v>=10?4:v>=0?2:0
   const sFCF = v => v==null?null : v>20?5:v>=10?3:v>=0?2:0
   const sROI = v => v==null?null : v>20?8:v>=15?6:v>=10?4:v>=8?2:0
@@ -304,101 +299,96 @@ function buildPrompt(type, ticker, fund, score) {
   const sGM  = v => v==null?null : v>60?5:v>=40?3:v>=20?2:0
   const bestROI = Math.max(f.roic??-Infinity, f.roi??-Infinity, f.roe??-Infinity)
   const deRaw   = f.debtToEquity
-  const deScore = deRaw==null?null : deRaw<=0.5?5:deRaw<=1.0?4:deRaw<=2.0?3:deRaw<=4.0?1:0
+  const deScore = deRaw==null?null : deRaw<=0.5?5:deRaw<=1?4:deRaw<=2?3:deRaw<=4?1:0
   const crScore = f.currentRatio==null?null : f.currentRatio>=2?5:f.currentRatio>=1.5?4:f.currentRatio>=1?3:f.currentRatio>=0.8?1:0
   const icScore = f.interestCoverage==null?null : f.interestCoverage>=10?5:f.interestCoverage>=5?4:f.interestCoverage>=3?3:f.interestCoverage>=1?1:0
 
-  const rc = (s, max, label, val) =>
-    s != null ? `  [${s}/${max}] ${label}: ${val}` : null
+  const row = (label, val, s, m) => s!=null ? `  ${label}: ${val} → [${s}/${m}]` : null
 
-  const reasonCodes = [
-    '=== HOW THE ENGINE COMPUTED EACH SCORE ===',
-    `Growth ${bd?.growth?.score??'?'}/25 — built from:`,
-    rc(sRev(f.revenueGrowthYoY),   8, 'Revenue YoY',  `+${f.revenueGrowthYoY?.toFixed(1)??'N/A'}%`),
-    rc(sRev(f.epsGrowthYoY),       8, 'EPS YoY',      `${f.epsGrowthYoY?.toFixed(1)??'N/A'}%`),
-    rc(sFCF(f.fcfGrowth5Y),        5, 'FCF CAGR',     `${f.fcfGrowth5Y?.toFixed(1)??'N/A'}%`),
+  const trace = [
+    `=== COMPUTATION TRACE: ${ticker} | ${finalScore}/100 ${grade} ===`,
+    `Strong: ${strong.map(d=>`${d.name} ${d.score}/${d.max} (${eff(d)}%)`).join(', ')||'none'}`,
+    `Weak:   ${weak.map(d=>`${d.name} ${d.score}/${d.max} (${eff(d)}%)`).join(', ')||'none'}`,
     '',
-    `Quality ${bd?.quality?.score??'?'}/20 — built from:`,
-    rc(sROI(isFinite(bestROI)?bestROI:null), 8, 'Best ROE/ROIC', `${isFinite(bestROI)?bestROI.toFixed(1):'N/A'}%`),
-    rc(sNM(f.netMargin),  7, 'Net Margin',   `${f.netMargin?.toFixed(1)??'N/A'}%`),
-    rc(sGM(f.grossMargin),5, 'Gross Margin', `${f.grossMargin?.toFixed(1)??'N/A'}%`),
+    `Growth → ${bd?.growth?.score??'?'}/25`,
+    row('Revenue YoY', `+${f.revenueGrowthYoY?.toFixed(1)??'N/A'}%`, sRev(f.revenueGrowthYoY), 8),
+    row('EPS YoY',     `${f.epsGrowthYoY?.toFixed(1)??'N/A'}%`,      sRev(f.epsGrowthYoY),     8),
+    row('FCF CAGR',    `${f.fcfGrowth5Y?.toFixed(1)??'N/A'}%`,       sFCF(f.fcfGrowth5Y),      5),
     '',
-    `Strength ${bd?.strength?.score??'?'}/15 — built from:`,
-    rc(deScore, 5, 'Leverage (D/E)',    `${f.debtToEquity?.toFixed(2)??'N/A'}`),
-    rc(crScore, 5, 'Liquidity (CR)',    `${f.currentRatio?.toFixed(1)??'N/A'}`),
-    rc(icScore, 5, 'Coverage (IC)',     `${f.interestCoverage?.toFixed(1)??'N/A'}x`),
+    `Quality → ${bd?.quality?.score??'?'}/20`,
+    row('Best ROE/ROIC', `${isFinite(bestROI)?bestROI.toFixed(1):'N/A'}%`, sROI(isFinite(bestROI)?bestROI:null), 8),
+    row('Net Margin',    `${f.netMargin?.toFixed(1)??'N/A'}%`,    sNM(f.netMargin),  7),
+    row('Gross Margin',  `${f.grossMargin?.toFixed(1)??'N/A'}%`,  sGM(f.grossMargin),5),
     '',
-    valLine,
+    `Strength → ${bd?.strength?.score??'?'}/15`,
+    row('Leverage (D/E)',    f.debtToEquity?.toFixed(2)??'N/A',  deScore, 5),
+    row('Liquidity (CR)',    f.currentRatio?.toFixed(1)??'N/A',  crScore, 5),
+    row('Coverage (IC)',     `${f.interestCoverage?.toFixed(1)??'N/A'}x`, icScore, 5),
     '',
-    `Technical ${bd?.technical?.score??'?'}/15 — built from:`,
-    `  [${tech.aboveEMA200?5:0}/5] EMA200: $${tech.ema200?.toFixed(2)??'N/A'} (price ${tech.aboveEMA200?'above':'below'})`,
-    `  [?/3] RSI: ${tech.rsi?.toFixed(1)??'N/A'}`,
-    `  [?/7] RS vs SPY: ${tech.relStrengthWeighted?.toFixed(1)??'N/A'}%`,
-    riskPen < 0 ? `\nRisk penalty ${riskPen}: Beta ${f.beta?.toFixed(2)??'N/A'} > 2.0` : '',
-    '==========================================',
+    valMetric && valValue != null
+      ? `Valuation → ${bd?.valuation?.score??'?'}/15 (method: ${valMetric} = ${valValue.toFixed(1)}x)`
+      : `Valuation → ${bd?.valuation?.score??'?'}/15 (method: ${valMetric??'unavailable'})`,
     '',
+    `Technical → ${bd?.technical?.score??'?'}/15`,
+    `  EMA200: $${tech.ema200?.toFixed(2)??'N/A'} → price ${tech.aboveEMA200?'above [5/5]':'below [0/5]'}`,
+    `  RS vs SPY: ${tech.relStrengthWeighted?.toFixed(1)??'N/A'}%`,
+    `  RSI: ${tech.rsi?.toFixed(1)??'N/A'}`,
+    riskPen < 0 ? `\nRisk penalty: ${riskPen} (Beta ${f.beta?.toFixed(2)??'N/A'})` : '',
+    '==============================================',
   ].filter(l => l !== null && l !== false).join('\n')
 
-  const snap = [
-    `${ticker} | Score: ${finalScore}/100 | Grade: ${grade}`,
-    `Strong (≥65%): ${strong.map(d=>`${d.name} ${d.score}/${d.max}`).join(', ')||'none'}`,
-    `Weak  (<50%):  ${weak.map(d=>`${d.name} ${d.score}/${d.max}`).join(', ')||'none'}`,
-    '',
-  ].join('\n')
+  // ── ROLE: interpreter not analyst ────────────────────────────────────
+  const ROLE = `You are an interpreter for TradePoint Lab's conviction engine — not a financial analyst.
 
-  // ── DEBUGGER FRAMING — the most important change ──────────────────────
-  const SYSTEM = `You are NOT a financial analyst. You are a debugger explaining exactly how TradePoint Lab's quantitative engine computed each score.
+The computation trace above shows exactly how the engine built each score.
+The UI already displays all the numbers. Your job is to add ONE interpretation paragraph
+explaining the WHY behind the computation — not to repeat the numbers.
 
-Think like a debugger explaining why a function returned this value.
+Think like a debugger adding a comment above a function that computed an unexpected result.`
 
-Your output must:
-1. Trace which sub-scores contributed or subtracted
-2. Never say "strong", "weak", "excellent" unless the score justifies it (e.g. [8/8] = say "strong", [0/8] = say "absent")
-3. Be specific: reference the exact value [score/max] from the computation trace
-4. Never invent numbers not in the computation trace
-5. Max 2 sentences per bullet, max 35 words total per bullet
-6. Never recommend buying or selling`
+  const RULES = `Rules:
+- 2-3 sentences maximum, plain and direct
+- Never repeat numbers already in the trace unless it adds interpretive value
+- Never say "strong", "weak", "excellent" based on your opinion — only reflect the score level
+- Never invent causation ("earnings reduce D/E") — use direction only ("if D/E were to improve")
+- Reference scoring buckets not invented targets: "into a higher scoring range" not "below 40x"
+- Never recommend buying or selling`
 
-  const moatPrompt = `${SYSTEM}
+  const moat  = `${ROLE}
 
-=== COMPUTATION TRACE FOR ${ticker} ===
-${snap}${reasonCodes}
-TASK: Explain how the engine computed the STRONG components (${strong.map(d=>d.name).join(', ')||'none — use the best one: '+best?.name}).
-Write 1 bullet per strong component. ${strong.length===0?`Write: "• No component above 65% — highest is ${best?.name} (${best?.score}/${best?.max})."` : ''}
+${trace}
 
-FORMAT: "• [Component] ([score]/[max]): the engine arrived at this score because [cite specific sub-scores from trace] — [1 word implication]"
-${SYSTEM.split('\n').slice(2).join('\n')}`
+TASK: Write 1 short paragraph (2-3 sentences) interpreting why the STRONG components scored well.
+${strong.length===0?`No components above 65%. Write: "No component currently scores above 65% efficiency — the highest-scoring area is ${best?.name??'N/A'} at ${best?.score??0}/${best?.max??0}."` : `Focus on: ${strong.map(d=>d.name).join(', ')}`}
 
-  const bearPrompt = `${SYSTEM}
+${RULES}`
 
-=== COMPUTATION TRACE FOR ${ticker} ===
-${snap}${reasonCodes}
-TASK: Trace exactly how the engine computed each WEAK component (${weak.map(d=>d.name).join(', ')||'none'}).
-${riskPen < 0 ? `Also explain the Risk penalty.` : ''}
-Write 1 bullet per weak component.
+  const bear  = `${ROLE}
 
-FORMAT: "• [Component] ([score]/[max]): the engine assigned [score] because [cite the low sub-scores from trace] while [cite any high sub-scores if any] — [brief implication]"
-Extra rules:
-- Valuation: cite ONLY ${valMetric??'the actual metric'} — never mention other ratios
-- Technical: cite EMA200 position and RS vs SPY — never invent other technical signals
-- Beta changes only with sustained lower volatility over time — never say an event reduces it`
+${trace}
 
-  const catPrompt = `${SYSTEM}
+TASK: Write 1 short paragraph (2-3 sentences) interpreting why the WEAK components scored low.
+Focus on what the computation trace reveals about the trade-offs within each weak component.
+${riskPen < 0 ? `Include the Risk penalty in your interpretation.` : ''}
 
-=== COMPUTATION TRACE FOR ${ticker} ===
-${snap}${reasonCodes}
-TASK: For each WEAK component, describe what would need to change in the computation trace to improve the score.
-Write 1 bullet per weak component.
+${RULES}
+- For Strength: if one sub-score is high (e.g. Coverage 5/5) but others are low, explain the contrast
+- For Valuation: reference ONLY ${valMetric??'the method used'} — never invent other metrics
+- Beta is statistical — changes only with sustained lower volatility, not from events`
 
-FORMAT: "• [Component]: to improve from [current score], [specific sub-score] would need to [direction] — [this would add points to the component]"
-Extra rules:
-- Frame as computation changes: "if EPS YoY turns positive, that sub-score would move from 0/8 toward higher values"
-- Strength: "sustained earnings reducing leverage" not "D/E must fall to X"
-- Technical: cite EMA200 ($${tech.ema200?.toFixed(0)??'N/A'}) and RS vs SPY as the specific levers to recover
-- Never promise exact point gains
-- Valuation: "lower ${valMetric??'the metric'} ${valValue!=null?'from '+valValue.toFixed(1)+'x':''}"`
+  const cats  = `${ROLE}
 
-  return { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }[type] ?? null
+${trace}
+
+TASK: Write 1 short paragraph (2-3 sentences) describing what would need to change in the computation
+to improve the WEAK components. Speak in terms of the scoring buckets, not invented thresholds.
+
+${RULES}
+- "into a higher scoring range" not "D/E must fall below X"
+- Reference EMA200 ($${tech.ema200?.toFixed(0)??'N/A'}) and RS vs SPY as Technical's specific levers
+- For Valuation: "lower ${valMetric??'the metric used'} ${valValue!=null?'from '+valValue.toFixed(1)+'x':''} into a higher bucket"`
+
+  return { moat, bear, catalysts: cats }[type] ?? null
 }
 
 async function handleGroq(ticker, type, keys, kv) {
