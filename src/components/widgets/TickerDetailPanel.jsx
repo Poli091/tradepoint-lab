@@ -800,9 +800,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         )
 
                         return [
-                          { key:'moat',      icon:'📊', label:'Quantitative Strengths',  data:aiData.moat,      note:'30d', dims:top3    },
-                          { key:'bear',      icon:'📉', label:'Current Constraints',      data:aiData.bear,      note:'7d',  dims:bottom2 },
-                          { key:'catalysts', icon:'🎯', label:'Potential Score Drivers',  data:aiData.catalysts, note:'7d',  dims:bottom2 },
+                          { key:'moat',      icon:'📊', label:'Why these scores are high', data:aiData.moat,      note:'30d', dims:top3    },
+                          { key:'bear',      icon:'📉', label:'Why these scores are low',  data:aiData.bear,      note:'7d',  dims:bottom2 },
+                          { key:'catalysts', icon:'🎯', label:'What would move the score', data:aiData.catalysts, note:'7d',  dims:bottom2 },
                         ].map(({ key, icon, label, data, note, dims }) => (
                           <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
                             <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:6, display:'flex', justifyContent:'space-between' }}>
@@ -810,15 +810,16 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                               <span style={{ fontSize:9, color:'var(--txt-muted)', fontWeight:400 }}>{note} cache</span>
                             </div>
                             <MiniBar dims={dims} />
-                            {(data?.bullets ?? []).map((bullet, i) => (
-                              <div key={i} style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7,
-                                marginBottom:i < (data.bullets.length-1) ? 6 : 0,
-                                borderLeft:'2px solid var(--border)', paddingLeft:8 }}>
-                                {bullet}
-                              </div>
-                            ))}
-                            {(!data?.bullets?.length) && (
-                              <div style={{ fontSize:11, color:'var(--txt-muted)' }}>No data returned</div>
+                            {data?.text ? (
+                              <p style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7, margin:0 }}>
+                                {data.text}
+                              </p>
+                            ) : (data?.bullets ?? []).length > 0 ? (
+                              <p style={{ fontSize:11, color:'var(--txt)', lineHeight:1.7, margin:0 }}>
+                                {data.bullets.join(' ')}
+                              </p>
+                            ) : (
+                              <div style={{ fontSize:11, color:'var(--txt-muted)' }}>No interpretation yet</div>
                             )}
                           </div>
                         ))
