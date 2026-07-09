@@ -10,6 +10,7 @@ import ConvictionRing  from '../components/ui/ConvictionRing.jsx'
 import { WATCHLIST }   from '../data/watchlist.js'
 import { genSparklines } from '../utils/chartData.js'
 import { fUSD, fPct }  from '../utils/format.js'
+import EmptyState from '../components/ui/EmptyState.jsx'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 
 export default function WatchlistView({ convictionResults = {}, prices = {} }) {
@@ -22,6 +23,9 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
         Watchlist
       </h1>
 
+      {WATCHLIST.length === 0 && (
+        <EmptyState icon="👁" title="No watchlist items" sub="Add tickers to your watchlist to track them here" />
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
         {WATCHLIST.map(item => {
           const isUp  = item.dayChangePct >= 0

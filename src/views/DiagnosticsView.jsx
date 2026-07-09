@@ -15,6 +15,7 @@
 
 import { useState, useMemo } from 'react'
 import { RotateCcw, AlertTriangle } from 'lucide-react'
+import EmptyState from '../components/ui/EmptyState.jsx'
 import { useAllConvictions, calcDiagnostics } from '../hooks/useAllConvictions.js'
 import { GRADES } from '../conviction/grade/index.js'
 
@@ -144,6 +145,15 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
         <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--red)', display:'flex', gap:8 }}>
           <AlertTriangle size={14} /> {error}
         </div>
+      )}
+
+      {/* Empty state when no data and not loading */}
+      {!isLoading && !hasData && !error && (
+        <EmptyState
+          icon="📊"
+          title="No conviction data yet"
+          sub="Click 'Recompute all' to run the engine on all positions"
+        />
       )}
 
       {/* Progress bar */}

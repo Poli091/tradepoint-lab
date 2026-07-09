@@ -15,7 +15,7 @@ const TYPE_LABELS = {
   monitor:  'Monitor',
 }
 
-export default function CalendarView() {
+export default function CalendarView({ convictionResults = {}, prices = {} }) {
   return (
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--txt)', marginBottom: 16 }}>
@@ -25,6 +25,7 @@ export default function CalendarView() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {EARNINGS.map(event => {
           const pos = POSITIONS.find(p => p.ticker === event.ticker)
+          const cv  = convictionResults[event.ticker]
 
           return (
             <div key={event.ticker} style={{
@@ -73,7 +74,18 @@ export default function CalendarView() {
                     +{pos.upside.toFixed(1)}% analyst upside
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <ConvictionRing score={pos.conviction} size={40} />
+                    <ConvictionRing
+                      score={cv?.finalScore ?? pos?.conviction ?? null}
+                      grade={cv?.grade ?? null}
+                      loading={false}
+                      size={40}
+                    />
+                    {cv?.grade && (
+                      <div style={{ fontSize:9, fontWeight:700, color:cv.gradeColor ?? 'var(--txt-muted)',
+                        textAlign:'center', marginTop:2, letterSpacing:'0.03em' }}>
+                        {cv.grade.replace('STRONG ', 'S.')}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

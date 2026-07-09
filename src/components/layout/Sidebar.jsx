@@ -57,14 +57,16 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
   const { t }        = useLang()
   const isLight      = theme === 'light'
 
+  // Desktop shows all — mobile shows 5 core views
   const NAV_ITEMS = [
-    { id: 'dashboard',   label: t.navDashboard,     Icon: LayoutDashboard },
-    { id: 'positions',   label: t.navPositions,     Icon: Briefcase       },
-    { id: 'watchlist',   label: t.navWatchlist,     Icon: Eye             },
-    { id: 'calendar',    label: t.navCalendar,      Icon: CalendarDays    },
-    { id: 'diagnostics', label: 'Model Diagnostics', Icon: BarChart3      },
-  { id: 'scan',        label: 'Ticker Scanner',   Icon: Search         },
+    { id: 'dashboard',   label: t.navDashboard,      Icon: LayoutDashboard },
+    { id: 'positions',   label: t.navPositions,      Icon: Briefcase       },
+    { id: 'watchlist',   label: t.navWatchlist,      Icon: Eye             },
+    { id: 'scan',        label: 'Scanner',            Icon: Search          },
+    { id: 'calendar',    label: t.navCalendar,        Icon: CalendarDays    },
+    { id: 'diagnostics', label: 'Model Diagnostics',  Icon: BarChart3,  desktopOnly: true },
   ]
+  const MOBILE_NAV = NAV_ITEMS.filter(n => !n.desktopOnly)
 
   /* ── Mobile: fixed bottom nav bar ── */
   if (isMobile) {
@@ -75,7 +77,7 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
         display: 'flex', alignItems: 'center', justifyContent: 'space-around',
         padding: '0 8px',
       }}>
-        {NAV_ITEMS.map(({ id, label, Icon }) => (
+        {MOBILE_NAV.map(({ id, label, Icon }) => (
           <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
         ))}
         <IconBtn

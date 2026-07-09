@@ -124,7 +124,7 @@ function AppInner() {
       case 'watchlist':
         return <WatchlistView convictionResults={watchlistResults} prices={prices} />
       case 'calendar':
-        return <CalendarView />
+        return <CalendarView convictionResults={convictionResults} prices={prices} />
       case 'scan':
         return <ScanView />
       case 'diagnostics':
