@@ -5,7 +5,6 @@
 
 import { useBreakpoint }                from '../../hooks/useBreakpoint.js'
 import { fUSD, fPct, fSignedUSD }       from '../../utils/format.js'
-import { DAY_CHANGES }                  from '../../utils/finance.js'
 
 const ACCOUNTS = [
   { id:'roth',      label:'Roth IRA',  short:'Roth'  },

@@ -226,7 +226,7 @@ export default function PositionEditor({ onClose, onSaved }) {
             background: confirmReset ? 'var(--red-dim)' : 'transparent',
             cursor:'pointer', fontSize:12, color: confirmReset ? 'var(--red)' : 'var(--txt-muted)',
           }}>
-            {confirmReset ? 'Confirm reset' : 'Reset to defaults'}
+            {confirmReset ? 'Confirm clear' : 'Clear all positions'}
           </button>
           <button onClick={handleSave} style={{
             padding:'8px 16px', borderRadius:6, border:'none',
