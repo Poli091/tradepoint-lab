@@ -7,12 +7,14 @@ import { useMemo } from 'react'
 import Sparkline       from '../ui/Sparkline.jsx'
 import Badge           from '../ui/Badge.jsx'
 import ConvictionRing  from '../ui/ConvictionRing.jsx'
-import { WATCHLIST }   from '../../data/watchlist.js'
+import { WATCHLIST }        from '../../data/watchlist.js'
+import { loadWatchlist }    from '../../utils/watchlistStorage.js'
 import { genSparklines } from '../../utils/chartData.js'
 import { fUSD, fPct }  from '../../utils/format.js'
 
 export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker }) {
-  const sparklines = useMemo(() => genSparklines(WATCHLIST, 21), [])
+  const items      = loadWatchlist() ?? WATCHLIST
+  const sparklines = useMemo(() => genSparklines(items, 21), [items])
 
   return (
     <div style={{
@@ -40,7 +42,7 @@ export default function WatchlistPanel({ style = {}, convictionResults = {}, onS
       </div>
 
       {/* Items */}
-      {WATCHLIST.map(item => {
+      {items.map(item => {
         const isUp = item.dayChangePct >= 0
         const spark = sparklines[item.ticker] ?? []
         const cv    = convictionResults[item.ticker]

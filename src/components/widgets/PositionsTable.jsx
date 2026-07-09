@@ -161,14 +161,20 @@ export default function PositionsTable({
                     </div>
                   </td>
 
-                  {/* Upside */}
+                  {/* Upside — prefer engine's Wall Street consensus, fallback to manual */}
                   <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <span style={{
-                      fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700,
-                      color: pos.upside >= 50 ? 'var(--green)' : pos.upside >= 37 ? 'var(--amber)' : 'var(--red)',
-                    }}>
-                      +{pos.upside?.toFixed(1)}%
-                    </span>
+                    {(() => {
+                      const upside = cv?.wallStreet?.upside ?? pos.upside
+                      if (upside == null) return <span style={{ color:'var(--txt-muted)', fontSize:11 }}>—</span>
+                      return (
+                        <span style={{
+                          fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700,
+                          color: upside >= 50 ? 'var(--green)' : upside >= 35 ? 'var(--amber)' : 'var(--txt-muted)',
+                        }}>
+                          +{upside.toFixed(1)}%
+                        </span>
+                      )
+                    })()}
                   </td>
 
                   {/* Conviction ring + grade */}

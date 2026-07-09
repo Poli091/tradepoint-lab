@@ -3,7 +3,7 @@
  * Full-page watchlist with conviction rings from the engine.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Sparkline       from '../components/ui/Sparkline.jsx'
 import Badge           from '../components/ui/Badge.jsx'
 import ConvictionRing  from '../components/ui/ConvictionRing.jsx'
@@ -11,23 +11,31 @@ import { WATCHLIST }   from '../data/watchlist.js'
 import { genSparklines } from '../utils/chartData.js'
 import { fUSD, fPct }  from '../utils/format.js'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import WatchlistEditor from '../components/widgets/WatchlistEditor.jsx'
+import { loadWatchlist } from '../utils/watchlistStorage.js'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 
 export default function WatchlistView({ convictionResults = {}, prices = {} }) {
-  const sparklines = useMemo(() => genSparklines(WATCHLIST, 21), [])
+  const [items,       setItems]       = useState(() => loadWatchlist() ?? WATCHLIST)
+  const [editorOpen,  setEditorOpen]  = useState(false)
   const [activeTicker, setActiveTicker] = useState(null)
+  const sparklines = useMemo(() => genSparklines(items, 21), [items])
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--txt)', marginBottom: 16 }}>
-        Watchlist
-      </h1>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <h1 style={{ fontSize:18, fontWeight:700, color:'var(--txt)', margin:0 }}>Watchlist</h1>
+        <button onClick={() => setEditorOpen(true)} style={{
+          padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
+          background:'transparent', cursor:'pointer', fontSize:12,
+          color:'var(--accent)', fontWeight:600 }}>⚙ Manage</button>
+      </div>
 
-      {WATCHLIST.length === 0 && (
+      {items.length === 0 && (
         <EmptyState icon="👁" title="No watchlist items" sub="Add tickers to your watchlist to track them here" />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-        {WATCHLIST.map(item => {
+        {items.map(item => {
           const isUp  = item.dayChangePct >= 0
           const spark = sparklines[item.ticker] ?? []
           const cv    = convictionResults[item.ticker]
@@ -117,6 +125,13 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
           )
         })}
       </div>
+
+      {editorOpen && (
+        <WatchlistEditor
+          onClose={() => setEditorOpen(false)}
+          onSaved={() => setItems(loadWatchlist() ?? [])}
+        />
+      )}
 
       {activeTicker && (
         <TickerDetailPanel
