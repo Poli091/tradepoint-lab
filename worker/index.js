@@ -266,110 +266,131 @@ async function handleNews(ticker, keys, kv) {
 }
 
 function buildPrompt(type, ticker, fund, score) {
-  const bd = score?.breakdown
-  const techScore   = bd?.technical?.score  ?? 'N/A'
-  const techMax     = bd?.technical?.max    ?? 15
-  const techWeak    = (bd?.technical?.score ?? 0) < 8
-  const valScore    = bd?.valuation?.score  ?? 'N/A'
-  const valMetric   = bd?.valuation?.metric ?? 'N/A'
-  const riskPenalty = bd?.risk?.penalty     ?? 0
-  const finalScore  = score?.finalScore     ?? 'N/A'
-  const grade       = score?.grade          ?? 'N/A'
+  const bd         = score?.breakdown
+  const finalScore = score?.finalScore ?? 'N/A'
+  const grade      = score?.grade      ?? 'N/A'
+  const tech       = score?.technical  ?? {}
 
-  // Find weakest positive component
-  const posComps = [
-    { name: 'Growth',    score: bd?.growth?.score,    max: 25 },
-    { name: 'Quality',   score: bd?.quality?.score,   max: 20 },
-    { name: 'Strength',  score: bd?.strength?.score,  max: 15 },
-    { name: 'Valuation', score: bd?.valuation?.score, max: 15 },
-    { name: 'Technical', score: bd?.technical?.score, max: 15 },
-  ].filter(c => c.score != null)
-  const weakest = posComps.sort((a,b) => (a.score/a.max) - (b.score/b.max))[0]
+  // ── Classify components ───────────────────────────────────────────────
+  const DIMS = [
+    { name:'Growth',    score: bd?.growth?.score,    max:25 },
+    { name:'Quality',   score: bd?.quality?.score,   max:20 },
+    { name:'Strength',  score: bd?.strength?.score,  max:15 },
+    { name:'Valuation', score: bd?.valuation?.score, max:15 },
+    { name:'Technical', score: bd?.technical?.score, max:15 },
+  ].filter(d => d.score != null)
 
-  const snap = score ? [
-    '=== TRADEPOINT LAB QUANTITATIVE ENGINE OUTPUT ===',
-    `Ticker: ${ticker} | Final Score: ${finalScore}/100 | Grade: ${grade}`,
-    `Growth:    ${bd?.growth?.score ?? 'N/A'}/25`,
-    `Quality:   ${bd?.quality?.score ?? 'N/A'}/20`,
-    `Strength:  ${bd?.strength?.score ?? 'N/A'}/15`,
-    `Valuation: ${valScore}/15 via ${valMetric}`,
-    `Technical: ${techScore}/${techMax}${techWeak ? ' [WEAKEST COMPONENT]' : ''}`,
-    `Risk penalty: ${riskPenalty} (${bd?.risk?.flags?.join(', ') || 'none'})`,
-    '===================================================',
-  ].join('\n') : ''
+  const eff    = d => Math.round((d.score / d.max) * 100)
+  const strong = DIMS.filter(d => eff(d) >= 65).sort((a,b) => eff(b)-eff(a))
+  const weak   = DIMS.filter(d => eff(d) <  50).sort((a,b) => eff(a)-eff(b))
+  const best   = [...DIMS].sort((a,b) => eff(b)-eff(a))[0]
+  const riskPen = bd?.risk?.penalty ?? 0
 
-  const ctx = fund ? [
-    'FINANCIAL DATA:',
-    `Revenue Growth YoY: +${fund.revenueGrowthYoY?.toFixed(1) ?? 'N/A'}% | 3Y: +${fund.revenueGrowth3Y?.toFixed(1) ?? 'N/A'}%`,
-    `Gross Margin: ${fund.grossMargin?.toFixed(1) ?? 'N/A'}% | Net Margin: ${fund.netMargin?.toFixed(1) ?? 'N/A'}%`,
-    `ROE: ${fund.roe?.toFixed(1) ?? 'N/A'}% | D/E: ${fund.debtToEquity?.toFixed(2) ?? 'N/A'} | Beta: ${fund.beta?.toFixed(2) ?? 'N/A'}`,
-    `P/E: ${fund.pe?.toFixed(1) ?? 'N/A'}x | PEG: ${fund.peg?.toFixed(2) ?? 'N/A'}`,
-    `Analysts: ${(fund.strongBuy??0)+(fund.buy??0)} Buy / ${fund.hold??0} Hold / ${(fund.sell??0)+(fund.strongSell??0)} Sell`,
+  // ── Valuation: use ACTUAL metric and value from engine cascade ────────
+  const valMetric = bd?.valuation?.metric  // PEG / EV/FCF / EV/EBITDA / P/E
+  const valValue  = bd?.valuation?.value
+  const valLine   = (valMetric && valValue != null)
+    ? `Valuation: Engine used ${valMetric} = ${valValue.toFixed(1)}x — reference ONLY this metric`
+    : `Valuation: No single metric was decisive — engine used whatever data was available`
+
+  // ── Sub-component breakdown (approximate, same logic as engine) ───────
+  const sRev = v => v==null?null : v>25?8:v>=15?6:v>=10?4:v>=0?2:0
+  const sFCF = v => v==null?null : v>20?5:v>=10?3:v>=0?2:0
+  const sROI = v => v==null?null : v>20?8:v>=15?6:v>=10?4:v>=8?2:0
+
+  const f = fund ?? {}
+  const growthSub = [
+    `  Revenue YoY: +${f.revenueGrowthYoY?.toFixed(1)??'N/A'}% → ~${sRev(f.revenueGrowthYoY)??'?'}/8`,
+    `  EPS YoY: ${f.epsGrowthYoY?.toFixed(1)??'N/A'}% → ~${sRev(f.epsGrowthYoY)??'?'}/8`,
+    `  FCF CAGR: ${f.fcfGrowth5Y?.toFixed(1)??'N/A'}% → ~${sFCF(f.fcfGrowth5Y)??'?'}/5`,
+  ].join('\n')
+
+  const qualitySub = [
+    `  ROE/ROIC: max(${f.roe?.toFixed(1)??'N/A'}%, ${f.roic?.toFixed(1)??'N/A'}%) → ~${sROI(Math.max(f.roe??-Infinity, f.roic??-Infinity, f.roi??-Infinity))??'?'}/8`,
+    `  Gross Margin: ${f.grossMargin?.toFixed(1)??'N/A'}%`,
+    `  Net Margin: ${f.netMargin?.toFixed(1)??'N/A'}%`,
+  ].join('\n')
+
+  const strengthSub = [
+    `  D/E: ${f.debtToEquity?.toFixed(2)??'N/A'} | Current Ratio: ${f.currentRatio?.toFixed(1)??'N/A'} | Interest Coverage: ${f.interestCoverage?.toFixed(1)??'N/A'}x`,
+  ].join('\n')
+
+  const techSub = [
+    `  EMA200: $${tech.ema200?.toFixed(2)??'N/A'} (price ${tech.aboveEMA200?'ABOVE ✓':'BELOW ✗'})`,
+    `  RSI: ${tech.rsi?.toFixed(1)??'N/A'} | RS vs SPY: ${tech.relStrengthWeighted?.toFixed(1)??'N/A'}%`,
+  ].join('\n')
+
+  const subCtx = [
+    'SUB-COMPONENT BREAKDOWN (use these — never invent other values):',
+    `Growth (${bd?.growth?.score??'?'}/25):`,  growthSub,
+    `Quality (${bd?.quality?.score??'?'}/20):`, qualitySub,
+    `Strength (${bd?.strength?.score??'?'}/15):`, strengthSub,
+    valLine,
+    `Technical (${bd?.technical?.score??'?'}/15):`, techSub,
+    `Beta: ${f.beta?.toFixed(2)??'N/A'} | Risk penalty: ${riskPen}`,
     '',
-  ].join('\n') : ''
+  ].join('\n')
 
-  // QUANTITATIVE STRENGTHS (was: moat)
-  const moatPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
+  // ── Component summaries ───────────────────────────────────────────────
+  const strongTxt = strong.length > 0
+    ? strong.map(d => `  + ${d.name}: ${d.score}/${d.max} (${eff(d)}%)`).join('\n')
+    : `  (no components ≥65% — best area: ${best?.name??'N/A'} ${best?.score??0}/${best?.max??0})`
 
-${snap}
-${ctx}
-Task: Write 3 bullets identifying the STRONGEST components in ${ticker}'s score of ${finalScore}/100.
-Pick the 3 components with the highest efficiency (score / max).
+  const weakTxt = weak.length > 0
+    ? weak.map(d => `  - ${d.name}: ${d.score}/${d.max} (${eff(d)}%)`).join('\n')
+    : '  (no components below 50%)'
 
-FORMAT RULES (very important):
-- Each bullet must be ONE short sentence — maximum 25 words
-- Start DIRECTLY with the metric — NO preambles like "A score of X indicates" or "This reflects"
-- NO repeated phrases across bullets
-- Format: "• [Component] ([score]/[max]): [specific financial evidence] — [brief implication]"
+  const snap = [
+    `=== ${ticker} | ${finalScore}/100 ${grade} | Gate: ${score?.activeGate??'none'} ===`,
+    'STRONG (≥65%):', strongTxt,
+    'WEAK (<50%):', weakTxt, '',
+  ].join('\n')
 
-Example of what we want:
-"• Growth (21/25): Revenue +70.7% YoY and +100% over 3Y — exceptional business expansion."
-
-Example of what we DO NOT want:
-"• Growth (21/25): A score of 21 out of 25 indicates strong revenue growth, as evidenced by... — this reflects competitive quality."
-
-Rules:
-- Use EXACT numbers from the engine output above
-- Do NOT recommend buying or selling`
-
-  // CURRENT CONSTRAINTS (was: bear)
-  const bearPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
+  // ── Prompts ───────────────────────────────────────────────────────────
+  const moatPrompt = `You are an interpreter for TradePoint Lab's conviction engine for ${ticker}.
 
 ${snap}
-${ctx}
-Task: Write 3 bullets explaining the LIMITS on ${ticker}'s score of ${finalScore}/100.
+${subCtx}
+TASK: Explain ONLY the STRONG components (marked +).
+${strong.length === 0
+  ? 'No components are above 65%. Write ONE bullet: "• No components currently above 65% efficiency — strongest area is ' + (best?.name??'N/A') + ' (' + (best?.score??0) + '/' + (best?.max??0) + ')."'
+  : 'Write 1 bullet per strong component (max 3).'}
 
-Bullet 1 (required): The weakest component is ${weakest?.name} (${weakest?.score}/${weakest?.max}).${techWeak ? ` Mention RS vs SPY underperformance and price near/below EMA200.` : ''}
-Bullet 2 (required): Explain the risk penalty of ${riskPenalty}. Note that Beta is a statistical measure of volatility — it is NOT directly changed by business events.
-Bullet 3 (required): Name ONE specific, current, widely-known external competitive risk for ${ticker}. Use product names (e.g. "AMD Instinct MI300X", "Google TPU v5", "Amazon Trainium2", "Intel Gaudi3") — NOT generic phrases like "macroeconomic uncertainty" or "competitive pressures".
+FORMAT: "• [Component] ([score]/[max]): [sub-component data explains WHY this score is high] — [implication]"
+RULES: Only use numbers from sub-component breakdown. No generic phrases. No invented metrics. 1-2 sentences max. No buy/sell.`
 
-FORMAT RULES:
-- Each bullet: ONE sentence, maximum 30 words
-- Start DIRECTLY with the constraint — no preambles
-- Format: "• [Constraint]: [specific evidence or named risk] — [brief implication]"
-- Do NOT recommend buying or selling`
-
-  // POTENTIAL SCORE DRIVERS (was: catalysts)
-  const catPrompt = `You explain TradePoint Lab conviction engine output. Your role is interpreter, not analyst.
+  const bearPrompt = `You are an interpreter for TradePoint Lab's conviction engine for ${ticker}.
 
 ${snap}
-${ctx}
-Task: Write 3 bullets describing conditions that would strengthen ${ticker}'s weakest score components (${weakest?.name}: ${weakest?.score}/${weakest?.max}${techWeak ? `, Technical: ${techScore}/${techMax}` : ''}).
+${subCtx}
+TASK: Explain WHY each WEAK component (marked -) scored low, using the sub-component breakdown.
+${riskPen < 0 ? `Include one bullet for Risk (Beta: ${f.beta?.toFixed(2)}, penalty: ${riskPen}).` : ''}
 
-Bullet 1: Describe what market or price behavior would improve the weakest component. Phrase as a condition ("sustained outperformance would...") not a promise.
-Bullet 2: Describe what fundamental or momentum development would reduce constraints. Remember: Beta is statistical — only sustained lower volatility reduces it over time, not specific events.
-Bullet 3: Name ONE specific upcoming known event for ${ticker} and how it could improve a specific component — with a timeframe. Use specific names (e.g. "Blackwell ramp", "Q3 earnings", "GTC conference").
+FORMAT: "• [Component] ([score]/[max]): [specific sub-data explaining the low score] — [implication]"
+RULES:
+- Valuation: reference ONLY ${valMetric??'the metric actually used'} = ${valValue?.toFixed(1)??'N/A'}x — never mention P/E if the engine didn't use it
+- Technical: reference EMA200 position, RSI, RS vs SPY — never say "positive returns over X months"
+- Growth: use actual Revenue/EPS data — never contradict the numbers
+- Beta is statistical — changes only with sustained lower volatility, never from a business event
+- Never invent thresholds. No buy/sell.`
 
-FORMAT RULES:
-- Each bullet: ONE or TWO sentences, maximum 30 words total
-- No preambles — start directly with the driver
-- Format: "• [Driver]: [condition needed] — [component improved, timeframe if applicable]"
-- Use "would", "could", "may" — never make guarantees
-- Never say "would add X points" — say "would materially strengthen" or "would improve"
-- Do NOT recommend buying or selling`
+  const catPrompt = `You are an interpreter for TradePoint Lab's conviction engine for ${ticker}.
 
-  const map = { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }
-  return map[type] ?? null
+${snap}
+${subCtx}
+TASK: For each WEAK component (marked -), describe what business evolution would improve that score.
+Write 1 bullet per weak component.
+
+FORMAT: "• [Component]: [business condition/trend that would improve this] — [not a ratio target, but a direction]"
+RULES:
+- Frame as business outcomes, not ratio targets: "stronger free cash flow" not "FCF CAGR must reach X%"
+- Strength: frame as debt reduction or earnings growth over quarters — not "D/E must decline to X"
+- Technical: reference EMA200 ($${tech.ema200?.toFixed(0)??'N/A'}) and RS vs SPY recovery specifically
+- Valuation: "lower ${valMetric??'multiples'} from current ${valValue?.toFixed(1)??'N/A'}x" not an invented target
+- Beta declines only with sustained lower volatility over time — never say an event reduces it directly
+- No buy/sell. No invented numbers.`
+
+  return { moat: moatPrompt, bear: bearPrompt, catalysts: catPrompt }[type] ?? null
 }
 
 async function handleGroq(ticker, type, keys, kv) {
@@ -568,37 +589,7 @@ async function handleGetAllHistory(db) {
 
 
 /* ── GET /api/news/:ticker — company news (8h cache) ── */
-async function handleNews(ticker, keys, kv) {
-  const t = ticker.toUpperCase()
-  const cacheKey = `news:${t}`
-  const { value, metadata } = await kvGet(kv, cacheKey)
-  if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
-  if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
 
-  const now  = new Date()
-  const from = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const to   = now.toISOString().split('T')[0]
-
-  const res = await fetch(
-    `https://finnhub.io/api/v1/company-news?symbol=${t}&from=${from}&to=${to}`,
-    { headers: { 'X-Finnhub-Token': keys.finnhub } }
-  )
-  if (!res.ok) return json({ error: `Finnhub news failed: ${res.status}` }, 502)
-
-  const raw      = await res.json()
-  const articles = (raw || []).slice(0, 8).map(a => ({
-    headline: a.headline,
-    source:   a.source,
-    url:      a.url,
-    datetime: a.datetime,
-  }))
-
-  await kvPut(kv, cacheKey, articles, {
-    expirationTtl: TTL.NEWS,
-    metadata: { fetchedAt: Date.now(), expiresAt: Date.now() + TTL.NEWS * 1000 },
-  })
-  return json({ data: articles, meta: { fromCache: false } })
-}
 
 /* ════════════════════════════════════════════════════════════
    CRON — WEEKLY SNAPSHOT ENGINE
@@ -758,8 +749,6 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
-        case 'news':
-          return await handleNews(param1, keys, kv)
         case 'snapshots':
           if (!param1) return await handleSnapshotStats(db)
           return await handleGetSnapshots(param1, db)

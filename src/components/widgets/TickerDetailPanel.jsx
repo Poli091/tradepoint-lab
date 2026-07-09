@@ -585,6 +585,49 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 <>
                   {/* ══ AI ANALYSIS ══ */}
                   <SectionHeader icon={Zap} label="AI Analysis — Groq Llama 3.3 70B" />
+
+                  {/* Model Summary — always shown, fixed from engine */}
+                  {(() => {
+                    const DIMS = [
+                      { name:'Growth',    s:result.breakdown.growth.score,    m:25 },
+                      { name:'Quality',   s:result.breakdown.quality.score,   m:20 },
+                      { name:'Strength',  s:result.breakdown.strength.score,  m:15 },
+                      { name:'Valuation', s:result.breakdown.valuation.score, m:15 },
+                      { name:'Technical', s:result.breakdown.technical.score, m:15 },
+                    ].filter(d => d.s != null).sort((a,b) => (b.s/b.m)-(a.s/a.m))
+                    const best  = DIMS[0]
+                    const worst = DIMS[DIMS.length-1]
+                    const pct   = d => Math.round((d.s/d.m)*100)
+                    const col   = p => p>=65?'var(--green)':p>=40?'var(--amber)':'var(--red)'
+                    return (
+                      <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 14px', marginBottom:10 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase',
+                          letterSpacing:'0.07em', marginBottom:8 }}>Model Summary</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8 }}>
+                          {DIMS.map(d => (
+                            <div key={d.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                              <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{d.name}</span>
+                              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                                <span style={{ fontFamily:'var(--mono)', fontSize:10, fontWeight:700, color:col(pct(d)) }}>{d.s}/{d.m}</span>
+                                <span style={{ fontSize:9, color:col(pct(d)) }}>({pct(d)}%)</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display:'flex', gap:12, fontSize:10, borderTop:'1px solid var(--border)', paddingTop:6 }}>
+                          {best  && <span style={{ color:'var(--green)' }}>↑ {best.name}</span>}
+                          {worst && <span style={{ color:'var(--red)'   }}>↓ {worst.name}</span>}
+                          {result.riskPenalty < 0 && <span style={{ color:'var(--amber)' }}>Risk {result.riskPenalty}</span>}
+                          {result.activeGate && <span style={{ color:'var(--amber)' }}>{result.activeGate.toUpperCase()} active</span>}
+                          <span style={{ marginLeft:'auto', fontFamily:'var(--mono)', fontWeight:700,
+                            color: result.finalScore >= 70 ? 'var(--green)' : result.finalScore >= 55 ? 'var(--amber)' : 'var(--red)' }}>
+                            {result.finalScore}/100 {result.grade}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   <div style={{ fontSize:11, color:'var(--txt-muted)', fontStyle:'italic',
                     padding:'6px 10px', background:'var(--surface-up)', borderRadius:6,
                     marginBottom:8, textAlign:'center', lineHeight:1.5 }}>
