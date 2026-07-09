@@ -19,6 +19,7 @@ import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { loadOverrides }          from './utils/positionsStorage.js'
+import { loadWatchlist }          from './utils/watchlistStorage.js'
 import PositionEditor             from './components/widgets/PositionEditor.jsx'
 import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { WATCHLIST }             from './data/watchlist.js'
@@ -105,8 +106,9 @@ function AppInner() {
     return { score: avg, label: grade.label, color: grade.color }
   }, [convictionResults])
 
-  /* ── Conviction scores for watchlist ── */
-  const { results: watchlistResults } = useAllConvictions(WATCHLIST, prices)
+  /* ── Conviction scores for watchlist — use localStorage if available ── */
+  const liveWatchlist = useMemo(() => loadWatchlist() ?? WATCHLIST, [positionSeed])
+  const { results: watchlistResults } = useAllConvictions(liveWatchlist, prices)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)

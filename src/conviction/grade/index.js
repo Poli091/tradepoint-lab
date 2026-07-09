@@ -21,6 +21,12 @@ export const GRADES = [
   { min: 0,  label: 'STRONG SELL', stars: 1, color: '#EF4444', bg: 'rgba(239,68,68,0.10)'   },
 ]
 
+/** Get the display color for a grade label */
+export function getGradeColor(grade) {
+  const g = GRADES.find(g => g.label === grade)
+  return g?.color ?? 'var(--txt-muted)'
+}
+
 export function getGrade(finalScore) {
   return GRADES.find(g => finalScore >= g.min) ?? GRADES[GRADES.length - 1]
 }

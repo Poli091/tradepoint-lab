@@ -189,7 +189,7 @@ export default function PositionsTable({
                       {cv?.grade && (
                         <span style={{
                           fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
-                          color: cv.gradeColor ?? 'var(--txt-muted)',
+                          color: getGradeColor(cv?.grade) ?? 'var(--txt-muted)',
                         }}>
                           {cv.grade.replace('STRONG ', 'S.')}
                         </span>

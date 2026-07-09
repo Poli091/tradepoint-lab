@@ -109,7 +109,7 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
                       size={40}
                     />
                     {cv?.grade && (
-                      <div style={{ fontSize:9, fontWeight:700, color:cv.gradeColor ?? 'var(--txt-muted)',
+                      <div style={{ fontSize:9, fontWeight:700, color:getGradeColor(cv?.grade) ?? 'var(--txt-muted)',
                         textAlign:'center', marginTop:2, letterSpacing:'0.03em' }}>
                         {cv.grade.replace('STRONG ', 'S.')}
                       </div>

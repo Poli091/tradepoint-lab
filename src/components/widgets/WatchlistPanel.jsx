@@ -92,7 +92,7 @@ export default function WatchlistPanel({ style = {}, convictionResults = {}, onS
                 size={30}
               />
               {cv?.grade && (
-                <span style={{ fontSize: 7, fontWeight: 700, color: cv.gradeColor ?? 'var(--txt-muted)', letterSpacing: '0.02em' }}>
+                <span style={{ fontSize: 7, fontWeight: 700, color: getGradeColor(cv?.grade) ?? 'var(--txt-muted)', letterSpacing: '0.02em' }}>
                   {cv.grade.replace('STRONG ', 'S.')}
                 </span>
               )}

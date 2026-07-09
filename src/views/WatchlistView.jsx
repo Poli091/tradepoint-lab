@@ -45,7 +45,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
               onClick={() => setActiveTicker(item.ticker)}
               style={{
                 background: 'var(--surface)',
-                border: `1px solid ${cv?.gradeColor ? cv.gradeColor + '33' : 'var(--border)'}`,
+                border: `1px solid ${getGradeColor(cv?.grade) ? getGradeColor(cv?.grade) + '33' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-lg)',
                 padding: 16,
                 transition: 'all 0.15s',
@@ -73,7 +73,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
                     />
                     {cv?.grade && (
                       <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.03em',
-                        color: cv.gradeColor ?? 'var(--txt-muted)' }}>
+                        color: getGradeColor(cv?.grade) ?? 'var(--txt-muted)' }}>
                         {cv.grade.replace('STRONG ', 'S.')}
                       </span>
                     )}
@@ -103,10 +103,10 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 10, color: 'var(--txt-muted)', marginBottom: 2 }}>Conviction</div>
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700,
-                      color: cv.gradeColor ?? 'var(--txt)' }}>
+                      color: getGradeColor(cv?.grade) ?? 'var(--txt)' }}>
                       {cv.finalScore}/100
                     </div>
-                    <div style={{ fontSize: 9, color: cv.gradeColor ?? 'var(--txt-muted)', fontWeight: 700 }}>
+                    <div style={{ fontSize: 9, color: getGradeColor(cv?.grade) ?? 'var(--txt-muted)', fontWeight: 700 }}>
                       {cv.grade}
                     </div>
                   </div>
