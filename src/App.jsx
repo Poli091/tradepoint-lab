@@ -23,7 +23,8 @@ import PositionEditor             from './components/widgets/PositionEditor.jsx'
 import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { WATCHLIST }             from './data/watchlist.js'
 import { useMarketData }          from './hooks/useMarketData.js'
-import { filterByAccount, calcPortfolioStats } from './utils/finance.js'
+import { calcPortfolioStats } from './utils/finance.js'
+import { POSITIONS }               from './data/positions.js'
 import { getGrade } from './conviction/grade/index.js'
 
 /* ── Live data badge ───────────────────────────────────── */
@@ -64,9 +65,26 @@ function AppInner() {
   const basePositions = useMemo(() => loadOverrides() ?? null, [positionSeed])
 
   const liveVisiblePositions = useMemo(() => {
-    const base = filterByAccount(account)
-    return livePositions.filter(p => base.some(b => b.ticker === p.ticker))
-  }, [account, livePositions])
+    // Use localStorage overrides if available, else hardcoded defaults
+    const source = basePositions ?? POSITIONS
+
+    // Filter by account using position.account field
+    const filtered = account === 'combined'
+      ? source
+      : source.filter(p => {
+          const acc = p.account?.toLowerCase() ?? ''
+          if (account === 'roth')      return acc.includes('roth')
+          if (account === 'brokerage') return acc.includes('brokerage')
+          return true
+        })
+
+    // Apply live prices
+    return filtered.map(pos => ({
+      ...pos,
+      currentPrice: prices[pos.ticker]?.price ?? pos.currentPrice,
+      dayChangePct: prices[pos.ticker]?.changePct ?? pos.dayChangePct ?? null,
+    }))
+  }, [basePositions, account, prices])
 
   const portfolioStats = useMemo(
     () => calcPortfolioStats(liveVisiblePositions),
