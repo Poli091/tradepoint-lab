@@ -413,8 +413,30 @@ async function handleGroq(ticker, type, keys, kv) {
   if (!res.ok) throw new Error(`Groq ${res.status}`)
   const gd = await res.json()
   const text = gd.choices?.[0]?.message?.content || ''
-  const bullets = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^\d+\./.test(l)).map(l => l.replace(/^[-*•]\s*|^\d+\.\s*/, '• '))
-  const data = { ticker: t, type, text, bullets }
+
+  // Try bullet extraction first (for backward compat)
+  const bullets = text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('*') || /^\d+\./.test(l))
+    .map(l => l.replace(/^[-*•]\s*|^\d+\.\s*/, ''))
+    .filter(l => l.length > 10)
+
+  // If no bullets found, use the raw text as a paragraph (new paragraph mode)
+  // The UI handles both: data.bullets (old) and data.text (new paragraph mode)
+  const cleanText = text.trim().replace(/^#+\s+.*\n?/gm, '').trim()  // strip markdown headers
+  // Debug: log what Groq returned
+  console.log(`[Groq/${type}/${t}] raw length: ${text.length}, bullets: ${bullets.length}, cleanText length: ${cleanText.length}`)
+  if (text.length > 0 && cleanText.length === 0) {
+    console.log(`[Groq/${type}/${t}] WARNING: text was stripped to empty. Raw: ${text.slice(0, 200)}`)
+  }
+
+  const data = {
+    ticker: t,
+    type,
+    text:    cleanText.length > 0 ? cleanText : text.trim(), // fallback to unstripped text
+    bullets,
+    rawLength: text.length, // for debugging
+  }
   const meta2 = buildMeta(t, type, ttl, false)
   await kvSet(kv, kvKey, data, ttl, meta2)
   return json({ data, meta: meta2 })
@@ -698,6 +720,37 @@ async function handleSnapshotStats(db) {
   } catch (err) { return json({ error: err.message }, 500) }
 }
 
+
+/* ── GET /api/groq-debug/:ticker/:type — returns raw Groq response ── */
+async function handleGroqDebug(ticker, type, keys, kv) {
+  const t = ticker.toUpperCase()
+  if (!keys.groq) return json({ error: 'No Groq key' }, 401)
+  const fund = await kv.get(`fund:${t}`, 'json').catch(() => null)
+  const ohlcv = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => [])
+  const spyOhlcv = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => [])
+  const priceD = await kv.get(`price:${t}`, 'json').catch(() => null)
+  const score = fund ? computeConviction(fund, ohlcv ?? [], spyOhlcv ?? [], priceD?.price ?? null) : null
+  const prompt = buildPrompt(type || 'moat', t, fund, score)
+  if (!prompt) return json({ error: 'No prompt' }, 400)
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keys.groq}` },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 600, temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }] }),
+  })
+  const gd = await res.json()
+  const rawText = gd.choices?.[0]?.message?.content || ''
+  return json({
+    ticker: t, type: type || 'moat',
+    promptLength: prompt.length,
+    rawText,
+    rawLength: rawText.length,
+    groqStatus: res.status,
+    groqError: gd.error ?? null,
+  })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -747,6 +800,8 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'groq-debug':
+          return await handleGroqDebug(param1, param2, keys, kv)
         case 'snapshots':
           if (!param1) return await handleSnapshotStats(db)
           return await handleGetSnapshots(param1, db)
