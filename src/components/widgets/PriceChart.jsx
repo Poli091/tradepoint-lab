@@ -142,17 +142,21 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
         </div>
       </div>
 
-      {/* ── Ticker selector ── */}
-      <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+      {/* ── Ticker selector — horizontal scroll ── */}
+      <div style={{
+        display:'flex', gap:4, overflowX:'auto', paddingBottom:4,
+        scrollbarWidth:'none', msOverflowStyle:'none',
+      }}>
         {POSITIONS.map(p => {
           const active = ticker === p.ticker
           return (
             <button key={p.ticker} onClick={() => onTickerChange(p.ticker)} style={{
-              padding:'3px 9px', borderRadius:5, cursor:'pointer',
+              padding:'5px 10px', borderRadius:6, cursor:'pointer', flexShrink:0,
               border:`1px solid ${active ? color : 'var(--border)'}`,
-              background: active ? 'var(--chart-dim)' : 'transparent',
-              color:      active ? color               : 'var(--txt-muted)',
-              fontFamily:'var(--mono)', fontSize:11, fontWeight:600, transition:'all 0.11s',
+              background: active ? `${color}18` : 'transparent',
+              color:      active ? color          : 'var(--txt-muted)',
+              fontFamily:'var(--mono)', fontSize:11, fontWeight: active ? 700 : 500,
+              transition:'all 0.11s', whiteSpace:'nowrap',
             }}>{p.ticker}</button>
           )
         })}

@@ -71,7 +71,7 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
           fontFamily:'var(--mono)', fontSize:11, fontWeight:600,
           color: isUp ? 'var(--green)' : 'var(--red)', marginTop:2,
         }}>
-          {isUp ? '▲' : '▼'} {fUSD(Math.abs(dayChange))} ({fPct(Math.abs(dayPct))}) today
+          {isUp ? '+' : '-'}{fUSD(Math.abs(dayChange))} ({isUp ? '+' : '-'}{fPct(Math.abs(dayPct))}) today
         </div>
       </div>
 

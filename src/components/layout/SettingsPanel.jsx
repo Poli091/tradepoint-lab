@@ -11,6 +11,8 @@ import { X, Eye, EyeOff, Check, Trash2, Globe, Key, Link, CheckCircle, XCircle }
 import { useLang } from '../../context/LanguageContext.jsx'
 import { LS_KEYS } from '../../utils/api/config.js'
 import { getWorkerUrl, setWorkerUrl, workerAPI } from '../../utils/api/worker.js'
+import { WATCHLIST } from '../../data/watchlist.js'
+import { runConviction } from '../../conviction/index.js'
 
 
 /* ── Worker URL field ──────────────────────────────────── */
@@ -231,6 +233,8 @@ export default function SettingsPanel({ open, onClose }) {
   const [clearConfirm, setClearConfirm] = useState(false)
   const [allSavedMsg,  setAllSavedMsg]  = useState(false)
   const [clearedMsg,   setClearedMsg]   = useState(false)
+  const [scanning,     setScanning]     = useState(false)
+  const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 })
   const overlayRef = useRef(null)
 
   /* Close on Escape */
@@ -253,6 +257,30 @@ export default function SettingsPanel({ open, onClose }) {
        by re-reading and re-persisting current localStorage values. */
     setAllSavedMsg(true)
     setTimeout(() => { setAllSavedMsg(false); onClose() }, 1400)
+  }
+
+  const handleScanWatchlist = async () => {
+    setScanning(true)
+    setScanProgress({ done: 0, total: WATCHLIST.length })
+    try {
+      const spyRes = await workerAPI.ohlcv('SPY', '1Y').catch(() => null)
+      const spyOhlcv = spyRes?.data ?? []
+      for (let i = 0; i < WATCHLIST.length; i++) {
+        const item = WATCHLIST[i]
+        try {
+          const [fundRes, ohlcvRes] = await Promise.all([
+            workerAPI.fundamentals(item.ticker),
+            workerAPI.ohlcv(item.ticker, '1Y'),
+          ])
+          if (fundRes?.data) {
+            const result = runConviction({ fundamentals: fundRes.data, ohlcv: ohlcvRes?.data ?? [], spyOhlcv, prices: {} })
+            await workerAPI.saveAnalysis(item.ticker, result).catch(() => {})
+          }
+        } catch(e) { console.warn('[Scan watchlist]', item.ticker, e.message) }
+        setScanProgress({ done: i + 1, total: WATCHLIST.length })
+        if (i < WATCHLIST.length - 1) await new Promise(r => setTimeout(r, 300))
+      }
+    } finally { setScanning(false) }
   }
 
   const handleClearAll = () => {
@@ -392,6 +420,22 @@ export default function SettingsPanel({ open, onClose }) {
             transition: 'all 0.18s',
           }}>
             {allSavedMsg ? t.allSaved : t.btnSaveAll}
+          </button>
+
+          {/* Scan watchlist */}
+          <button onClick={handleScanWatchlist} disabled={scanning} style={{
+            padding: '10px 14px', borderRadius: 8,
+            border: '1px solid var(--border)',
+            cursor: scanning ? 'wait' : 'pointer',
+            fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
+            background: scanning ? 'var(--accent-dim)' : 'transparent',
+            color: scanning ? 'var(--accent)' : 'var(--txt-muted)',
+            transition: 'all 0.18s', whiteSpace: 'nowrap',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {scanning
+              ? `Scanning ${scanProgress.done}/${scanProgress.total}…`
+              : `⚡ Scan watchlist`}
           </button>
 
           {/* Clear all keys */}
