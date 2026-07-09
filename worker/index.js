@@ -566,6 +566,40 @@ async function handleGetAllHistory(db) {
 }
 
 
+
+/* ── GET /api/news/:ticker — company news (8h cache) ── */
+async function handleNews(ticker, keys, kv) {
+  const t = ticker.toUpperCase()
+  const cacheKey = `news:${t}`
+  const { value, metadata } = await kvGet(kv, cacheKey)
+  if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
+  if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
+
+  const now  = new Date()
+  const from = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const to   = now.toISOString().split('T')[0]
+
+  const res = await fetch(
+    `https://finnhub.io/api/v1/company-news?symbol=${t}&from=${from}&to=${to}`,
+    { headers: { 'X-Finnhub-Token': keys.finnhub } }
+  )
+  if (!res.ok) return json({ error: `Finnhub news failed: ${res.status}` }, 502)
+
+  const raw      = await res.json()
+  const articles = (raw || []).slice(0, 8).map(a => ({
+    headline: a.headline,
+    source:   a.source,
+    url:      a.url,
+    datetime: a.datetime,
+  }))
+
+  await kvPut(kv, cacheKey, articles, {
+    expirationTtl: TTL.NEWS,
+    metadata: { fetchedAt: Date.now(), expiresAt: Date.now() + TTL.NEWS * 1000 },
+  })
+  return json({ data: articles, meta: { fromCache: false } })
+}
+
 /* ════════════════════════════════════════════════════════════
    CRON — WEEKLY SNAPSHOT ENGINE
    Runs every Sunday via Cloudflare Cron Trigger.
@@ -724,6 +758,8 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'news':
+          return await handleNews(param1, keys, kv)
         case 'snapshots':
           if (!param1) return await handleSnapshotStats(db)
           return await handleGetSnapshots(param1, db)

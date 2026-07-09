@@ -81,6 +81,9 @@ export const workerAPI = {
     } catch { return null }
   },
 
+  /** Company news (8h KV cache). */
+  news: (ticker) => workerGet(`/api/news/${ticker}`),
+
   /** Get analysis history for a ticker from D1. */
   getHistory: (ticker, limit = 90) =>
     workerGet(`/api/history/${ticker}?limit=${limit}`),

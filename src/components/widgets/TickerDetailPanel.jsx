@@ -13,7 +13,7 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 import { useConviction }  from '../../hooks/useConviction.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
@@ -137,6 +137,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [aiData,    setAiData]    = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
+  const [news,      setNews]      = useState(null)
 
   const generateAI = async () => {
     setAiLoading(true); setAiError(null)
@@ -160,6 +161,22 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
       setAiLoading(false)
     }
   }
+
+  // Auto-load AI analysis when AI tab is opened (uses KV cache — instant if cached)
+  useEffect(() => {
+    if (activeTab === 'ai' && !aiData && !aiLoading && result) {
+      generateAI()
+    }
+  }, [activeTab, result]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-load news when fundamentals tab opens
+  useEffect(() => {
+    if (activeTab === 'fundamentals' && !news && ticker) {
+      workerAPI.news(ticker)
+        .then(r => setNews(r?.data ?? []))
+        .catch(() => setNews([]))
+    }
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -438,12 +455,70 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     + FMP (Consensus Wall St. target)
                     + Alpaca (OHLCV → EMA · RSI · Relative Strength)
                   </div>
+                  {/* ── NEWS ── */}
+                  {news && news.length > 0 && (
+                    <>
+                      <SectionHeader icon={TrendingUp} label="Recent News" />
+                      {news.map((item, i) => {
+                        const date = new Date(item.datetime * 1000)
+                        const daysAgo = Math.floor((Date.now() - date) / 86400000)
+                        const timeLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`
+                        return (
+                          <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:'block', marginBottom:8, textDecoration:'none',
+                              padding:'8px 10px', borderRadius:6, background:'var(--surface-up)',
+                              transition:'background 0.1s', cursor:'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.background='var(--surface-hov)'}
+                            onMouseLeave={e => e.currentTarget.style.background='var(--surface-up)'}>
+                            <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5, marginBottom:3 }}>
+                              {item.headline}
+                            </div>
+                            <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--txt-muted)' }}>
+                              <span>{item.source}</span>
+                              <span>·</span>
+                              <span>{timeLabel}</span>
+                            </div>
+                          </a>
+                        )
+                      })}
+                    </>
+                  )}
+
                   <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
                   </div>
 
                 </>
               )}
+                  {/* ── NEWS ── */}
+                  {news && news.length > 0 && (
+                    <>
+                      <SectionHeader icon={TrendingUp} label="Recent News" />
+                      {news.map((item, i) => {
+                        const date = new Date(item.datetime * 1000)
+                        const daysAgo = Math.floor((Date.now() - date) / 86400000)
+                        const timeLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`
+                        return (
+                          <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:'block', marginBottom:8, textDecoration:'none',
+                              padding:'8px 10px', borderRadius:6, background:'var(--surface-up)',
+                              transition:'background 0.1s', cursor:'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.background='var(--surface-hov)'}
+                            onMouseLeave={e => e.currentTarget.style.background='var(--surface-up)'}>
+                            <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5, marginBottom:3 }}>
+                              {item.headline}
+                            </div>
+                            <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--txt-muted)' }}>
+                              <span>{item.source}</span>
+                              <span>·</span>
+                              <span>{timeLabel}</span>
+                            </div>
+                          </a>
+                        )
+                      })}
+                    </>
+                  )}
+
                   <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
                   </div>

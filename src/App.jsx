@@ -18,6 +18,8 @@ import CalendarView               from './views/CalendarView.jsx'
 import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
+import { loadOverrides }          from './utils/positionsStorage.js'
+import PositionEditor             from './components/widgets/PositionEditor.jsx'
 import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { WATCHLIST }             from './data/watchlist.js'
 import { useMarketData }          from './hooks/useMarketData.js'
@@ -52,6 +54,9 @@ function AppInner() {
 
   const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
 
+  // Use localStorage overrides if available (bridge before multi-user D1)
+  const basePositions = useMemo(() => loadOverrides() ?? null, [positionSeed])
+
   const liveVisiblePositions = useMemo(() => {
     const base = filterByAccount(account)
     return livePositions.filter(p => base.some(b => b.ticker === p.ticker))
@@ -71,7 +76,9 @@ function AppInner() {
   /* ── Conviction scores for watchlist ── */
   const { results: watchlistResults } = useAllConvictions(WATCHLIST, prices)
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [editorOpen,    setEditorOpen]    = useState(false)
+  const [positionSeed,  setPositionSeed]  = useState(0)  // increment to reload positions
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -95,14 +102,23 @@ function AppInner() {
         )
       case 'positions':
         return (
-          <PositionsView
-            visiblePositions={liveVisiblePositions}
-            sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
-            ticker={ticker} setTicker={setTicker}
-            convictionResults={convictionResults}
-            convictionLoading={convictionLoading}
-            watchlistResults={watchlistResults}
-          />
+          <>
+            <PositionsView
+              visiblePositions={liveVisiblePositions}
+              sortBy={sortBy} sortDir={sortDir} handleSort={handleSort}
+              ticker={ticker} setTicker={setTicker}
+              convictionResults={convictionResults}
+              convictionLoading={convictionLoading}
+              prices={prices}
+              onManagePositions={() => setEditorOpen(true)}
+            />
+            {editorOpen && (
+              <PositionEditor
+                onClose={() => setEditorOpen(false)}
+                onSaved={() => setPositionSeed(s => s + 1)}
+              />
+            )}
+          </>
         )
       case 'watchlist':
         return <WatchlistView convictionResults={watchlistResults} prices={prices} />

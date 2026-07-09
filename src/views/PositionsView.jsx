@@ -74,6 +74,7 @@ export default function PositionsView({
   ticker, setTicker,
   convictionResults = {}, convictionLoading = false,
   prices = {},
+  onManagePositions,
 }) {
   const [detailOpen, setDetailOpen] = useState(false)
 
@@ -131,9 +132,17 @@ export default function PositionsView({
         <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--txt)', margin: 0 }}>
           All positions
         </h1>
-        <span style={{ fontSize: 11, color: 'var(--txt-muted)', fontFamily: 'var(--mono)' }}>
-          {visiblePositions.length} holdings
-        </span>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize: 11, color: 'var(--txt-muted)', fontFamily: 'var(--mono)' }}>
+            {visiblePositions.length} holdings
+          </span>
+          <button onClick={onManagePositions} style={{
+            padding:'4px 12px', borderRadius:6,
+            border:'1px solid var(--border)', background:'transparent',
+            cursor:'pointer', fontSize:11, color:'var(--accent)',
+            fontWeight:600,
+          }}>⚙ Manage</button>
+        </div>
       </div>
 
       {/* ── Summary bar ── */}
