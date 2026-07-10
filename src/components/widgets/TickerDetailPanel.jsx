@@ -24,6 +24,9 @@ import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
 import { workerAPI }       from '../../utils/api/worker.js'
 import { cache }          from '../../utils/cache.js'
 
+// Grade rank for alignment calculation — module-level to avoid duplicate naming post-minification
+const GRADE_RANK_MAP = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
+
 /* ── Color helpers (values in % form from Finnhub) ─────── */
 const growthColor  = v => v == null ? 'var(--txt-muted)' : v >= 20 ? 'var(--green)' : v >= 5 ? 'var(--amber)' : 'var(--red)'
 const marginColor  = v => v == null ? 'var(--txt-muted)' : v >= 30 ? 'var(--green)' : v >= 10 ? 'var(--amber)' : 'var(--red)'
@@ -141,8 +144,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   // Pre-compute alignment value for Decision Engine
   const alignment_ = useMemo(() => {
     if (!result || !altResult) return null
-    const RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
-    const ltR = RANK[result.grade]??2, swR = RANK[altResult.grade]??2
+    const ltR = GRADE_RANK_MAP[result.grade]??2, swR = GRADE_RANK_MAP[altResult.grade]??2
     const ceiling   = [100,75,50,25,0][Math.min(Math.abs(ltR-swR),4)]
     const similarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
     return Math.min(similarity, ceiling)
@@ -266,9 +268,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {mode === 'long-term' && altResult && result && (() => {
-              const RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
-              const ltR = RANK[result.grade]    ?? 2
-              const swR = RANK[altResult.grade] ?? 2
+              const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
+              const swR = GRADE_RANK_MAP[altResult.grade] ?? 2
               const dist = Math.abs(ltR - swR)
 
               // Agreement ceiling — grade distance determines max possible alignment
