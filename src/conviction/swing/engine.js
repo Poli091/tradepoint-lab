@@ -28,9 +28,9 @@ function calcEMA(prices, period) {
 
 function calcRSI(closes, period=14) {
   if (!closes?.length || closes.length < period+1) return null
-  const sl=closes.slice(-(period+1)); let g=0,l=0
-  for (let i=1;i<sl.length;i++){const d=sl[i]-sl[i-1];d>0?g+=d:l-=d}
-  return l===0?100:100-(100/(1+(g/period)/(l/period)))
+  const sl=closes.slice(-(period+1)); let gain=0,loss=0
+  for (let i=1;i<sl.length;i++){const d=sl[i]-sl[i-1];d>0?gain+=d:loss-=d}
+  return loss===0?100:100-(100/(1+(gain/period)/(loss/period)))
 }
 
 function calcATR(ohlcv, period=14) {

@@ -232,16 +232,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-load Market Intelligence when market tab opens
-  useEffect(() => {
-    if (activeTab === 'market' && !marketIntel && !miLoading && ticker) {
-      setMiLoading(true)
-      workerAPI.marketIntelligence(ticker)
-        .then(r => setMarketIntel(r?.data ?? null))
-        .catch(() => setMarketIntel(null))
-        .finally(() => setMiLoading(false))
-    }
-  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load news when fundamentals tab opens
   useEffect(() => {
