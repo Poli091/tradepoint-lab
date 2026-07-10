@@ -21,6 +21,11 @@ const gc = g => GRADE_COLOR[g] ?? 'var(--txt-muted)'
 
 const GRADE_RANK_MAP = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
 
+// Comparison thresholds — change here only, not inline
+// Boundary: strictly > (not >=), so delta=3 is "comparable", delta=4 is "LT edge"
+const LT_EDGE_THRESHOLD     = 3   // pts difference to declare a long-term edge
+const TIMING_EDGE_THRESHOLD = 2   // pts difference to declare a timing edge
+
 const COMPS = [
   { key:'growth',    label:'Growth',    max:25 },
   { key:'quality',   label:'Quality',   max:20 },
@@ -265,7 +270,7 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
   try { swA = runSwingConviction(rA.fundamentalsData, rA.ohlcv??[], rA.spyOhlcv??[]) } catch {}
   try { swB = runSwingConviction(rB.fundamentalsData, rB.ohlcv??[], rB.spyOhlcv??[]) } catch {}
   const swDelta = (swA?.finalScore??0) - (swB?.finalScore??0)
-  const timingEdgeTicker = swDelta > 2 ? tA : swDelta < -2 ? tB : null
+  const timingEdgeTicker = swDelta > TIMING_EDGE_THRESHOLD ? tA : swDelta < -TIMING_EDGE_THRESHOLD ? tB : null
   const timingMargin = Math.abs(swDelta)
 
   // Valuation Edge
@@ -343,9 +348,9 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
 
       {/* Conclusion — 6 deterministic states */}
       {(() => {
-        // Thresholds: LT >3 pts = edge, Swing >2 pts = timing edge
-        const ltClear     = Math.abs(ltDelta) > 3
-        const timingClear = Math.abs(swDelta) > 2
+        // Strictly > threshold (delta=LT_EDGE_THRESHOLD = comparable, delta=LT_EDGE_THRESHOLD+1 = edge)
+        const ltClear     = Math.abs(ltDelta) > LT_EDGE_THRESHOLD
+        const timingClear = Math.abs(swDelta) > TIMING_EDGE_THRESHOLD
         const ltWinner    = ltEdgeTicker
         const swWinner    = timingEdgeTicker
         const ltLoserColor  = gc(ltWinner === tA ? rB.grade : rA.grade)
@@ -423,8 +428,8 @@ export default function CompareView() {
   try { if (resultA) swA = runSwingConviction(resultA.fundamentalsData, resultA.ohlcv??[], resultA.spyOhlcv??[]) } catch {}
   try { if (resultB) swB = runSwingConviction(resultB.fundamentalsData, resultB.ohlcv??[], resultB.spyOhlcv??[]) } catch {}
   const swDelta      = (swA?.finalScore??0) - (swB?.finalScore??0)
-  const timingEdgeA  = resultA && resultB && swDelta > 2
-  const timingEdgeB  = resultA && resultB && swDelta < -2
+  const timingEdgeA  = resultA && resultB && swDelta > TIMING_EDGE_THRESHOLD
+  const timingEdgeB  = resultA && resultB && swDelta < -TIMING_EDGE_THRESHOLD
 
   return (
     <div style={{padding:'16px',maxWidth:720,margin:'0 auto'}}>
