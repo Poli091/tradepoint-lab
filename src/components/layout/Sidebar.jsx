@@ -64,7 +64,8 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     { id: 'watchlist',   label: t.navWatchlist,      Icon: Eye             },
     { id: 'scan',        label: 'Scanner',            Icon: Search          },
     { id: 'calendar',    label: t.navCalendar,        Icon: CalendarDays    },
-    { id: 'diagnostics', label: 'Model Diagnostics',  Icon: BarChart3,  desktopOnly: true },
+    { id: 'insights',    label: 'Portfolio Insights', Icon: PieChart,   desktopOnly: true },
+  { id: 'diagnostics', label: 'Model Diagnostics',  Icon: BarChart3,  desktopOnly: true },
   ]
   const MOBILE_NAV = NAV_ITEMS.filter(n => !n.desktopOnly)
 

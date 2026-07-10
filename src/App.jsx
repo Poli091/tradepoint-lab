@@ -16,6 +16,7 @@ import PositionsView              from './views/PositionsView.jsx'
 import WatchlistView              from './views/WatchlistView.jsx'
 import CalendarView               from './views/CalendarView.jsx'
 import DiagnosticsView            from './views/DiagnosticsView.jsx'
+import PortfolioInsightsView       from './views/PortfolioInsightsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { loadOverrides }          from './utils/positionsStorage.js'
@@ -156,6 +157,14 @@ function AppInner() {
         return <CalendarView convictionResults={convictionResults} prices={prices} />
       case 'scan':
         return <ScanView />
+      case 'insights':
+        return (
+          <PortfolioInsightsView
+            visiblePositions={liveVisiblePositions}
+            convictionResults={convictionResults}
+            prices={prices}
+          />
+        )
       case 'diagnostics':
         return (
           <DiagnosticsView
