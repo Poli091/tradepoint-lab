@@ -262,15 +262,35 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 ltBull !== swBull           ? '🟠 Counter-Trend' :
                                               '⚫ Strong Divergence'
 
-              // Strategy phrase
-              const strategy =
-                bothBull                    ? 'Suitable for accumulation' :
-                ltBull && !swBull && !swBear? 'Wait for a better entry' :
-                ltBull && swBear            ? 'Wait for technical recovery' :
-                !ltBull && !ltBear && swBull? 'Momentum play — watch fundamentals' :
-                ltBear && swBull            ? 'Short-term trade only' :
-                bothBear                    ? 'Consider reducing position' :
-                                              'Monitor — no clear signal'
+              // Strategy phrase — grade-pair lookup table (no conditional ambiguity)
+              const STRATEGY = {
+                'STRONG BUY|STRONG BUY': 'Suitable for accumulation',
+                'STRONG BUY|BUY':        'Suitable for accumulation',
+                'BUY|STRONG BUY':        'Suitable for accumulation',
+                'BUY|BUY':               'Suitable for accumulation',
+                'STRONG BUY|HOLD':       'Accumulate on pullbacks',
+                'BUY|HOLD':              'Accumulate on pullbacks',
+                'STRONG BUY|SELL':       'Wait for technical recovery',
+                'BUY|SELL':              'Wait for technical recovery',
+                'STRONG BUY|STRONG SELL':'Wait for technical recovery',
+                'BUY|STRONG SELL':       'Wait for technical recovery',
+                'HOLD|STRONG BUY':       'Swing opportunity',
+                'HOLD|BUY':              'Swing opportunity',
+                'HOLD|HOLD':             'Monitor for confirmation',
+                'HOLD|SELL':             'Weakening thesis',
+                'HOLD|STRONG SELL':      'Weakening thesis',
+                'SELL|STRONG BUY':       'Counter-trend trade only',
+                'SELL|BUY':              'Counter-trend trade only',
+                'SELL|HOLD':             'Avoid new positions',
+                'SELL|SELL':             'Consider reducing exposure',
+                'SELL|STRONG SELL':      'Consider reducing exposure',
+                'STRONG SELL|STRONG BUY':'Counter-trend trade only',
+                'STRONG SELL|BUY':       'Counter-trend trade only',
+                'STRONG SELL|HOLD':      'Avoid new positions',
+                'STRONG SELL|SELL':      'High conviction bearish',
+                'STRONG SELL|STRONG SELL':'High conviction bearish',
+              }
+              const strategy = STRATEGY[`${result.grade}|${altResult.grade}`] ?? 'Monitor — no clear signal'
 
               const color =
                 alignment >= 70 && bothBull ? 'var(--green)' :
