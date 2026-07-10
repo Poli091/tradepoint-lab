@@ -139,6 +139,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [aiError,   setAiError]   = useState(null)
   const [news,      setNews]      = useState(null)
   const [scoreHistory, setScoreHistory] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const generateAI = async () => {
     setAiLoading(true); setAiError(null)
@@ -172,10 +173,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   // Load score history from D1 when Score tab opens
   useEffect(() => {
-    if (activeTab === 'score' && !scoreHistory && ticker) {
+    if (activeTab === 'score' && !scoreHistory && !historyLoading && ticker) {
+      setHistoryLoading(true)
       workerAPI.getHistory(ticker)
-        .then(r => setScoreHistory(r?.history ?? []))
+        .then(r => setScoreHistory(r?.snapshots ?? []))
         .catch(() => setScoreHistory([]))
+        .finally(() => setHistoryLoading(false))
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -332,47 +335,159 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               </div>
 
               {/* ══ SCORE HISTORY ══ */}
-              {scoreHistory && scoreHistory.length >= 2 && (() => {
-                const pts   = [...scoreHistory].reverse()
-                const first = pts[0]?.final_score ?? 0
-                const last  = pts[pts.length-1]?.final_score ?? 0
-                const delta = last - first
-                const max   = Math.max(...pts.map(p => p.final_score ?? 0), 1)
-                const h     = 32
-                const w     = 160
+              {(() => {
+                if (historyLoading) return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px',
+                    marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
+                    Loading score history…
+                  </div>
+                )
+                if (!scoreHistory || scoreHistory.length === 0) return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px',
+                    marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
+                    No snapshots yet — first snapshot runs next Sunday via Cron.
+                  </div>
+                )
+
+                // Chronological order (oldest first for chart)
+                const pts = [...scoreHistory].reverse()
+                const latest = pts[pts.length - 1]
+                const prev   = pts[pts.length - 2]
+                const first  = pts[0]
+                const delta  = latest && first ? (latest.score ?? 0) - (first.score ?? 0) : 0
+                const weekDelta = latest && prev ? (latest.score ?? 0) - (prev.score ?? 0) : null
+
+                // Component deltas (latest vs previous)
+                const COMP_KEYS = [
+                  { key:'growth_score',    label:'Growth',    max:25 },
+                  { key:'quality_score',   label:'Quality',   max:20 },
+                  { key:'strength_score',  label:'Strength',  max:15 },
+                  { key:'valuation_score', label:'Valuation', max:15 },
+                  { key:'technical_score', label:'Technical', max:15 },
+                ]
+
                 return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8,
-                    padding:'10px 14px', marginBottom:10,
-                    display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <div>
-                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:4, fontWeight:600,
-                        textTransform:'uppercase', letterSpacing:'0.06em' }}>Score trend</div>
-                      <div style={{ fontSize:11, color: delta >= 0 ? 'var(--green)' : 'var(--red)', fontWeight:700 }}>
-                        {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)} pts
-                        <span style={{ color:'var(--txt-muted)', fontWeight:400, marginLeft:6 }}>
-                          ({pts.length} snapshots)
-                        </span>
+                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px', marginBottom:10 }}>
+                    {/* Header */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em' }}>
+                        Score History · {pts.length} snapshot{pts.length !== 1 ? 's' : ''}
+                      </div>
+                      <div style={{ display:'flex', gap:12, fontSize:11 }}>
+                        {weekDelta !== null && (
+                          <span style={{ color: weekDelta > 0 ? 'var(--green)' : weekDelta < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight:700 }}>
+                            {weekDelta > 0 ? '↑' : weekDelta < 0 ? '↓' : '→'} {weekDelta > 0 ? '+' : ''}{weekDelta} this week
+                          </span>
+                        )}
+                        {pts.length > 1 && (
+                          <span style={{ color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight:600 }}>
+                            {delta > 0 ? '+' : ''}{delta} total
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <svg width={w} height={h} style={{ overflow:'visible' }}>
-                      {pts.length >= 2 && pts.map((p, i) => {
-                        if (i === 0) return null
-                        const x1 = ((i-1)/(pts.length-1))*w
-                        const x2 = (i/(pts.length-1))*w
-                        const y1 = h - ((pts[i-1].final_score??0)/max)*h
-                        const y2 = h - ((p.final_score??0)/max)*h
-                        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
-                          stroke="var(--accent)" strokeWidth={1.5} />
-                      })}
-                      {pts.map((p, i) => (
-                        <circle key={i}
-                          cx={(i/(pts.length-1))*w}
-                          cy={h-((p.final_score??0)/max)*h}
-                          r={i===pts.length-1?3:2}
-                          fill={i===pts.length-1?'var(--accent)':'var(--surface)'}
-                          stroke="var(--accent)" strokeWidth={1.5} />
-                      ))}
-                    </svg>
+
+                    {/* Chart */}
+                    {pts.length >= 2 && (() => {
+                      const scores = pts.map(p => p.score ?? 0)
+                      const minS   = Math.max(0, Math.min(...scores) - 5)
+                      const maxS   = Math.min(100, Math.max(...scores) + 5)
+                      const W = 280, H = 52
+                      const x = i => (i / (pts.length - 1)) * W
+                      const y = s => H - ((s - minS) / (maxS - minS)) * H
+
+                      // Grade color for latest point
+                      const latestColor = result.grade === 'STRONG BUY' ? '#22C55E'
+                        : result.grade === 'BUY' ? '#86EFAC'
+                        : result.grade === 'HOLD' ? '#FBBF24'
+                        : result.grade === 'SELL' ? '#F97316' : '#EF4444'
+
+                      return (
+                        <div style={{ marginBottom:10, overflowX:'auto' }}>
+                          <svg width={W} height={H + 16} style={{ display:'block' }}>
+                            {/* Grade threshold lines */}
+                            {[{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}]
+                              .filter(t => t.v > minS && t.v < maxS)
+                              .map(t => (
+                                <line key={t.v} x1={0} y1={y(t.v)} x2={W} y2={y(t.v)}
+                                  stroke={t.c} strokeWidth={0.5} strokeDasharray="3 3" opacity={0.4} />
+                              ))}
+
+                            {/* Score line */}
+                            {pts.slice(1).map((p, i) => (
+                              <line key={i}
+                                x1={x(i)} y1={y(pts[i].score ?? 0)}
+                                x2={x(i+1)} y2={y(p.score ?? 0)}
+                                stroke="var(--accent)" strokeWidth={1.5} />
+                            ))}
+
+                            {/* Data points */}
+                            {pts.map((p, i) => (
+                              <g key={i}>
+                                <circle cx={x(i)} cy={y(p.score ?? 0)}
+                                  r={i === pts.length-1 ? 4 : 2.5}
+                                  fill={i === pts.length-1 ? latestColor : 'var(--surface)'}
+                                  stroke={i === pts.length-1 ? latestColor : 'var(--accent)'}
+                                  strokeWidth={1.5} />
+                                {i === 0 || i === pts.length-1 ? (
+                                  <text x={x(i)} y={y(p.score ?? 0) - 7}
+                                    textAnchor={i === 0 ? 'start' : 'end'}
+                                    fontSize={8} fill="var(--txt-muted)">
+                                    {p.score}
+                                  </text>
+                                ) : null}
+                              </g>
+                            ))}
+
+                            {/* Date labels */}
+                            {[0, pts.length-1].map(i => (
+                              <text key={i} x={x(i)} y={H + 13}
+                                textAnchor={i === 0 ? 'start' : 'end'}
+                                fontSize={8} fill="var(--txt-muted)">
+                                {new Date(pts[i].snapshot_date).toLocaleDateString('en-US', {month:'short', day:'numeric'})}
+                              </text>
+                            ))}
+                          </svg>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Component deltas (latest vs previous) */}
+                    {prev && (
+                      <div>
+                        <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
+                          textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
+                          Week-over-week component change
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                          {COMP_KEYS.map(c => {
+                            const curr = latest[c.key] ?? 0
+                            const old  = prev[c.key] ?? 0
+                            const d    = curr - old
+                            return (
+                              <div key={c.key} style={{ display:'flex', alignItems:'center',
+                                justifyContent:'space-between', fontSize:10, gap:4 }}>
+                                <span style={{ color:'var(--txt-muted)' }}>{c.label}</span>
+                                <span style={{ fontFamily:'var(--mono)',
+                                  color: d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--txt-muted)',
+                                  fontWeight: d !== 0 ? 700 : 400 }}>
+                                  {d > 0 ? '+' : ''}{d !== 0 ? d : '—'}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Single snapshot message */}
+                    {pts.length === 1 && (
+                      <div style={{ fontSize:10, color:'var(--txt-muted)' }}>
+                        First snapshot: {new Date(pts[0].snapshot_date).toLocaleDateString('en-US', {month:'long', day:'numeric'})}
+                        · Next update Sunday
+                      </div>
+                    )}
                   </div>
                 )
               })()}

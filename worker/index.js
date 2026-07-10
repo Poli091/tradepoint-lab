@@ -348,9 +348,9 @@ Think like a debugger adding a comment above a function that computed an unexpec
 
   const RULES = `Rules:
 - 2-3 sentences maximum, plain and direct
-- Never repeat numbers already in the trace unless it adds interpretive value
-- Never say "strong", "weak", "excellent" based on your opinion — only reflect the score level
-- Never invent causation ("earnings reduce D/E") — use direction only ("if D/E were to improve")
+- Be direct and affirmative: "Quality scores well because ROE is X%" not "Quality suggests the company may have..."
+- Never use: "suggests", "could potentially", "may be able", "this indicates that"
+- Never repeat numbers already in the trace unless it adds interpretive value  
 - Reference scoring buckets not invented targets: "into a higher scoring range" not "below 40x"
 - Never recommend buying or selling`
 
@@ -626,9 +626,28 @@ async function handleWeeklySnapshot(env) {
   const today = new Date().toISOString().split('T')[0]
   console.log(`[Cron] Starting weekly snapshot — ${today}`)
 
+  // ── Save SPY as benchmark (price only, no conviction score) ──────────
+  try {
+    const spyOhlcvRaw = await kv.get('ohlcv:SPY:1Y', 'json') ?? []
+    const spyPriceD   = await kv.get('price:SPY', 'json')
+    const spyPrice    = spyPriceD?.price ?? (spyOhlcvRaw.length ? spyOhlcvRaw[spyOhlcvRaw.length-1].price : null)
+    if (spyPrice) {
+      await db.prepare(`
+        INSERT OR REPLACE INTO snapshots (
+          ticker, snapshot_date, price, score, grade,
+          growth_score, quality_score, strength_score, valuation_score, technical_score,
+          model_version
+        ) VALUES ('SPY', ?, ?, null, 'BENCHMARK', null, null, null, null, null, 'benchmark')
+      `).bind(today, spyPrice).run()
+      console.log(`[Cron] SPY benchmark saved — price: $${spyPrice}`)
+    }
+  } catch (err) {
+    console.error('[Cron] SPY benchmark error:', err.message)
+  }
+
   // List all tickers with cached fundamentals (90d TTL)
   const listed = await kv.list({ prefix: 'fund:' })
-  const tickers = listed.keys.map(k => k.name.replace('fund:', ''))
+  const tickers = listed.keys.map(k => k.name.replace('fund:', '')).filter(t => t !== 'SPY')
   if (!tickers.length) { console.log('[Cron] No cached fundamentals found'); return }
 
   // Fetch SPY OHLCV once — shared baseline for RS calculation
