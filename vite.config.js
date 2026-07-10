@@ -6,10 +6,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    // Fix TDZ issues caused by module-level const renaming in minification
     rollupOptions: {
       output: {
-        // Keep module names separate to avoid cross-module TDZ collisions
         manualChunks: {
           'conviction': [
             './src/conviction/grade/index.js',

@@ -10,10 +10,10 @@
  *       When ONNX arrives: Decision Strength (rules) + Prediction Confidence (ML).
  */
 
-const _GRADE_RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
+const GRADE_RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
 
 /* ── Action phrases ──────────────────────────────────── */
-const _ACTION_MATRIX = {
+const ACTION_MATRIX = {
   'STRONG BUY|STRONG BUY': 'Strong accumulation signal',
   'STRONG BUY|BUY':         'Strong accumulation signal',
   'BUY|STRONG BUY':         'Suitable for accumulation',
@@ -40,13 +40,13 @@ const _ACTION_MATRIX = {
   'STRONG SELL|SELL':       'Avoid new positions',
   'STRONG SELL|STRONG SELL':'Avoid new positions',
 }
-const _ACTION_LT_ONLY = {
+const ACTION_LT_ONLY = {
   'STRONG BUY':'Suitable for accumulation','BUY':'Suitable for accumulation',
   'HOLD':'Monitor position','SELL':'Reduce exposure','STRONG SELL':'Avoid new positions',
 }
 
 /* ── Investment Phase ────────────────────────────────── */
-const _PHASE_MATRIX = {
+const PHASE_MATRIX = {
   'STRONG BUY|STRONG BUY':'Accumulation', 'STRONG BUY|BUY':'Accumulation',
   'BUY|STRONG BUY':'Accumulation',        'BUY|BUY':'Accumulation',
   'STRONG BUY|HOLD':'Selective Accumulation','BUY|HOLD':'Selective Accumulation',
@@ -62,7 +62,7 @@ const _PHASE_MATRIX = {
   'STRONG SELL|HOLD':'Avoidance',         'STRONG SELL|SELL':'Avoidance',
   'STRONG SELL|STRONG SELL':'Avoidance',
 }
-const _PHASE_LT_ONLY = {
+const PHASE_LT_ONLY = {
   'STRONG BUY':'Accumulation','BUY':'Accumulation',
   'HOLD':'Monitoring','SELL':'Distribution','STRONG SELL':'Avoidance',
 }
@@ -80,8 +80,8 @@ function analystSentiment(fund) {
 
 /* ── Decision Strength (evidence quality, not probability) ── */
 function calcStrength(ltResult, swResult, alignment) {
-  const ltR  = _GRADE_RANK[ltResult?.grade]??2
-  const swR  = swResult?(_GRADE_RANK[swResult.grade]??2):null
+  const ltR  = GRADE_RANK[ltResult?.grade]??2
+  const swR  = swResult?(GRADE_RANK[swResult.grade]??2):null
   const fund = ltResult?.fundamentalsData
   const analysts = analystSentiment(fund)
 
@@ -97,8 +97,8 @@ function calcStrength(ltResult, swResult, alignment) {
 
 /* ── Primary driver ──────────────────────────────────── */
 function primaryDriver(ltResult, swResult, alignment) {
-  const ltR = _GRADE_RANK[ltResult?.grade]??2
-  const swR = swResult?(_GRADE_RANK[swResult.grade]??2):null
+  const ltR = GRADE_RANK[ltResult?.grade]??2
+  const swR = swResult?(GRADE_RANK[swResult.grade]??2):null
   const bd  = ltResult?.breakdown??{}
 
   // Identify the strongest positive or limiting component
@@ -125,8 +125,8 @@ function primaryDriver(ltResult, swResult, alignment) {
 
 /* ── Grouped evidence (Engine / Market / Risk) ───────── */
 function buildBecause(ltResult, swResult, alignment, analysts) {
-  const ltR = _GRADE_RANK[ltResult?.grade]??2
-  const swR = swResult?(_GRADE_RANK[swResult.grade]??2):null
+  const ltR = GRADE_RANK[ltResult?.grade]??2
+  const swR = swResult?(GRADE_RANK[swResult.grade]??2):null
   const riskPen = ltResult?.riskPenalty??0
 
   // Alignment: measure agreement, not quality — phrasing reflects that
@@ -197,10 +197,10 @@ export function computeDecision(ltResult, swResult, alignment) {
   const ltGrade=ltResult.grade??'HOLD', swGrade=swResult?.grade
   const fund=ltResult?.fundamentalsData, analysts=analystSentiment(fund)
 
-  const action  = swGrade?(_ACTION_MATRIX[`${ltGrade}|${swGrade}`]??_ACTION_LT_ONLY[ltGrade]??'Monitor position')
-                         :(_ACTION_LT_ONLY[ltGrade]??'Monitor position')
-  const phase   = swGrade?(_PHASE_MATRIX[`${ltGrade}|${swGrade}`]??_PHASE_LT_ONLY[ltGrade]??'Monitoring')
-                         :(_PHASE_LT_ONLY[ltGrade]??'Monitoring')
+  const action  = swGrade?(ACTION_MATRIX[`${ltGrade}|${swGrade}`]??ACTION_LT_ONLY[ltGrade]??'Monitor position')
+                         :(ACTION_LT_ONLY[ltGrade]??'Monitor position')
+  const phase   = swGrade?(PHASE_MATRIX[`${ltGrade}|${swGrade}`]??PHASE_LT_ONLY[ltGrade]??'Monitoring')
+                         :(PHASE_LT_ONLY[ltGrade]??'Monitoring')
   const strength    = calcStrength(ltResult, swResult, alignment)
   const driver      = primaryDriver(ltResult, swResult, alignment)
   const because     = buildBecause(ltResult, swResult, alignment, analysts)
