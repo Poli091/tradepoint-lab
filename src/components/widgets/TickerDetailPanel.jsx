@@ -17,6 +17,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 import { useConviction }           from '../../hooks/useConviction.js'
 import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
+import { computeDecision }                    from '../../conviction/decision/engine.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
 import { POSITIONS }      from '../../data/positions.js'
 import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
@@ -136,6 +137,25 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   const [activeTab, setActiveTab] = useState('score')
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
+
+  // Pre-compute alignment value for Decision Engine
+  const alignment_ = useMemo(() => {
+    if (!result || !altResult) return null
+    const RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
+    const ltR = RANK[result.grade]??2, swR = RANK[altResult.grade]??2
+    const ceiling   = [100,75,50,25,0][Math.min(Math.abs(ltR-swR),4)]
+    const similarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
+    return Math.min(similarity, ceiling)
+  }, [result, altResult])
+
+  // Compute Decision Engine output (deterministic synthesis)
+  const decision = useMemo(() => {
+    if (!result) return null
+    try {
+      return computeDecision(result, altResult, alignment_)
+    } catch { return null }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, altResult])
 
   // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
   const altResult = useMemo(() => {
@@ -609,6 +629,73 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   </div>
                 )
               })()}
+
+              {/* ══ DECISION ENGINE ══ */}
+              {decision && (
+                <div style={{ background:`${decision.color}18`,
+                  border:`1px solid ${decision.color}44`,
+                  borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+
+                  {/* Header */}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>
+                        Decision
+                      </div>
+                      <div style={{ fontSize:16, fontWeight:800, color:decision.color, lineHeight:1.2 }}>
+                        {decision.action}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:2 }}>Confidence</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:decision.color, lineHeight:1 }}>
+                        {decision.confidence}%
+                      </div>
+                      {decision.analysts && (
+                        <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2 }}>
+                          Analysts: {decision.analysts.label}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Because */}
+                  {decision.because.length > 0 && (
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
+                        Because
+                      </div>
+                      {decision.because.map((b, i) => (
+                        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6,
+                          fontSize:10, color: b.ok?'var(--txt)':'var(--txt-muted)', marginBottom:3 }}>
+                          <span style={{ color:b.ok?'var(--green)':'var(--red)', fontWeight:700, flexShrink:0 }}>
+                            {b.ok?'✓':'✗'}
+                          </span>
+                          {b.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* What would change this */}
+                  {decision.invalidation.length > 0 && (
+                    <div style={{ borderTop:`1px solid ${decision.color}33`, paddingTop:8 }}>
+                      <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
+                        What would change this decision
+                      </div>
+                      {decision.invalidation.map((c, i) => (
+                        <div key={i} style={{ fontSize:10, color:'var(--txt-muted)',
+                          marginBottom:2, display:'flex', gap:6 }}>
+                          <span style={{ color:'var(--amber)' }}>→</span> {c}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ══ POINTS TO NEXT GRADE ══ */}
               {(() => {
