@@ -636,10 +636,22 @@ async function handleMarketIntelligence(ticker, keys, kv) {
     `https://finnhub.io/api/v1/company-news?symbol=${t}&from=${from}&to=${to}`,
     { headers: { 'X-Finnhub-Token': keys.finnhub } }
   )
-  const rawNews  = newsRes.ok ? await newsRes.json() : []
-  const articles = (rawNews || []).slice(0, 15)
-  const headlines = articles.map((a,i) => `${i+1}. [${a.source}] ${a.headline}`).join('
-')
+  const rawNews = newsRes.ok ? await newsRes.json() : []
+
+  // Preprocessing: deduplicate, filter empty, sort by recency, prefer quality sources
+  const seen = new Set()
+  const articles = (rawNews || [])
+    .filter(a => a.headline && a.headline.length > 10 && a.source)
+    .filter(a => {
+      const key = a.headline.toLowerCase().slice(0, 60)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => (b.datetime ?? 0) - (a.datetime ?? 0))
+    .slice(0, 15)
+
+  const headlines = articles.map((a,i) => `${i+1}. [${a.source}] ${a.headline}`).join('\n')
 
   // 2. Get conviction context from KV (for grounding)
   const fund      = await kv.get(`fund:${t}`, 'json').catch(() => null)
@@ -657,37 +669,51 @@ async function handleMarketIntelligence(ticker, keys, kv) {
   ].join(' | ') : 'No quantitative data available'
 
   // 3. Single Groq call — JSON output only
+  const window7d = `${from} to ${to}`
   const prompt = `You are analyzing market sentiment for ${t} within a quantitative investment system.
 
 QUANTITATIVE MODEL CONTEXT (do not modify or contradict):
 ${scoreCtx}
 
-NEWS — last 7 days (${articles.length} articles):
+NEWS — ${window7d} (${articles.length} unique articles after deduplication):
 ${headlines || 'No recent news available.'}
 
-Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+Return ONLY valid JSON matching this exact schema (no markdown, no explanation outside JSON):
 {
   "narrative": {
-    "summary": "2-3 sentence summary of the dominant market narrative this week",
-    "sentiment": "Bullish" or "Mixed" or "Neutral" or "Bearish",
-    "shift": "None" or "Positive" or "Negative"
+    "summary": "2-3 sentence description of the dominant market narrative this week",
+    "sentiment": "Bullish" | "Mixed" | "Neutral" | "Bearish",
+    "shift": "None" | "Positive" | "Negative"
   },
   "drivers": {
-    "positive": ["up to 3 specific positive developments from the news above"],
-    "negative": ["up to 3 specific risks or headwinds from the news above"]
+    "positive": ["up to 3 specific positive developments from the news — name companies/products by name"],
+    "negative": ["up to 3 specific headwinds from the news — be specific, no generic risks"]
   },
   "marketVsModel": {
-    "status": "Supports" or "Mostly Supports" or "Mixed" or "Contradicts",
-    "reason": "1 sentence explaining whether the news narrative reinforces or questions the quantitative thesis"
-  }
+    "status": use EXACTLY one of:
+      "Supports" — most material news directly reinforce the quantitative thesis,
+      "Mostly Supports" — general narrative supports the thesis but 1-2 material risks exist,
+      "Mixed" — positive and negative evidence is balanced or points in different directions,
+      "Contradicts" — material news directly question the key drivers of the quantitative model,
+    "reason": "1 sentence explaining the relationship between news narrative and quantitative thesis"
+  },
+  "materialHeadlines": [
+    {
+      "title": "headline text",
+      "source": "source name",
+      "impact": "positive" | "negative" | "neutral",
+      "materiality": "high" | "medium" | "low",
+      "url": "article url"
+    }
+  ]
 }
 
 Rules:
-- Base everything only on the news provided above
-- Never invent facts not in the news
-- If no relevant news, say so in summary and return "Neutral" sentiment
-- The model score is final — news never changes it; your role is to explain alignment
-- Return raw JSON only, no surrounding text`
+- Only use facts from the news articles provided above — never invent
+- materialHeadlines: include only the 5 most relevant articles; set materiality="high" only for news that meaningfully changes the investment context
+- The quantitative score is final and immutable — your role is context only
+- If no relevant news, set sentiment="Neutral" and explain in summary
+- Return raw JSON only`
 
   const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method:'POST',
@@ -709,12 +735,14 @@ Rules:
 
   const data = {
     ticker: t,
-    narrative:     parsed.narrative    ?? {},
-    drivers:       parsed.drivers      ?? { positive:[], negative:[] },
-    marketVsModel: parsed.marketVsModel ?? {},
-    headlines:     articles.map(a=>({ headline:a.headline, source:a.source, url:a.url, datetime:a.datetime })),
-    sourcesUsed:   articles.length,
-    generatedAt:   Date.now(),
+    window:          `${from} to ${to}`,
+    narrative:       parsed.narrative       ?? {},
+    drivers:         parsed.drivers         ?? { positive:[], negative:[] },
+    marketVsModel:   parsed.marketVsModel   ?? {},
+    materialHeadlines: parsed.materialHeadlines ?? [],
+    headlines:       articles.map(a=>({ headline:a.headline, source:a.source, url:a.url, datetime:a.datetime })),
+    sourcesUsed:     articles.length,
+    generatedAt:     Date.now(),
   }
 
   const meta2 = buildMeta(t, 'market_intel', TTL.MARKET_INTEL, false)
