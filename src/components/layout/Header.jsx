@@ -3,8 +3,70 @@
  * Shows real portfolio value, day P&L, and live data indicator.
  */
 
+import { useState, useEffect }          from 'react'
 import { useBreakpoint }                from '../../hooks/useBreakpoint.js'
 import { fUSD, fPct, fSignedUSD }       from '../../utils/format.js'
+
+/* ── NYSE Market Status ─────────────────────────────────────
+   Checks ET time + day of week + federal holidays.
+   Source: NYSE schedule — Mon-Fri 9:30-16:00 ET excl. holidays
+══════════════════════════════════════════════════════════ */
+function useMarketStatus() {
+  const [status, setStatus] = useState({ open: false, label: 'Checking…', color: 'var(--txt-muted)' })
+
+  useEffect(() => {
+    // NYSE federal holidays (observed dates) — update annually
+    const HOLIDAYS_2025 = ['2025-01-01','2025-01-20','2025-02-17','2025-04-18','2025-05-26','2025-06-19','2025-07-04','2025-09-01','2025-11-27','2025-12-25']
+    const HOLIDAYS_2026 = ['2026-01-01','2026-01-19','2026-02-16','2026-04-03','2026-05-25','2026-06-19','2026-07-03','2026-09-07','2026-11-26','2026-12-25']
+    const ALL_HOLIDAYS  = new Set([...HOLIDAYS_2025, ...HOLIDAYS_2026])
+
+    function check() {
+      const now = new Date()
+      // Convert to ET (UTC-5 standard / UTC-4 daylight)
+      const etOffset = (() => {
+        const jan = new Date(now.getFullYear(), 0, 1).getTimezoneOffset()
+        const jul = new Date(now.getFullYear(), 6, 1).getTimezoneOffset()
+        const dstOffset = Math.min(jan, jul)
+        // Simple DST: second Sunday March to first Sunday November
+        const march2nd = new Date(now.getFullYear(), 2, 1)
+        march2nd.setDate(1 + (7 - march2nd.getDay()) % 7 + 7)
+        const nov1st = new Date(now.getFullYear(), 10, 1)
+        nov1st.setDate(1 + (7 - nov1st.getDay()) % 7)
+        return now >= march2nd && now < nov1st ? -240 : -300
+      })()
+
+      const utcMs  = now.getTime() + now.getTimezoneOffset() * 60000
+      const et     = new Date(utcMs + etOffset * 60000)
+      const ymd    = `${et.getFullYear()}-${String(et.getMonth()+1).padStart(2,'0')}-${String(et.getDate()).padStart(2,'0')}`
+      const dow    = et.getDay()  // 0=Sun, 6=Sat
+      const hhmm   = et.getHours() * 100 + et.getMinutes()
+
+      if (dow === 0 || dow === 6) {
+        setStatus({ open:false, label:'Market closed', color:'var(--txt-muted)', reason:'weekend' })
+        return
+      }
+      if (ALL_HOLIDAYS.has(ymd)) {
+        setStatus({ open:false, label:'Market closed', color:'var(--txt-muted)', reason:'holiday' })
+        return
+      }
+      if (hhmm < 930) {
+        setStatus({ open:false, label:'Pre-market', color:'var(--amber)', reason:'pre' })
+        return
+      }
+      if (hhmm >= 1600) {
+        setStatus({ open:false, label:'After hours', color:'var(--amber)', reason:'after' })
+        return
+      }
+      setStatus({ open:true, label:'Market open', color:'var(--green)', reason:'open' })
+    }
+
+    check()
+    const interval = setInterval(check, 60000)  // recheck every minute
+    return () => clearInterval(interval)
+  }, [])
+
+  return status
+}
 
 const ACCOUNTS = [
   { id:'roth',      label:'Roth IRA',  short:'Roth'  },
@@ -25,7 +87,12 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
   const dayChange = getDayChange(visiblePositions)
   const dayPct    = portfolioStats.totalValue > 0 ? (dayChange / portfolioStats.totalValue) * 100 : 0
   const isUp      = dayChange >= 0
-  const now       = new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' })
+  const mkt        = useMarketStatus()
+  const [now, setNow] = useState(() => new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }))
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' })), 30000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <header style={{
@@ -109,8 +176,12 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
       {!isMobile && (
         <>
           <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
-            <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--green)', display:'inline-block', boxShadow:'0 0 6px var(--green)' }} />
-            <span style={{ fontSize:12, color:'var(--txt-sec)', fontWeight:500 }}>Market open</span>
+            <span style={{ width:7, height:7, borderRadius:'50%',
+              background: mkt.color,
+              display:'inline-block',
+              boxShadow: mkt.open ? `0 0 6px ${mkt.color}` : 'none'
+            }} />
+            <span style={{ fontSize:12, color:'var(--txt-sec)', fontWeight:500 }}>{mkt.label}</span>
           </div>
           <div style={{
             background:'var(--surface-up)', borderRadius:6, padding:'4px 10px',

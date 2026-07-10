@@ -15,7 +15,7 @@ export function useTradepoint() {
   const [account, setAccount] = useState('combined')
 
   // ── Chart ────────────────────────────────────────────────
-  const [ticker,  setTicker]  = useState('NVDA')
+  const [ticker,  setTicker]  = useState('')
   const [range,   setRange]   = useState('3M')
 
   // ── Positions table sort ─────────────────────────────────
