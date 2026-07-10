@@ -165,6 +165,8 @@ function AppInner() {
             prices={prices}
           />
         )
+      case 'compare':
+        return <CompareView />
       case 'diagnostics':
         return (
           <DiagnosticsView
