@@ -13,7 +13,7 @@
  * e.g. Gate2 active → score capped at 58 → max grade = HOLD
  */
 
-export const GRADES = [
+export const GRADES_DATA = [
   { min: 85, label: 'STRONG BUY',  stars: 5, color: '#22C55E', cssVar: 'var(--grade-strong-buy)',  bg: 'var(--grade-strong-buy-dim)'  },
   { min: 70, label: 'BUY',         stars: 4, color: '#86EFAC', cssVar: 'var(--grade-buy)',          bg: 'var(--grade-buy-dim)'         },
   { min: 55, label: 'HOLD',        stars: 3, color: '#FBBF24', cssVar: 'var(--grade-hold)',         bg: 'var(--grade-hold-dim)'        },
@@ -26,21 +26,24 @@ export const GRADES = [
  * Falls back to hex for canvas/SVG contexts via grade.color.
  */
 export function gradeVar(gradeLabel) {
-  const found = GRADES.find(entry => entry.label === gradeLabel)
+  const found = GRADES_DATA.find(entry => entry.label === gradeLabel)
   return found?.cssVar ?? 'var(--txt-muted)'
 }
 
 export function gradeBgVar(gradeLabel) {
-  const found = GRADES.find(entry => entry.label === gradeLabel)
+  const found = GRADES_DATA.find(entry => entry.label === gradeLabel)
   return found?.bg ?? 'transparent'
 }
 
 /** Get the display color for a grade label */
 export function getGradeColor(gradeLabel) {
-  const found = GRADES.find(entry => entry.label === gradeLabel)
+  const found = GRADES_DATA.find(entry => entry.label === gradeLabel)
   return found?.color ?? 'var(--txt-muted)'
 }
 
 export function getGrade(finalScore) {
-  return GRADES.find(entry => finalScore >= entry.min) ?? GRADES[GRADES.length - 1]
+  return GRADES_DATA.find(entry => finalScore >= entry.min) ?? GRADES_DATA[GRADES_DATA.length - 1]
 }
+
+// Backward-compat alias
+export const GRADES = GRADES_DATA

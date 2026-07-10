@@ -351,7 +351,7 @@ const SWING_GRADES=[
   {min:35,label:'SELL',       color:'#F97316'},
   {min:0, label:'STRONG SELL',color:'#EF4444'},
 ]
-export function getSwingGrade(score){return SWING_GRADES.find(entry=>score>=entry.min)??SWING_GRADES[SWING_GRADES.length-1]}
+export function getSwingGrade(score){return _SWING_GRADES.find(entry=>score>=entry.min)??SWING_GRADES[_SWING_GRADES.length-1]}
 
 /* ── Main entry ──────────────────────────────────── */
 export function runSwingConviction(fund, ohlcv, spyOhlcv) {
