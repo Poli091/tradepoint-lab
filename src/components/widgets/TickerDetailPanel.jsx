@@ -203,6 +203,17 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
     }
   }
 
+  // Auto-load Market Intelligence when market tab opens
+  useEffect(() => {
+    if (activeTab === 'market' && !marketIntel && !miLoading && ticker) {
+      setMiLoading(true)
+      workerAPI.marketIntelligence(ticker)
+        .then(r => setMarketIntel(r?.data ?? null))
+        .catch(() => setMarketIntel(null))
+        .finally(() => setMiLoading(false))
+    }
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-load AI analysis when AI tab is opened (uses KV cache — instant if cached)
   useEffect(() => {
     if (activeTab === 'ai' && !aiData && !aiLoading && result) {
@@ -1054,6 +1065,61 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
                   </div>
                 </>
+              )}
+
+              {activeTab === 'market' && (
+                <div style={{padding:'4px 0'}}>
+                  {miLoading && <div style={{textAlign:'center',padding:'32px 0',color:'var(--txt-muted)'}}>Analyzing market narrative…</div>}
+                  {!miLoading && !marketIntel && (
+                    <div style={{textAlign:'center',padding:'32px 0'}}>
+                      <button onClick={()=>{setMiLoading(true);workerAPI.marketIntelligence(ticker).then(r=>setMarketIntel(r?.data??null)).catch(()=>setMarketIntel(null)).finally(()=>setMiLoading(false))}}
+                        style={{padding:'8px 20px',borderRadius:'var(--radius)',border:'1px solid var(--border)',background:'transparent',cursor:'pointer',color:'var(--accent)',fontSize:12,fontWeight:600}}>
+                        Generate Market Intelligence
+                      </button>
+                    </div>
+                  )}
+                  {!miLoading && marketIntel && (
+                    <div>
+                      <div style={{background:'var(--surface-up)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:'12px 14px',marginBottom:12}}>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                          <div>
+                            <div style={{fontSize:9,fontWeight:700,color:'var(--txt-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:2}}>Market vs Model</div>
+                            <div style={{fontSize:14,fontWeight:800,color:'var(--accent)'}}>{marketIntel.marketVsModel?.status??'—'}</div>
+                          </div>
+                          <div style={{textAlign:'right'}}>
+                            <div style={{fontSize:9,color:'var(--txt-muted)'}}>Sentiment</div>
+                            <div style={{fontSize:12,fontWeight:700,color:'var(--txt)'}}>{marketIntel.narrative?.sentiment??'—'}</div>
+                          </div>
+                        </div>
+                        {marketIntel.marketVsModel?.reason&&<div style={{fontSize:10,color:'var(--txt-sec)',fontStyle:'italic'}}>{marketIntel.marketVsModel.reason}</div>}
+                      </div>
+                      {marketIntel.narrative?.summary&&(
+                        <div style={{marginBottom:12}}>
+                          <div style={{fontSize:9,fontWeight:700,color:'var(--txt-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:5}}>Market Narrative · {marketIntel.sourcesUsed??0} sources</div>
+                          <p style={{fontSize:11,color:'var(--txt)',lineHeight:1.7,margin:0}}>{marketIntel.narrative.summary}</p>
+                        </div>
+                      )}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:'var(--green)',marginBottom:4,textTransform:'uppercase'}}>Positive</div>
+                          {(marketIntel.drivers?.positive??[]).map((d,i)=><div key={i} style={{display:'flex',gap:5,fontSize:10,color:'var(--txt)',marginBottom:4,lineHeight:1.4}}><span style={{color:'var(--green)',flexShrink:0}}>✓</span>{d}</div>)}
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:'var(--red)',marginBottom:4,textTransform:'uppercase'}}>Headwinds</div>
+                          {(marketIntel.drivers?.negative??[]).map((d,i)=><div key={i} style={{display:'flex',gap:5,fontSize:10,color:'var(--txt)',marginBottom:4,lineHeight:1.4}}><span style={{color:'var(--red)',flexShrink:0}}>✗</span>{d}</div>)}
+                        </div>
+                      </div>
+                      <div style={{fontSize:9,fontWeight:700,color:'var(--txt-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Headlines</div>
+                      {(marketIntel.headlines??[]).slice(0,6).map((h,i)=>(
+                        <a key={i} href={h.url||'#'} target="_blank" rel="noopener noreferrer"
+                          style={{display:'block',padding:'7px 8px',marginBottom:4,background:'var(--surface-up)',borderRadius:'var(--radius)',textDecoration:'none'}}>
+                          <div style={{fontSize:10,color:'var(--txt)',lineHeight:1.4}}>{h.headline}</div>
+                          <div style={{fontSize:9,color:'var(--txt-muted)',marginTop:2}}>{h.source}</div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeTab === 'ai' && (
