@@ -500,5 +500,3 @@ export default function CompareView() {
     </div>
   )
 }
-EOSX
-cd /home/claude/tradepoint-dashboard && npm run build 2>&1 | grep -E "error|✓ built" | head -3
