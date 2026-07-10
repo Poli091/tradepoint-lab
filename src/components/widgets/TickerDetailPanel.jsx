@@ -652,6 +652,19 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 const sorted = [...scoreHistory].sort((a,b) => new Date(b.snapshot_date) - new Date(a.snapshot_date))
                 const curr = sorted[0]
                 const prev = sorted[1]
+
+                // Guard: don't compare across model versions
+                if (curr.model_version && prev.model_version && curr.model_version !== prev.model_version) {
+                  return (
+                    <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)',
+                      padding:'12px 14px', marginBottom:10, color:'var(--txt-muted)', fontSize:10 }}>
+                      <div style={{ fontWeight:700, marginBottom:4, textTransform:'uppercase',
+                        fontSize:9, letterSpacing:'0.06em' }}>Score Attribution</div>
+                      Model methodology changed since previous snapshot — comparison unavailable.
+                    </div>
+                  )
+                }
+
                 const totalDelta = (curr.score ?? 0) - (prev.score ?? 0)
 
                 const COMPS = [
@@ -669,16 +682,29 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   delta: (curr[c.key] ?? 0) - (prev[c.key] ?? 0),
                 }))
 
+                // Risk penalty delta (stored as negative number)
+                const riskCurr  = curr.risk_penalty ?? 0
+                const riskPrev  = prev.risk_penalty ?? 0
+                const riskDelta = riskCurr - riskPrev  // e.g. -2 - (-5) = +3 (improvement)
+
+                // Gate change
+                const gateChanged = curr.active_gate !== prev.active_gate
+
+                // Verify sum: component deltas + risk delta should equal total delta
+                const compSum    = deltas.reduce((s,d) => s + d.delta, 0) + riskDelta
+                const unexplained = totalDelta - compSum  // rounding or other factors
+
                 // Deterministic attribution text
                 const movers = deltas.filter(d => d.delta !== 0).sort((a,b) => Math.abs(b.delta)-Math.abs(a.delta))
                 const improved = movers.filter(d => d.delta > 0)
                 const declined = movers.filter(d => d.delta < 0)
 
                 const attrText = (() => {
-                  if (movers.length === 0) return 'No component changes this week.'
                   const parts = []
-                  if (improved.length) parts.push(`${improved.map(d=>`${d.label} +${d.delta}`).join(', ')}`)
-                  if (declined.length) parts.push(`${declined.map(d=>`${d.label} ${d.delta}`).join(', ')}`)
+                  if (improved.length) parts.push(improved.map(d=>`${d.label} +${d.delta}`).join(', '))
+                  if (declined.length) parts.push(declined.map(d=>`${d.label} ${d.delta}`).join(', '))
+                  if (riskDelta !== 0) parts.push(`Risk ${riskDelta > 0 ? '+' : ''}${riskDelta}`)
+                  if (!parts.length) return 'No component changes this week.'
                   return parts.join(' · ')
                 })()
 
@@ -746,13 +772,48 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       )
                     })}
 
-                    {/* Attribution text */}
-                    {movers.length > 0 && (
-                      <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)',
-                        borderTop:'1px solid var(--border)', paddingTop:6 }}>
-                        {attrText}
+                    {/* Risk penalty row — only if changed */}
+                    {riskDelta !== 0 && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between',
+                          alignItems:'center', marginBottom:2 }}>
+                          <span style={{ fontSize:10, color:'var(--txt-muted)' }}>Risk Penalty</span>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)' }}>
+                              {riskPrev}
+                            </span>
+                            <span style={{ fontSize:9, color:'var(--txt-muted)' }}>→</span>
+                            <span style={{ fontSize:9, fontFamily:'var(--mono)', fontWeight:700,
+                              color: riskDelta > 0 ? 'var(--green)' : 'var(--red)' }}>
+                              {riskCurr}
+                            </span>
+                            <span style={{ fontSize:10, fontFamily:'var(--mono)', fontWeight:800,
+                              color: riskDelta > 0 ? 'var(--green)' : 'var(--red)', minWidth:24, textAlign:'right' }}>
+                              {riskDelta > 0 ? '+' : ''}{riskDelta}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
+
+                    {/* Gate change indicator */}
+                    {gateChanged && (
+                      <div style={{ fontSize:9, color:'var(--amber)', marginBottom:6,
+                        padding:'4px 8px', background:'var(--amber-dim)', borderRadius:'var(--radius)' }}>
+                        ⚠ Gate changed: {prev.active_gate || 'none'} → {curr.active_gate || 'none'}
+                      </div>
+                    )}
+
+                    {/* Attribution summary */}
+                    <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)',
+                      borderTop:'1px solid var(--border)', paddingTop:6 }}>
+                      {attrText}
+                      {Math.abs(unexplained) > 1 && (
+                        <span style={{ color:'var(--amber)', marginLeft:6 }}>
+                          +{unexplained} rounding
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )
               })()}
