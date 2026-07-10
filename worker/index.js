@@ -765,23 +765,44 @@ async function handleWeeklySnapshot(env) {
   const today = new Date().toISOString().split('T')[0]
   console.log(`[Cron] Starting weekly snapshot — ${today}`)
 
-  // ── Save SPY as benchmark (price only, no conviction score) ──────────
+  // ── Compute market regime from SPY EMA200 ───────────────────────────
+  let currentRegime = 'unknown'
   try {
     const spyOhlcvRaw = await kv.get('ohlcv:SPY:1Y', 'json') ?? []
     const spyPriceD   = await kv.get('price:SPY', 'json')
     const spyPrice    = spyPriceD?.price ?? (spyOhlcvRaw.length ? spyOhlcvRaw[spyOhlcvRaw.length-1].price : null)
+
+    // Compute SPY EMA200 deterministically
+    if (spyOhlcvRaw.length >= 20) {
+      const closes = spyOhlcvRaw.map(b => b.price ?? b.close ?? b.c).filter(Boolean)
+      const period = Math.min(200, closes.length)
+      const k = 2 / (period + 1)
+      let ema = closes.slice(0, period).reduce((a,b) => a+b, 0) / period
+      for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k)
+      const spyAboveEMA = spyPrice && spyPrice > ema
+      // Also check short-term slope (EMA50 vs EMA200)
+      const period50 = Math.min(50, closes.length)
+      const k50 = 2 / (period50 + 1)
+      let ema50 = closes.slice(0, period50).reduce((a,b) => a+b, 0) / period50
+      for (let i = period50; i < closes.length; i++) ema50 = closes[i] * k50 + ema50 * (1 - k50)
+      if (spyAboveEMA && ema50 > ema) currentRegime = 'bullish'
+      else if (!spyAboveEMA) currentRegime = 'bearish'
+      else currentRegime = 'neutral'
+    }
+
     if (spyPrice) {
       await db.prepare(`
         INSERT OR REPLACE INTO snapshots (
           ticker, snapshot_date, price, score, grade,
           growth_score, quality_score, strength_score, valuation_score, technical_score,
-          model_version
-        ) VALUES ('SPY', ?, ?, null, 'BENCHMARK', null, null, null, null, null, 'benchmark')
-      `).bind(today, spyPrice).run()
-      console.log(`[Cron] SPY benchmark saved — price: $${spyPrice}`)
+          market_regime, model_version
+        ) VALUES ('SPY', ?, ?, null, 'BENCHMARK', null, null, null, null, null, ?, 'benchmark')
+      `).bind(today, spyPrice, currentRegime).run()
+      console.log(`[Cron] SPY benchmark saved — price: $${spyPrice} regime: ${currentRegime}`)
     }
   } catch (err) {
     console.error('[Cron] SPY benchmark error:', err.message)
+    currentRegime = 'unknown'
   }
 
   // List all tickers with cached fundamentals (90d TTL)
@@ -822,8 +843,9 @@ async function handleWeeklySnapshot(env) {
             raw_score, risk_penalty, active_gate,
             growth_score, quality_score, strength_score, valuation_score, technical_score,
             rsi, ema200, above_ema200, rs_weighted,
-            upside_pct, analysts, sector_profile, model_version, breakdown_json
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            upside_pct, analysts, sector_profile, model_version, breakdown_json,
+            market_regime
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         `).bind(
           ticker, today, price, result.finalScore, result.grade, result.confidence,
           result.rawScore, result.riskPenalty, result.activeGate,
@@ -834,7 +856,8 @@ async function handleWeeklySnapshot(env) {
           result.technical.aboveEMA200 ? 1 : 0, result.technical.relStrengthWeighted,
           result.wallStreet.upside, result.wallStreet.analysts,
           result.sectorProfile, result.modelVersion,
-          JSON.stringify(result.breakdown)
+          JSON.stringify(result.breakdown),
+          currentRegime
         ).run()
 
         saved++

@@ -646,6 +646,117 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 )
               })()}
 
+
+              {/* ══ SCORE ATTRIBUTION ══ */}
+              {scoreHistory && scoreHistory.length >= 2 && (() => {
+                const sorted = [...scoreHistory].sort((a,b) => new Date(b.snapshot_date) - new Date(a.snapshot_date))
+                const curr = sorted[0]
+                const prev = sorted[1]
+                const totalDelta = (curr.score ?? 0) - (prev.score ?? 0)
+
+                const COMPS = [
+                  { key:'growth_score',    label:'Growth',    max:25 },
+                  { key:'quality_score',   label:'Quality',   max:20 },
+                  { key:'strength_score',  label:'Strength',  max:15 },
+                  { key:'valuation_score', label:'Valuation', max:15 },
+                  { key:'technical_score', label:'Technical', max:15 },
+                ]
+
+                const deltas = COMPS.map(c => ({
+                  ...c,
+                  curr: curr[c.key] ?? 0,
+                  prev: prev[c.key] ?? 0,
+                  delta: (curr[c.key] ?? 0) - (prev[c.key] ?? 0),
+                }))
+
+                // Deterministic attribution text
+                const movers = deltas.filter(d => d.delta !== 0).sort((a,b) => Math.abs(b.delta)-Math.abs(a.delta))
+                const improved = movers.filter(d => d.delta > 0)
+                const declined = movers.filter(d => d.delta < 0)
+
+                const attrText = (() => {
+                  if (movers.length === 0) return 'No component changes this week.'
+                  const parts = []
+                  if (improved.length) parts.push(`${improved.map(d=>`${d.label} +${d.delta}`).join(', ')}`)
+                  if (declined.length) parts.push(`${declined.map(d=>`${d.label} ${d.delta}`).join(', ')}`)
+                  return parts.join(' · ')
+                })()
+
+                const totalColor = totalDelta > 0 ? 'var(--green)' : totalDelta < 0 ? 'var(--red)' : 'var(--txt-muted)'
+
+                return (
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)',
+                    padding:'12px 14px', marginBottom:10 }}>
+
+                    {/* Header */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em' }}>
+                        Score Attribution
+                      </div>
+                      <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                        <span style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:800, color:totalColor }}>
+                          {totalDelta > 0 ? '+' : ''}{totalDelta}
+                        </span>
+                        <span style={{ fontSize:9, color:'var(--txt-muted)' }}>
+                          {prev.score} → {curr.score} ·{' '}
+                          {new Date(prev.snapshot_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                          {' → '}
+                          {new Date(curr.snapshot_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Component bars */}
+                    {deltas.map(d => {
+                      const color = d.delta > 0 ? 'var(--green)' : d.delta < 0 ? 'var(--red)' : 'var(--border)'
+                      const pctCurr = Math.min((d.curr / d.max) * 100, 100)
+                      const pctPrev = Math.min((d.prev / d.max) * 100, 100)
+                      return (
+                        <div key={d.key} style={{ marginBottom:6 }}>
+                          <div style={{ display:'flex', justifyContent:'space-between',
+                            alignItems:'center', marginBottom:2 }}>
+                            <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{d.label}</span>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <span style={{ fontSize:9, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+                                {d.prev}/{d.max}
+                              </span>
+                              <span style={{ fontSize:9, color:'var(--txt-muted)' }}>→</span>
+                              <span style={{ fontSize:9, fontFamily:'var(--mono)', fontWeight:700,
+                                color: d.delta !== 0 ? color : 'var(--txt-muted)' }}>
+                                {d.curr}/{d.max}
+                              </span>
+                              <span style={{ fontSize:10, fontFamily:'var(--mono)', fontWeight:800,
+                                color, minWidth:24, textAlign:'right' }}>
+                                {d.delta > 0 ? '+' : ''}{d.delta !== 0 ? d.delta : '—'}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Stacked bar: prev (muted) + delta overlay */}
+                          <div style={{ height:4, background:'var(--border)', borderRadius:2, position:'relative' }}>
+                            <div style={{ position:'absolute', height:'100%',
+                              width:`${Math.max(pctPrev, pctCurr)}%`,
+                              background:'var(--border-lt)', borderRadius:2 }} />
+                            <div style={{ position:'absolute', height:'100%',
+                              width:`${pctCurr}%`,
+                              background: d.delta > 0 ? 'var(--green)' : d.delta < 0 ? 'var(--red)' : 'var(--accent)',
+                              borderRadius:2, opacity: d.delta !== 0 ? 1 : 0.4 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* Attribution text */}
+                    {movers.length > 0 && (
+                      <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)',
+                        borderTop:'1px solid var(--border)', paddingTop:6 }}>
+                        {attrText}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* ══ DECISION ENGINE v2 ══ */}
               {decision && (
                 <div style={{ background:`${decision.color}18`,
