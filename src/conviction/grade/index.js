@@ -14,12 +14,26 @@
  */
 
 export const GRADES = [
-  { min: 85, label: 'STRONG BUY',  stars: 5, color: '#22C55E', bg: 'rgba(34,197,94,0.12)'  },
-  { min: 70, label: 'BUY',         stars: 4, color: '#86EFAC', bg: 'rgba(134,239,172,0.10)' },
-  { min: 55, label: 'HOLD',        stars: 3, color: '#FBBF24', bg: 'rgba(251,191,36,0.10)'  },
-  { min: 40, label: 'SELL',        stars: 2, color: '#F97316', bg: 'rgba(249,115,22,0.10)'  },
-  { min: 0,  label: 'STRONG SELL', stars: 1, color: '#EF4444', bg: 'rgba(239,68,68,0.10)'   },
+  { min: 85, label: 'STRONG BUY',  stars: 5, color: '#22C55E', cssVar: 'var(--grade-strong-buy)',  bg: 'var(--grade-strong-buy-dim)'  },
+  { min: 70, label: 'BUY',         stars: 4, color: '#86EFAC', cssVar: 'var(--grade-buy)',          bg: 'var(--grade-buy-dim)'         },
+  { min: 55, label: 'HOLD',        stars: 3, color: '#FBBF24', cssVar: 'var(--grade-hold)',         bg: 'var(--grade-hold-dim)'        },
+  { min: 40, label: 'SELL',        stars: 2, color: '#F97316', cssVar: 'var(--grade-sell)',         bg: 'var(--grade-sell-dim)'        },
+  { min: 0,  label: 'STRONG SELL', stars: 1, color: '#EF4444', cssVar: 'var(--grade-strong-sell)',  bg: 'var(--grade-strong-sell-dim)' },
 ]
+
+/**
+ * Returns the CSS variable for a grade — use in JSX style props.
+ * Falls back to hex for canvas/SVG contexts via grade.color.
+ */
+export function gradeVar(gradeLabel) {
+  const g = GRADES.find(g => g.label === gradeLabel)
+  return g?.cssVar ?? 'var(--txt-muted)'
+}
+
+export function gradeBgVar(gradeLabel) {
+  const g = GRADES.find(g => g.label === gradeLabel)
+  return g?.bg ?? 'transparent'
+}
 
 /** Get the display color for a grade label */
 export function getGradeColor(grade) {

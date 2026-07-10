@@ -79,11 +79,11 @@ function ConsensusBar({ sb=0, b=0, h=0, s=0, ss=0 }) {
   const total = sb+b+h+s+ss || 1
   const pct = n => `${(n/total*100).toFixed(1)}%`
   const items = [
-    {n:sb,color:'#22C55E',label:'Strong Buy'},
+    {n:sb,color:'#22C55E',label:'STRONG BUY'},
     {n:b, color:'#86EFAC',label:'Buy'},
     {n:h, color:'#FBBF24',label:'Hold'},
     {n:s, color:'#F97316',label:'Sell'},
-    {n:ss,color:'#EF4444',label:'Strong Sell'},
+    {n:ss,color:'#EF4444',label:'STRONG SELL'},
   ]
   return (
     <div>
@@ -341,11 +341,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   <div style={{ fontSize:13, fontWeight:800, color, lineHeight:1.1 }}>
                     {alignment}%
                   </div>
-                  <div style={{ fontSize:7.5, color, fontWeight:700,
+                  <div style={{ fontSize:9.5, color, fontWeight:700,
                     whiteSpace:'nowrap', marginTop:2, textAlign:'center' }}>
                     {matrixLabel}
                   </div>
-                  <div style={{ fontSize:7, color:'var(--txt-muted)',
+                  <div style={{ fontSize:9, color:'var(--txt-muted)',
                     whiteSpace:'nowrap', marginTop:1, textAlign:'center', fontStyle:'italic' }}>
                     {strategy}
                   </div>
@@ -653,7 +653,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   {/* TradePoint View vs Analyst badge row */}
                   <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:8, fontWeight:700, color:decision.color,
+                      <div style={{ fontSize:9, fontWeight:700, color:decision.color,
                         textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>
                         TradePoint View
                       </div>
@@ -666,7 +666,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     </div>
                     {decision.analysts && (
                       <div style={{ flexShrink:0, textAlign:'right' }}>
-                        <div style={{ fontSize:8, fontWeight:700, color:'var(--txt-muted)',
+                        <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)',
                           textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>
                           Analyst Consensus
                         </div>
@@ -705,13 +705,13 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           return (
                             <React.Fragment key={p}>
                               <div style={{
-                                fontSize:8, padding:'2px 6px', borderRadius:3, fontWeight:700,
+                                fontSize:9, padding:'2px 6px', borderRadius:3, fontWeight:700,
                                 whiteSpace:'nowrap', flexShrink:0,
                                 background: active?decision.color:'transparent',
                                 color: active?'#fff':'var(--txt-muted)',
                                 border:`1px solid ${active?decision.color:'var(--border)'}`,
                               }}>{p}</div>
-                              {i<PHASES.length-1 && <span style={{fontSize:8,color:'var(--border)',flexShrink:0}}>›</span>}
+                              {i<PHASES.length-1 && <span style={{fontSize:9,color:'var(--border)',flexShrink:0}}>›</span>}
                             </React.Fragment>
                           )
                         })}
@@ -728,7 +728,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         {label:'Risk',   items: decision.because.risk   ?? []},
                       ].filter(g => g.items.length > 0).map(group => (
                         <div key={group.label} style={{ marginBottom:6 }}>
-                          <div style={{ fontSize:8, fontWeight:700, color:'var(--txt-muted)',
+                          <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)',
                             textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
                             {group.label}
                           </div>

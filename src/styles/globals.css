@@ -167,3 +167,52 @@ a      { color: var(--accent); text-decoration: none; }
   --txt-sec:      #64748B;   /* gris pizarra medio — fechas, subtítulos */
   --txt-muted:    #94A3B8;   /* gris claro — hints, ticks del eje */
 }
+
+/* ═══════════════════════════════════════════════════════════
+   GRADE COLORS — single source of truth
+   All grade colors reference these variables.
+   Engines return hex strings (for canvas/SVG contexts);
+   JSX components should use these vars where possible.
+═══════════════════════════════════════════════════════════ */
+:root {
+  --grade-strong-buy:   #22C55E;
+  --grade-buy:          #86EFAC;
+  --grade-hold:         #FBBF24;
+  --grade-sell:         #F97316;
+  --grade-strong-sell:  #EF4444;
+
+  --grade-strong-buy-dim:  rgba(34,  197, 94,  0.12);
+  --grade-buy-dim:         rgba(134, 239, 172, 0.10);
+  --grade-hold-dim:        rgba(251, 191, 36,  0.10);
+  --grade-sell-dim:        rgba(249, 115, 22,  0.10);
+  --grade-strong-sell-dim: rgba(239, 68,  68,  0.10);
+
+  /* Spacing scale — use these instead of ad-hoc px values */
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   12px;
+  --space-lg:   16px;
+  --space-xl:   24px;
+
+  /* Typography scale — minimum 9px, no sub-8px */
+  --text-xs:    9px;
+  --text-sm:    10px;
+  --text-base:  11px;
+  --text-md:    13px;
+  --text-lg:    15px;
+  --text-xl:    18px;
+}
+
+[data-theme="light"] {
+  --grade-strong-buy:   #16A34A;
+  --grade-buy:          #22C55E;
+  --grade-hold:         #D97706;
+  --grade-sell:         #EA580C;
+  --grade-strong-sell:  #DC2626;
+
+  --grade-strong-buy-dim:  rgba(22,  163, 74,  0.10);
+  --grade-buy-dim:         rgba(34,  197, 94,  0.10);
+  --grade-hold-dim:        rgba(217, 119, 6,   0.10);
+  --grade-sell-dim:        rgba(234, 88,  12,  0.10);
+  --grade-strong-sell-dim: rgba(220, 38,  38,  0.10);
+}
