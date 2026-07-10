@@ -127,13 +127,14 @@ function FreshnessRow({ label, freshness }) {
 ═══════════════════════════════════════════════════════ */
 export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedded = false, onResult }) {
   const { isMobile } = useBreakpoint()
-  const { result, loading, error, recompute } = useConviction(ticker, prices)
+  const { result, loading, error, recompute } = useConviction(ticker, prices, mode)
 
   const pos       = POSITIONS.find(p => p.ticker === ticker)
   const f         = result?.fundamentalsData ?? null
   const freshness = cache.infoFund(ticker)
 
   const [activeTab, setActiveTab] = useState('score')
+  const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
   const [aiData,    setAiData]    = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
@@ -215,7 +216,21 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
-          <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {/* Mode toggle */}
+            <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
+              border:'1px solid var(--border)', overflow:'hidden', marginRight:4 }}>
+              {[['long-term','Long-Term'],['swing','Swing']].map(([m,label]) => (
+                <button key={m} onClick={() => { setMode(m); recompute() }} style={{
+                  padding:'4px 10px', border:'none', cursor:'pointer', fontSize:10, fontWeight:700,
+                  background: mode===m ? 'var(--accent)' : 'transparent',
+                  color:      mode===m ? '#fff'           : 'var(--txt-muted)',
+                  transition:'all 0.12s',
+                }}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <button onClick={recompute} disabled={loading}
               style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
                 background:'transparent', cursor:loading?'wait':'pointer',

@@ -6,3 +6,5 @@
 
 export { runConviction } from './engine.js'
 export { GRADES, getGrade } from './grade/index.js'
+
+export { runSwingConviction, getSwingGrade } from './swing/engine.js'

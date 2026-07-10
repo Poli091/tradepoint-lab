@@ -12,9 +12,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
-import { runConviction }           from '../conviction/index.js'
+import { runConviction, runSwingConviction } from '../conviction/index.js'
 
-export function useConviction(ticker, prices = {}) {
+export function useConviction(ticker, prices = {}, mode = 'long-term') {
   const [result,  setResult]  = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
