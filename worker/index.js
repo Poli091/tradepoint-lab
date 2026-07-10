@@ -802,14 +802,29 @@ async function handlePortfolioReview(request, keys, kv, db) {
   const top3 = [...positions].sort((a,b)=>(b.weight||0)-(a.weight||0)).slice(0,3)
   const top3Pct = top3.reduce((s,p)=>s+(p.weight||0), 0)
 
+  // Deterministic concentration rules — consistent across weeks
+  const concLevel = topSector?.[1] > 50 ? 'High' : topSector?.[1] > 35 ? 'Moderate' : 'Low'
+  const concRule  = topSector?.[1] > 50 ? 'sector > 50%'
+                  : topSector?.[1] > 35 ? 'sector > 35%' : 'sector ≤ 35%'
+
   const gatePositions = positions.filter(p => p.conviction?.gate && p.conviction.gate !== 'none' && p.conviction.gate !== 'None')
 
-  const THRESH = {'STRONG BUY':85,'BUY':70,'HOLD':55,'SELL':40,'STRONG SELL':0}
+  // Near-downgrade: use effective grade (post-gate), distance to next grade threshold
+  // If Gate is active, effective grade is already capped — use that grade's threshold
+  const GRADE_THRESHOLDS = {'STRONG BUY':85,'BUY':70,'HOLD':55,'SELL':40,'STRONG SELL':0}
   const nearDowngrade = positions.filter(p => {
     const s=p.conviction?.score, g=p.conviction?.grade
     if (!s||!g) return false
-    const t=THRESH[g]; return t>0 && (s-t)<=5
-  })
+    // Gate is reflected in the effective grade already — use it directly
+    const t=GRADE_THRESHOLDS[g]
+    return t>0 && (s-t)<=5  // within 5 pts of dropping to next grade
+  }).map(p => ({
+    ticker: p.ticker,
+    score:  p.conviction?.score,
+    grade:  p.conviction?.grade,
+    gate:   p.conviction?.gate||'none',
+    distanceToDowngrade: p.conviction?.score - GRADE_THRESHOLDS[p.conviction?.grade]
+  }))
 
   const now = Date.now()
   const upcomingEarnings = positions
@@ -838,8 +853,8 @@ async function handlePortfolioReview(request, keys, kv, db) {
 
   const metricsText = `Grades: ${Object.entries(gradeCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(', ')}
 Active gates: ${gatePositions.length>0?gatePositions.map(p=>p.ticker).join(', '):'none'}
-Near downgrade (≤5pts from threshold): ${nearDowngrade.length>0?nearDowngrade.map(p=>`${p.ticker}(${p.conviction?.score})`).join(', '):'none'}
-Top sector: ${topSector?`${topSector[0]} ${topSector[1].toFixed(1)}%`:'n/a'}
+Near downgrade (≤5pts from threshold): ${nearDowngrade.length>0?nearDowngrade.map(d=>`${d.ticker}(${d.score} ${d.grade}, dist=${d.distanceToDowngrade}, gate=${d.gate})`).join(', '):'none'}
+Top sector: ${topSector?`${topSector[0]} ${topSector[1].toFixed(1)}% [${concLevel} — rule: ${concRule}]`:'n/a'}
 Top 3 concentration: ${top3Pct.toFixed(1)}% (${top3.map(p=>p.ticker).join(', ')})
 Earnings next 21 days: ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
 Score changes vs last snapshot: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'no changes'}`
@@ -872,11 +887,30 @@ Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only prov
   })
   const gd = await gr.json()
   let parsed = {}
-  try { parsed = JSON.parse(gd.choices?.[0]?.message?.content??'{}') } catch {}
+  const rawContent = gd.choices?.[0]?.message?.content ?? '{}'
+  try {
+    parsed = JSON.parse(rawContent)
+  } catch {
+    // Groq returned invalid JSON — use deterministic fallback
+    parsed = {
+      portfolioSummary: {
+        status: 'Neutral',
+        text: 'Portfolio review temporarily unavailable. Deterministic metrics are shown below.'
+      },
+      concentration: { level: concLevel, primaryRisk: topSector ? `${topSector[0]} at ${topSector[1].toFixed(1)}%` : 'n/a' },
+      spotlight: nearDowngrade.slice(0,2).map(d => ({
+        ticker: d.ticker, reason: `Within ${d.distanceToDowngrade} pts of downgrade threshold.`, severity: d.distanceToDowngrade <= 2 ? 'high' : 'medium'
+      })),
+      watchZone: gatePositions.slice(0,2).map(p => ({
+        ticker: p.ticker, reason: `Active gate: ${p.conviction?.gate}`, trigger: 'Monitor for gate deactivation'
+      })),
+      weeklyPriority: { ticker: null, action: 'Review deterministic metrics', reason: 'AI summary unavailable this week.' }
+    }
+  }
 
   const data = { ...parsed,
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
-      nearDowngrade:nearDowngrade.map(p=>p.ticker), topSector, top3Pct,
+      nearDowngrade, topSector, concLevel, concRule, top3Pct,
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion }
 
