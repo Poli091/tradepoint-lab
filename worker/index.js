@@ -802,10 +802,14 @@ async function handlePortfolioReview(request, keys, kv, db) {
   const top3 = [...positions].sort((a,b)=>(b.weight||0)-(a.weight||0)).slice(0,3)
   const top3Pct = top3.reduce((s,p)=>s+(p.weight||0), 0)
 
-  // Deterministic concentration rules — consistent across weeks
-  const concLevel = topSector?.[1] > 50 ? 'High' : topSector?.[1] > 35 ? 'Moderate' : 'Low'
-  const concRule  = topSector?.[1] > 50 ? 'sector > 50%'
-                  : topSector?.[1] > 35 ? 'sector > 35%' : 'sector ≤ 35%'
+  // Concentration thresholds — change here only (same versioning as Compare Stocks)
+  const SECTOR_CONC_MODERATE = 35  // % above which concentration is Moderate
+  const SECTOR_CONC_HIGH     = 50  // % above which concentration is High
+  const concLevel = (topSector?.[1] ?? 0) > SECTOR_CONC_HIGH     ? 'High'
+                  : (topSector?.[1] ?? 0) > SECTOR_CONC_MODERATE  ? 'Moderate' : 'Low'
+  const concRule  = (topSector?.[1] ?? 0) > SECTOR_CONC_HIGH     ? `sector > ${SECTOR_CONC_HIGH}%`
+                  : (topSector?.[1] ?? 0) > SECTOR_CONC_MODERATE  ? `sector > ${SECTOR_CONC_MODERATE}%`
+                  : `sector ≤ ${SECTOR_CONC_MODERATE}%`
 
   const gatePositions = positions.filter(p => p.conviction?.gate && p.conviction.gate !== 'none' && p.conviction.gate !== 'None')
 
@@ -893,9 +897,10 @@ Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only prov
   } catch {
     // Groq returned invalid JSON — use deterministic fallback
     parsed = {
+      _fallback: true,  // signals UI to show "deterministic summary" label
       portfolioSummary: {
         status: 'Neutral',
-        text: 'Portfolio review temporarily unavailable. Deterministic metrics are shown below.'
+        text: 'AI narrative temporarily unavailable — showing deterministic portfolio metrics.'
       },
       concentration: { level: concLevel, primaryRisk: topSector ? `${topSector[0]} at ${topSector[1].toFixed(1)}%` : 'n/a' },
       spotlight: nearDowngrade.slice(0,2).map(d => ({
