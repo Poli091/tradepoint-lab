@@ -1,318 +1,334 @@
 /**
- * MODULE: conviction/swing/engine.js  v2.0
+ * MODULE: conviction/swing/engine.js  v3.0
  * Swing Trading Conviction Score (2–8 week horizon)
  *
- * ── Weight philosophy ───────────────────────────────────────
- *   Technical:   40pts  EMA Stack, MACD quality, RSI zone, RS vs SPY
- *   Momentum:    20pts  1M/3M price return, RVOL
- *   Volatility:  15pts  ATR quality, Beta, daily range
- *   Catalysts:   15pts  Earnings proximity, consecutive beats, guidance
- *   Quality:     10pts  ROE, Net Margin (light weight)
- *   Risk:        -5pts  max
+ * Weight structure:
+ *   EMA Structure:         20pts  (stack alignment + overextension penalty)
+ *   Relative Strength SPY: 15pts  (1M + 3M RS)
+ *   MACD Quality:          10pts  (line, histogram, crossover)
+ *   Relative Volume:       10pts  (RVOL vs 20-day avg)
+ *   ADX / Trend Quality:   10pts  (trend strength, not direction)
+ *   ATR Quality (pctile):  10pts  (compared to own 1Y history)
+ *   Business Momentum:     10pts  (revenue/EPS acceleration + beats)
+ *   Setup Bonus:           10pts  (setup-specific confirmation)
+ *   Earnings Catalyst:      5pts  (proximity + beat streak)
+ *   Risk:                  -5pts  max
  *
- * ── Grades (tighter for short-term signals) ─────────────────
- *   80+ STRONG BUY · 65+ BUY · 50+ HOLD · 35+ SELL · 0+ STRONG SELL
+ * Grades: 80+ STRONG BUY · 65+ BUY · 50+ HOLD · 35+ SELL · 0+ STRONG SELL
  */
 
-/* ── Math helpers ───────────────────────────────────────── */
+/* ── Math helpers ──────────────────────────────────── */
 function calcEMA(prices, period) {
   if (!prices?.length || prices.length < period) return null
   const k = 2 / (period + 1)
-  let val = prices.slice(0, period).reduce((a,b) => a+b, 0) / period
-  for (let i = period; i < prices.length; i++) val = prices[i]*k + val*(1-k)
-  return val
+  let v = prices.slice(0, period).reduce((a,b) => a+b, 0) / period
+  for (let i = period; i < prices.length; i++) v = prices[i]*k + v*(1-k)
+  return v
 }
 
 function calcRSI(closes, period=14) {
   if (!closes?.length || closes.length < period+1) return null
-  const sl = closes.slice(-(period+1))
-  let g=0, l=0
-  for (let i=1; i<sl.length; i++) { const d=sl[i]-sl[i-1]; d>0?g+=d:l-=d }
-  const avgG=g/period, avgL=l/period
-  return avgL===0 ? 100 : 100 - (100/(1+(avgG/avgL)))
+  const sl=closes.slice(-(period+1)); let g=0,l=0
+  for (let i=1;i<sl.length;i++){const d=sl[i]-sl[i-1];d>0?g+=d:l-=d}
+  return l===0?100:100-(100/(1+(g/period)/(l/period)))
 }
 
 function calcATR(ohlcv, period=14) {
   if (!ohlcv?.length || ohlcv.length < period+1) return null
-  const sl = ohlcv.slice(-(period+1))
-  let sum=0
-  for (let i=1; i<sl.length; i++) {
-    const hi   = sl[i].high   ?? sl[i].price
-    const lo   = sl[i].low    ?? sl[i].price
-    const prev = sl[i-1].close ?? sl[i-1].price
-    sum += Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev))
+  const sl=ohlcv.slice(-(period+1)); let sum=0
+  for (let i=1;i<sl.length;i++){
+    const hi=sl[i].high??sl[i].price, lo=sl[i].low??sl[i].price, pc=sl[i-1].close??sl[i-1].price
+    sum+=Math.max(hi-lo,Math.abs(hi-pc),Math.abs(lo-pc))
   }
   return sum/period
 }
 
+/* ATR Percentile — compare current ATR to full 1Y ATR history */
+function calcATRPercentile(ohlcv, period=14) {
+  if (!ohlcv?.length || ohlcv.length < period*2+1) return null
+  const currentATR = calcATR(ohlcv, period)
+  if (currentATR == null) return null
+  // Rolling ATR over the full dataset
+  const atrs = []
+  for (let i = period; i < ohlcv.length - period; i++) {
+    const slice = ohlcv.slice(i-period, i+1)
+    const a = calcATR(slice, period)
+    if (a != null) atrs.push(a)
+  }
+  if (!atrs.length) return null
+  atrs.sort((a,b) => a-b)
+  const rank = atrs.filter(a => a <= currentATR).length
+  return Math.round((rank / atrs.length) * 100)
+}
+
+/* ADX — Average Directional Index (trend strength, not direction) */
+function calcADX(ohlcv, period=14) {
+  if (!ohlcv?.length || ohlcv.length < period*2+1) return null
+  const sl = ohlcv.slice(-(period*2+1))
+  const trs=[], plusDMs=[], minusDMs=[]
+  for (let i=1;i<sl.length;i++){
+    const hi=sl[i].high??sl[i].price, lo=sl[i].low??sl[i].price
+    const phi=sl[i-1].high??sl[i-1].price, plo=sl[i-1].low??sl[i-1].price, pc=sl[i-1].close??sl[i-1].price
+    trs.push(Math.max(hi-lo,Math.abs(hi-pc),Math.abs(lo-pc)))
+    const upMove=hi-phi, downMove=plo-lo
+    plusDMs.push(upMove>downMove&&upMove>0?upMove:0)
+    minusDMs.push(downMove>upMove&&downMove>0?downMove:0)
+  }
+  const avgTR = trs.slice(-period).reduce((a,b)=>a+b,0)/period
+  const avgPDM = plusDMs.slice(-period).reduce((a,b)=>a+b,0)/period
+  const avgMDM = minusDMs.slice(-period).reduce((a,b)=>a+b,0)/period
+  if (!avgTR) return null
+  const diP=(avgPDM/avgTR)*100, diM=(avgMDM/avgTR)*100
+  const dx = diP+diM>0 ? (Math.abs(diP-diM)/(diP+diM))*100 : 0
+  return { adx:Math.round(dx), diPlus:Math.round(diP), diMinus:Math.round(diM) }
+}
+
 function priceReturn(ohlcv, days) {
-  if (!ohlcv?.length || ohlcv.length < days+1) return null
-  const now  = ohlcv[ohlcv.length-1]?.price ?? ohlcv[ohlcv.length-1]?.close
-  const then = ohlcv[ohlcv.length-1-days]?.price ?? ohlcv[ohlcv.length-1-days]?.close
-  return now && then ? ((now/then)-1)*100 : null
+  if (!ohlcv?.length||ohlcv.length<days+1) return null
+  const now=ohlcv[ohlcv.length-1]?.price??ohlcv[ohlcv.length-1]?.close
+  const then=ohlcv[ohlcv.length-1-days]?.price??ohlcv[ohlcv.length-1-days]?.close
+  return now&&then?((now/then)-1)*100:null
 }
 
 function calcRVOL(ohlcv, days=20) {
-  if (!ohlcv?.length || ohlcv.length < days+1) return null
-  const recent = ohlcv[ohlcv.length-1]?.volume ?? 0
-  const avg = ohlcv.slice(-days-1,-1).reduce((s,d) => s+(d.volume??0),0) / days
-  return avg > 0 ? recent/avg : null
+  if (!ohlcv?.length||ohlcv.length<days+1) return null
+  const recent=ohlcv[ohlcv.length-1]?.volume??0
+  const avg=ohlcv.slice(-days-1,-1).reduce((s,d)=>s+(d.volume??0),0)/days
+  return avg>0?recent/avg:null
 }
 
-/* ── EMA Stack scorer (20pts) ────────────────────────── */
-function scoreEMAStack(closes, current) {
-  if (!closes?.length || closes.length < 201) return { score:0, detail:{} }
-  const e20  = calcEMA(closes, 20)
-  const e50  = calcEMA(closes, 50)
-  const e200 = calcEMA(closes, 200)
-
-  // Full alignment: price > EMA20 > EMA50 > EMA200 = 20pts
-  // Partial alignment = proportional
-  let score = 0
-  if (e20  && current > e20)  score += 6
-  if (e50  && current > e50)  score += 6
-  if (e200 && current > e200) score += 4
-  // Bonus: EMAs in bullish order
-  if (e20 && e50 && e200 && e20 > e50 && e50 > e200) score += 4
-
-  return { score: Math.min(score, 20), detail: { e20, e50, e200, current } }
+function donchianBreakout(ohlcv, period=20) {
+  if (!ohlcv?.length||ohlcv.length<period+1) return false
+  const current=ohlcv[ohlcv.length-1]?.price??ohlcv[ohlcv.length-1]?.close
+  const highs=ohlcv.slice(-period-1,-1).map(d=>d.high??d.price).filter(Boolean)
+  return highs.length>0 && current>=Math.max(...highs)
 }
 
-/* ── MACD quality scorer (10pts) ──────────────────── */
-function scoreMACD(closes) {
-  if (!closes?.length || closes.length < 35) return { score:0 }
-  const ema12 = calcEMA(closes, 12)
-  const ema26 = calcEMA(closes, 26)
-  if (!ema12 || !ema26) return { score:0 }
-  const line = ema12 - ema26
-  // Approximate signal with previous macd value
-  const prevEma12 = calcEMA(closes.slice(0,-1), 12)
-  const prevEma26 = calcEMA(closes.slice(0,-1), 26)
-  const prevLine  = (prevEma12??0) - (prevEma26??0)
-  const bullCross = prevLine < 0 && line > 0  // fresh crossover
+/* ── EMA Structure scorer (20pts) ─────────────────── */
+function scoreEMAStructure(ohlcv) {
+  if (!ohlcv?.length) return {score:0,max:20,detail:{}}
+  const closes=ohlcv.map(d=>d.price??d.close).filter(Boolean)
+  const current=closes[closes.length-1]
+  const e20=calcEMA(closes,20), e50=calcEMA(closes,50), e200=calcEMA(closes,200)
+  if (!e20) return {score:0,max:20,detail:{}}
 
-  let score = 0
-  if (line > 0)       score += 5   // above zero
-  if (line > prevLine) score += 3  // histogram expanding (momentum building)
-  if (bullCross)       score += 2  // fresh bullish crossover
+  // Cascading alignment (not simple sum)
+  let score=0
+  const a20=current>e20, a50=e50&&current>e50, a200=e200&&current>e200
+  const ordered=e20&&e50&&e200&&e20>e50&&e50>e200
 
-  return { score: Math.min(score, 10), detail: { line, prevLine, bullCross } }
+  if (a200&&a50&&a20&&ordered) score=20      // perfect bull stack
+  else if (a50&&a20&&e20&&e50&&e20>e50) score=15  // above 20+50, ordered
+  else if (a50&&a20) score=12                 // above 20+50, unordered
+  else if (a20&&!a50) score=8                 // above 20 only
+  else if (!a20&&a50) score=4                 // below 20, above 50 (possible pullback entry)
+  else score=0
+
+  // Overextension penalty (price >12% above EMA20 = stretched)
+  const distFromEMA20 = e20 ? ((current/e20)-1)*100 : 0
+  if (distFromEMA20 > 12) score = Math.max(0, score-4)
+
+  return {score:Math.min(score,20),max:20,
+    detail:{e20,e50,e200,current,a20,a50,a200,ordered,distFromEMA20}}
 }
 
-/* ── RSI zone scorer (5pts) ─────────────────────── */
-function scoreRSI(rsi) {
-  if (rsi == null) return 0
-  if (rsi >= 55 && rsi <= 70) return 5   // ideal momentum zone
-  if (rsi >= 45 && rsi <  55) return 3   // neutral
-  if (rsi >  70 && rsi <= 78) return 2   // overbought but strong
-  if (rsi >= 35 && rsi <  45) return 1   // weak but not oversold
-  return 0
-}
-
-/* ── RS vs SPY scorer (5pts) ─────────────────────── */
+/* ── Relative Strength vs SPY (15pts) ─────────────── */
 function scoreRS(ohlcv, spyOhlcv) {
-  const r1M    = priceReturn(ohlcv, 21)
-  const spy1M  = priceReturn(spyOhlcv, 21)
-  const r3M    = priceReturn(ohlcv, 63)
-  const spy3M  = priceReturn(spyOhlcv, 63)
-  const rs1M   = r1M!=null && spy1M!=null ? r1M - spy1M : null
-  const rs3M   = r3M!=null && spy3M!=null ? r3M - spy3M : null
-
-  const s1 = rs1M==null?0 : rs1M>5?3 : rs1M>0?2 : 0
-  const s3 = rs3M==null?0 : rs3M>5?2 : rs3M>0?1 : 0
-  return { score: Math.min(s1+s3, 5), detail: { rs1M, rs3M } }
+  const r1M=priceReturn(ohlcv,21), s1M=priceReturn(spyOhlcv,21)
+  const r3M=priceReturn(ohlcv,63), s3M=priceReturn(spyOhlcv,63)
+  const rs1M=r1M!=null&&s1M!=null?r1M-s1M:null
+  const rs3M=r3M!=null&&s3M!=null?r3M-s3M:null
+  const sc1=rs1M==null?0:rs1M>8?8:rs1M>4?6:rs1M>0?4:rs1M>-4?2:0
+  const sc3=rs3M==null?0:rs3M>8?7:rs3M>4?5:rs3M>0?3:rs3M>-4?1:0
+  return {score:Math.min(sc1+sc3,15),max:15,detail:{rs1M,rs3M}}
 }
 
-/* ── Full Technical scorer (40pts) ──────────────── */
-function scoreTechnical(ohlcv, spyOhlcv) {
-  if (!ohlcv?.length) return { score:null, max:40, detail:{} }
-  const closes  = ohlcv.map(d => d.price ?? d.close).filter(Boolean)
-  const current = closes[closes.length-1]
-  const rsi     = calcRSI(closes)
-
-  const ema  = scoreEMAStack(closes, current)
-  const mac  = scoreMACD(closes)
-  const rs   = scoreRS(ohlcv, spyOhlcv)
-  const rsiS = scoreRSI(rsi)
-
-  return {
-    score: Math.min((ema.score) + (mac.score) + (rs.score) + rsiS, 40),
-    max: 40,
-    detail: { ...ema.detail, rsi, rsiS, macd: mac.detail, rs1M: rs.detail.rs1M, rs3M: rs.detail.rs3M }
-  }
+/* ── MACD Quality (10pts) ─────────────────────────── */
+function scoreMACD(ohlcv) {
+  const closes=ohlcv?.map(d=>d.price??d.close).filter(Boolean)??[]
+  if (closes.length<35) return {score:0,max:10,detail:{}}
+  const ema12=calcEMA(closes,12), ema26=calcEMA(closes,26)
+  if (!ema12||!ema26) return {score:0,max:10,detail:{}}
+  const line=ema12-ema26
+  const prev12=calcEMA(closes.slice(0,-1),12), prev26=calcEMA(closes.slice(0,-1),26)
+  const prevLine=(prev12??0)-(prev26??0)
+  const bullCross=prevLine<0&&line>0
+  let score=0
+  if (line>0)           score+=4  // above zero
+  if (line>prevLine)    score+=4  // histogram expanding
+  if (bullCross)        score+=2  // fresh crossover bonus
+  return {score:Math.min(score,10),max:10,detail:{line,prevLine,bullCross}}
 }
 
-/* ── Momentum scorer (20pts) ────────────────────── */
-function scoreMomentum(ohlcv) {
-  const r1M  = priceReturn(ohlcv, 21)
-  const r3M  = priceReturn(ohlcv, 63)
-  const rvol = calcRVOL(ohlcv)
-
-  const s1M  = r1M==null?0 : r1M>15?8 : r1M>8?6 : r1M>3?4 : r1M>0?2 : 0
-  const s3M  = r3M==null?0 : r3M>20?8 : r3M>10?6 : r3M>5?4 : r3M>0?2 : 0
-  const sVol = rvol==null?0 : rvol>2?4 : rvol>1.5?3 : rvol>1.1?2 : 0
-
-  return {
-    score: Math.min(s1M+s3M+sVol, 20), max:20,
-    detail: { r1M, r3M, rvol, s1M, s3M, sVol }
-  }
+/* ── RVOL (10pts) ─────────────────────────────────── */
+function scoreRVOL(ohlcv) {
+  const rv=calcRVOL(ohlcv)
+  const score=rv==null?0:rv>=2.5?10:rv>=2?8:rv>=1.5?6:rv>=1.1?4:rv>=0.8?2:0
+  return {score,max:10,detail:{rvol:rv}}
 }
 
-/* ── Volatility scorer (15pts) ──────────────────── */
-function scoreVolatility(ohlcv, fund) {
-  const closes  = ohlcv?.map(d => d.price ?? d.close).filter(Boolean) ?? []
-  const current = closes[closes.length-1] ?? 1
-  const atr     = calcATR(ohlcv)
-  const atrPct  = atr != null ? (atr / current) * 100 : null
-
-  // Sweet spot for swing: 1.5–5% daily ATR
-  let atrScore = 0
-  if (atrPct != null) {
-    if      (atrPct >= 1.5 && atrPct <= 5)  atrScore = 8  // ideal swing range
-    else if (atrPct >= 0.8 && atrPct < 1.5) atrScore = 5  // low but ok
-    else if (atrPct >  5   && atrPct <= 8)  atrScore = 4  // high, riskier
-    else if (atrPct >  8)                    atrScore = 1  // too volatile
-    else                                     atrScore = 3  // too quiet
-  }
-
-  // Beta score (sweet spot 0.8-1.8 for swing)
-  const beta = fund?.beta ?? null
-  let betaScore = 0
-  if (beta != null) {
-    if      (beta >= 0.8 && beta <= 1.8) betaScore = 7  // ideal
-    else if (beta >  1.8 && beta <= 2.5) betaScore = 4  // high
-    else if (beta <  0.8)                betaScore = 3  // too stable
-    else                                 betaScore = 1  // too volatile
-  }
-
-  return {
-    score: Math.min(atrScore+betaScore, 15), max:15,
-    detail: { atr, atrPct, beta, atrScore, betaScore }
-  }
+/* ── ADX / Trend Quality (10pts) ─────────────────── */
+function scoreADX(ohlcv) {
+  const adxData=calcADX(ohlcv)
+  if (!adxData) return {score:0,max:10,detail:{}}
+  const {adx,diPlus,diMinus}=adxData
+  // Strong trend + bullish direction
+  let score=0
+  if (adx>=25)      score+=6  // trending
+  else if (adx>=18) score+=3  // mild trend
+  if (diPlus>diMinus) score+=4  // bullish direction
+  else if (diPlus>diMinus*0.8) score+=1  // nearly balanced
+  return {score:Math.min(score,10),max:10,detail:{adx,diPlus,diMinus}}
 }
 
-/* ── Catalyst Strength scorer (15pts) ──────────── */
-function scoreCatalysts(fund) {
-  const f = fund ?? {}
-  // Earnings beat streak
-  const beatScore = Math.min((f.consecutiveBeats ?? 0) * 2, 6)
-  // Revenue growth (recent only — different from LT engine)
-  const revScore  = f.revenueGrowthYoY == null ? 0
-    : f.revenueGrowthYoY > 20 ? 5 : f.revenueGrowthYoY > 10 ? 3 : f.revenueGrowthYoY > 0 ? 1 : 0
-  // EPS momentum
-  const epsScore  = f.epsGrowthYoY == null ? 0
-    : f.epsGrowthYoY > 20 ? 4 : f.epsGrowthYoY > 10 ? 2 : f.epsGrowthYoY > 0 ? 1 : 0
-
-  return {
-    score: Math.min(beatScore+revScore+epsScore, 15), max:15,
-    detail: { beatScore, revScore, epsScore, consecutiveBeats: f.consecutiveBeats ?? 0 }
-  }
+/* ── ATR Quality — percentile-based (10pts) ──────── */
+function scoreATRQuality(ohlcv) {
+  const pctile=calcATRPercentile(ohlcv)
+  if (pctile==null) return {score:0,max:10,detail:{}}
+  // Sweet spot: 30th-70th percentile = normal volatility for this stock
+  let score=0
+  if (pctile>=30&&pctile<=70)    score=10  // normal range for this ticker
+  else if (pctile>=20&&pctile<30) score=7  // slightly below normal
+  else if (pctile>70&&pctile<=80) score=6  // slightly elevated
+  else if (pctile>80&&pctile<=90) score=3  // elevated
+  else if (pctile<20)              score=4  // unusually quiet
+  else                             score=1  // very elevated (>90th pctile)
+  return {score,max:10,detail:{atrPctile:pctile}}
 }
 
-/* ── Quality (light) scorer (10pts) ─────────────── */
-function scoreQuality(fund) {
-  const f    = fund ?? {}
-  const best = Math.max(f.roe??-Infinity, f.roic??-Infinity, f.roi??-Infinity)
-  const roeS = isFinite(best) ? (best>20?5 : best>=12?3 : best>=8?1 : 0) : 0
-  const nmS  = f.netMargin==null?0 : f.netMargin>15?5 : f.netMargin>=8?3 : f.netMargin>=0?1 : 0
-  return { score: Math.min(roeS+nmS, 10), max:10, detail:{ roeS, nmS } }
+/* ── Business Momentum (10pts) ───────────────────── */
+function scoreBusinessMomentum(fund) {
+  const f=fund??{}
+  // Revenue acceleration (not absolute level, acceleration)
+  const revSc=f.revenueGrowthYoY==null?0
+    :f.revenueGrowthYoY>30?4:f.revenueGrowthYoY>15?3:f.revenueGrowthYoY>5?2:f.revenueGrowthYoY>0?1:0
+  const epsSc=f.epsGrowthYoY==null?0
+    :f.epsGrowthYoY>30?4:f.epsGrowthYoY>15?3:f.epsGrowthYoY>5?2:f.epsGrowthYoY>0?1:0
+  const beatSc=Math.min((f.consecutiveBeats??0),2)
+  return {score:Math.min(revSc+epsSc+beatSc,10),max:10,detail:{revSc,epsSc,beatSc}}
 }
 
-/* ── Risk (swing-specific, -5pts max) ────────────── */
-function scoreRisk(fund) {
-  const f=fund??{}; let pen=0; const flags=[]
-  if ((f.beta??0)>2.5) { pen-=3; flags.push('too_volatile') }
-  if ((f.netMargin??0)<-15) { pen-=2; flags.push('negative_margin') }
-  return { penalty: Math.max(pen,-5), flags }
+/* ── Earnings Catalyst (5pts) ────────────────────── */
+function scoreEarnings(fund) {
+  const beats=fund?.consecutiveBeats??0
+  const score=beats>=4?5:beats>=3?4:beats>=2?3:beats>=1?2:0
+  return {score,max:5,detail:{consecutiveBeats:beats}}
 }
 
-/* ── Setup detection ─────────────────────────────── */
-function detectSetup(tech, mom) {
-  const { e20, e50, e200, current, rsi } = tech.detail ?? {}
-  const { r1M, r3M, rvol } = mom.detail ?? {}
+/* ── Setup Detection ─────────────────────────────── */
+function detectSetup(emaD, adxD, macdD, rvolD, ohlcv) {
+  const {a20,a50,a200,ordered,distFromEMA20,current,e20}=emaD
+  const adx=adxD?.adx??0, diP=adxD?.diPlus??0, diM=adxD?.diMinus??0
+  const rv=rvolD?.rvol??0
+  const macdBull=macdD?.line>0
+  const breakout20=donchianBreakout(ohlcv,20)
 
-  if (!e20 || !e50 || !e200) return 'Insufficient Data'
-
-  const aboveAll = current > e20 && current > e50 && current > e200
-  const below20  = current < e20
-  const emaOrdered = e20 > e50 && e50 > e200
-
-  if (aboveAll && emaOrdered && rvol > 1.5) return 'Breakout'
-  if (aboveAll && emaOrdered && r1M < 5)    return 'Trend Continuation'
-  if (aboveAll && !emaOrdered)               return 'Recovery'
-  if (below20 && current > e50)             return 'Pullback'
-  if (current < e50 && current < e200)      return 'Distribution'
-  if (Math.abs(r1M ?? 0) < 3)              return 'Range / Consolidation'
+  if (a20&&a50&&a200&&ordered&&breakout20&&rv>1.5) return 'Breakout'
+  if (a20&&a50&&a200&&ordered&&macdBull&&adx>=20)  return 'Trend Continuation'
+  if (a50&&a200&&!a20&&distFromEMA20>-8)           return 'Pullback'
+  if (!a50&&a20&&rv>1.2)                            return 'Recovery'
+  if (!a20&&!a50&&adx<18)                           return 'Range'
+  if (!a200&&!a50&&diM>diP)                         return 'Distribution'
   return 'Mixed'
 }
 
-/* ── ATR-based trade levels ───────────────────────── */
-function calcLevels(ohlcv) {
-  const closes  = ohlcv?.map(d => d.price ?? d.close).filter(Boolean) ?? []
-  const current = closes[closes.length-1]
-  const atr     = calcATR(ohlcv) ?? (current * 0.02)
-  return {
-    entry:     current,
-    stopLoss:  +(current - 2 * atr).toFixed(2),
-    takeProfit:+(current + 3 * atr).toFixed(2),
-    atr:       +atr.toFixed(2),
-    riskReward: 1.5,
-    atrPct:    +((atr / current) * 100).toFixed(2),
+/* ── Setup Bonus (10pts) ─────────────────────────── */
+function scoreSetupBonus(setup, emaD, rvolD, macdD) {
+  const rv=rvolD?.rvol??0, macdBull=macdD?.line>0
+  switch(setup) {
+    case 'Breakout':           return rv>2&&macdBull?10:rv>1.5?7:5
+    case 'Trend Continuation': return macdBull&&emaD.ordered?8:6
+    case 'Pullback':           return rv>1&&macdBull?7:4
+    case 'Recovery':           return rv>1.5?6:3
+    case 'Range':              return 2
+    case 'Distribution':       return 0
+    default:                   return 3
   }
 }
 
-/* ── Grades ──────────────────────────────────────── */
-const SWING_GRADES = [
-  { min:80, label:'STRONG BUY',  color:'#22C55E' },
-  { min:65, label:'BUY',         color:'#86EFAC' },
-  { min:50, label:'HOLD',        color:'#FBBF24' },
-  { min:35, label:'SELL',        color:'#F97316' },
-  { min:0,  label:'STRONG SELL', color:'#EF4444' },
-]
-export function getSwingGrade(score) {
-  return SWING_GRADES.find(g => score >= g.min) ?? SWING_GRADES[SWING_GRADES.length-1]
+/* ── Setup-dependent SL/TP ───────────────────────── */
+function calcLevels(ohlcv, setup) {
+  const closes=ohlcv?.map(d=>d.price??d.close).filter(Boolean)??[]
+  const current=closes[closes.length-1]
+  const atrVal=calcATR(ohlcv)??current*0.02
+  const configs={
+    'Breakout':          {sl:2.0,tp:3.5,note:'Wide SL for breakout room'},
+    'Trend Continuation':{sl:1.5,tp:2.5,note:'Tight SL in established trend'},
+    'Pullback':          {sl:1.0,tp:2.0,note:'Tight SL near support'},
+    'Recovery':          {sl:2.5,tp:3.5,note:'Wider SL for early recovery'},
+    'Range':             {sl:1.5,tp:1.5,note:'Limited upside in range'},
+    'Mixed':             {sl:2.0,tp:3.0,note:'Standard setup'},
+    'Distribution':      {sl:1.5,tp:1.5,note:'Low conviction'},
+  }
+  const cfg=configs[setup]??configs['Mixed']
+  return {
+    entry: +current.toFixed(2),
+    stopLoss: +(current-cfg.sl*atrVal).toFixed(2),
+    takeProfit: +(current+cfg.tp*atrVal).toFixed(2),
+    atr: +atrVal.toFixed(2),
+    atrPct: +((atrVal/current)*100).toFixed(2),
+    slMultiple: cfg.sl, tpMultiple: cfg.tp,
+    riskReward: +(cfg.tp/cfg.sl).toFixed(2),
+    note: cfg.note,
+  }
 }
+
+/* ── Risk (swing-specific) ───────────────────────── */
+function scoreRisk(fund) {
+  const f=fund??{}; let pen=0; const flags=[]
+  if ((f.netMargin??0)<-15){pen-=3;flags.push('negative_margin')}
+  if ((f.debtToEquity??0)>5){pen-=2;flags.push('high_leverage')}
+  return {penalty:Math.max(pen,-5),flags}
+}
+
+/* ── Grades ──────────────────────────────────────── */
+const GRADES=[
+  {min:80,label:'STRONG BUY', color:'#22C55E'},
+  {min:65,label:'BUY',        color:'#86EFAC'},
+  {min:50,label:'HOLD',       color:'#FBBF24'},
+  {min:35,label:'SELL',       color:'#F97316'},
+  {min:0, label:'STRONG SELL',color:'#EF4444'},
+]
+export function getSwingGrade(s){return GRADES.find(g=>s>=g.min)??GRADES[GRADES.length-1]}
 
 /* ── Main entry ──────────────────────────────────── */
 export function runSwingConviction(fund, ohlcv, spyOhlcv) {
-  const tech = scoreTechnical(ohlcv, spyOhlcv)
-  const mom  = scoreMomentum(ohlcv)
-  const vol  = scoreVolatility(ohlcv, fund)
-  const cats = scoreCatalysts(fund)
-  const qual = scoreQuality(fund)
-  const risk = scoreRisk(fund)
+  const ema   = scoreEMAStructure(ohlcv)
+  const rs    = scoreRS(ohlcv, spyOhlcv)
+  const mac   = scoreMACD(ohlcv)
+  const rvol  = scoreRVOL(ohlcv)
+  const adx   = scoreADX(ohlcv)
+  const atrQ  = scoreATRQuality(ohlcv)
+  const biz   = scoreBusinessMomentum(fund)
+  const earn  = scoreEarnings(fund)
+  const risk  = scoreRisk(fund)
 
-  const raw   = (tech.score??0)+(mom.score??0)+(vol.score??0)+(cats.score??0)+(qual.score??0)
-  const final = Math.max(0, Math.min(100, Math.round(raw + risk.penalty)))
+  const setup = detectSetup(ema.detail, adx.detail, mac.detail, rvol.detail, ohlcv)
+  const setupB = scoreSetupBonus(setup, ema.detail, rvol.detail, mac.detail)
+  const levels = calcLevels(ohlcv, setup)
+
+  const raw   = ema.score+rs.score+mac.score+rvol.score+adx.score+atrQ.score+biz.score+setupB+earn.score
+  const final = Math.max(0,Math.min(100,Math.round(raw+risk.penalty)))
   const g     = getSwingGrade(final)
-  const setup = detectSetup(tech, mom)
-  const levels = calcLevels(ohlcv)
+  const d     = ema.detail
 
-  const d = tech.detail ?? {}
   return {
-    mode: 'swing', finalScore: final, rawScore: Math.round(raw),
-    grade: g.label, gradeColor: g.color,
-    riskPenalty: risk.penalty,
-    setup,
-    levels,
-    breakdown: { technical: tech, momentum: mom, volatility: vol, catalysts: cats, quality: qual, risk },
-    technical: {
-      ema20: d.e20, ema50: d.e50, ema200: d.e200,
-      above20: d.e20 && d.current > d.e20,
-      above50: d.e50 && d.current > d.e50,
-      above200:d.e200&& d.current > d.e200,
-      emaOrdered: d.e20 > d.e50 && d.e50 > d.e200,
-      rsi: d.rsi, rs1M: d.rs1M, rs3M: d.rs3M,
-      macdBullish: d.macd?.line > 0,
-      macdCross:   d.macd?.bullCross,
-      rvol: mom.detail?.rvol,
-      atr:  vol.detail?.atr,
-      atrPct: vol.detail?.atrPct,
+    mode:'swing', finalScore:final, rawScore:Math.round(raw),
+    grade:g.label, gradeColor:g.color, riskPenalty:risk.penalty,
+    setup, levels,
+    breakdown:{ema,rs,macd:mac,rvol,adx,atrQuality:atrQ,businessMomentum:biz,setupBonus:{score:setupB,max:10},earnings:earn,risk},
+    technical:{
+      ema20:d.e20, ema50:d.e50, ema200:d.e200,
+      above20:d.a20, above50:d.a50, above200:d.a200,
+      emaOrdered:d.ordered, distFromEMA20:d.distFromEMA20,
+      rsi:calcRSI((ohlcv??[]).map(x=>x.price??x.close).filter(Boolean)),
+      rs1M:rs.detail.rs1M, rs3M:rs.detail.rs3M,
+      macdBullish:mac.detail.line>0, macdCross:mac.detail.bullCross,
+      adx:adx.detail.adx, diPlus:adx.detail.diPlus, diMinus:adx.detail.diMinus,
+      rvol:rvol.detail.rvol,
+      atrPctile:atrQ.detail.atrPctile, atr:levels.atr, atrPct:levels.atrPct,
     },
-    sectorProfile: 'SWING',
-    modelVersion:  'TradePoint-Swing-v2.0',
-    confidence:    fund ? 82 : 40,
-    activeGate:    null,
-    wallStreet:    { upside: null, analysts: 0 },
+    sectorProfile:'SWING', modelVersion:'TradePoint-Swing-v3.0',
+    confidence:fund?84:38, activeGate:null, wallStreet:{upside:null,analysts:0},
   }
 }
