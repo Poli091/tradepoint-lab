@@ -142,24 +142,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
 
   // Pre-compute alignment value for Decision Engine
-  const alignment_ = useMemo(() => {
-    if (!result || !altResult) return null
-    const ltRank = GRADE_RANK_MAP[result.grade]??2, swRank = GRADE_RANK_MAP[altResult.grade]??2
-    const alignCeiling   = [100,75,50,25,0][Math.min(Math.abs(ltRank-swRank),4)]
-    const alignSimilarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
-    return Math.min(alignSimilarity, alignCeiling)
-  }, [result, altResult])
-
-  // Compute Decision Engine output (deterministic synthesis)
-  const decision = useMemo(() => {
-    if (!result) return null
-    try {
-      return computeDecision(result, altResult, alignment_)
-    } catch { return null }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, altResult])
-
-  // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
   const altResult = useMemo(() => {
     if (!result) return null
     try {
@@ -180,6 +162,24 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [scoreHistory, setScoreHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  const alignment_ = useMemo(() => {
+    if (!result || !altResult) return null
+    const ltR = GRADE_RANK_MAP[result.grade]??2, swR = GRADE_RANK_MAP[altResult.grade]??2
+    const ceiling   = [100,75,50,25,0][Math.min(Math.abs(ltR-swR),4)]
+    const similarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
+    return Math.min(similarity, ceiling)
+  }, [result, altResult])
+
+  // Compute Decision Engine output (deterministic synthesis)
+  const decision = useMemo(() => {
+    if (!result) return null
+    try {
+      return computeDecision(result, altResult, alignment_)
+    } catch { return null }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, altResult])
+
+  // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
   const generateAI = async () => {
     setAiLoading(true); setAiError(null)
     try {
@@ -268,18 +268,18 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {mode === 'long-term' && altResult && result && (() => {
-              const ltGrade = GRADE_RANK_MAP[result.grade]    ?? 2
-              const swGrade = GRADE_RANK_MAP[altResult.grade] ?? 2
-              const dist = Math.abs(ltGrade - swGrade)
+              const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
+              const swR = GRADE_RANK_MAP[altResult.grade] ?? 2
+              const dist = Math.abs(ltR - swR)
 
               // Agreement ceiling — grade distance determines max possible alignment
               const ceiling   = dist===0?100 : dist===1?75 : dist===2?50 : dist===3?25 : 0
 
               // Similarity — only meaningful within same grade ceiling
-              const scoreSim = Math.max(0, 100 - Math.abs(result.finalScore - altResult.finalScore))
+              const similarity = Math.max(0, 100 - Math.abs(result.finalScore - altResult.finalScore))
 
               // Alignment = similarity CAPPED by agreement ceiling (no arbitrary weights)
-              const alignment  = Math.min(scoreSim, alignMax)
+              const alignment  = Math.min(similarity, ceiling)
 
               // Direction flags
               const ltBull = ltR >= 3, swBull = swR >= 3
@@ -801,7 +801,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 const sROI = v => v==null?null : v>20?8:v>=15?6:v>=10?4:v>=8?2:0
                 const sNM  = v => v==null?null : v>25?7:v>=15?5:v>=10?3:v>=0?1:0
                 const sGM  = v => v==null?null : v>60?5:v>=40?3:v>=20?2:0
-                const barCol  = (s,m) => s==null?'var(--border)' : s>=m*0.6?'var(--green)':s>=m*0.3?'var(--amber)':'var(--red)'
+                const col  = (s,m) => s==null?'var(--border)' : s>=m*0.6?'var(--green)':s>=m*0.3?'var(--amber)':'var(--red)'
 
                 const Row = ({label, val, s, m}) => s==null?null:(
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
@@ -1063,23 +1063,23 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
                   {/* Model Summary — always shown, fixed from engine */}
                   {(() => {
-                    const SUMMARY_DIMS = [
+                    const DIMS = [
                       { name:'Growth',    s:result.breakdown.growth.score,    m:25 },
                       { name:'Quality',   s:result.breakdown.quality.score,   m:20 },
                       { name:'Strength',  s:result.breakdown.strength.score,  m:15 },
                       { name:'Valuation', s:result.breakdown.valuation.score, m:15 },
                       { name:'Technical', s:result.breakdown.technical.score, m:15 },
                     ].filter(d => d.s != null).sort((a,b) => (b.s/b.m)-(a.s/a.m))
-                    const best  = SUMMARY_DIMS[0]
-                    const worst = SUMMARY_DIMS[SUMMARY_DIMS.length-1]
-                    const effPct   = d => Math.round((d.s/d.m)*100)
+                    const best  = DIMS[0]
+                    const worst = DIMS[DIMS.length-1]
+                    const pct   = d => Math.round((d.s/d.m)*100)
                     const col   = p => p>=65?'var(--green)':p>=40?'var(--amber)':'var(--red)'
                     return (
                       <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'10px 14px', marginBottom:10 }}>
                         <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase',
                           letterSpacing:'0.07em', marginBottom:8 }}>Model Summary</div>
                         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8 }}>
-                          {SUMMARY_DIMS.map(d => (
+                          {DIMS.map(d => (
                             <div key={d.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                               <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{d.name}</span>
                               <div style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -1162,7 +1162,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
 
                       {(() => {
-                        const SCORE_DIMS = [
+                        const DIMS = [
                           { k:'growth',    s:result.breakdown.growth.score,    m:25, label:'Growth'    },
                           { k:'quality',   s:result.breakdown.quality.score,   m:20, label:'Quality'   },
                           { k:'strength',  s:result.breakdown.strength.score,  m:15, label:'Strength'  },
@@ -1176,7 +1176,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         const MiniBar = ({ dims }) => (
                           <div style={{ marginBottom:8 }}>
                             {dims.map(d => {
-                              const barPct = Math.min((d.s/d.m)*100, 100)
+                              const pct = Math.min((d.s/d.m)*100, 100)
                               const col = pct>=75?'var(--green)':pct>=50?'var(--amber)':'var(--red)'
                               return (
                                 <div key={d.k} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
