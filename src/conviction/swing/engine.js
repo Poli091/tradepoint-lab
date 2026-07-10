@@ -344,14 +344,14 @@ function scoreRisk(fund) {
 }
 
 /* ── Grades ──────────────────────────────────────── */
-const GRADES=[
+const SWING_GRADES=[
   {min:80,label:'STRONG BUY', color:'#22C55E'},
   {min:65,label:'BUY',        color:'#86EFAC'},
   {min:50,label:'HOLD',       color:'#FBBF24'},
   {min:35,label:'SELL',       color:'#F97316'},
   {min:0, label:'STRONG SELL',color:'#EF4444'},
 ]
-export function getSwingGrade(s){return GRADES.find(g=>s>=g.min)??GRADES[GRADES.length-1]}
+export function getSwingGrade(score){return SWING_GRADES.find(entry=>score>=entry.min)??SWING_GRADES[SWING_GRADES.length-1]}
 
 /* ── Main entry ──────────────────────────────────── */
 export function runSwingConviction(fund, ohlcv, spyOhlcv) {
@@ -375,7 +375,7 @@ export function runSwingConviction(fund, ohlcv, spyOhlcv) {
 
   const raw   = ema.score+rs.score+mac.score+rvol.score+adx.score+atrQ.score+biz.score+setupB+earn.score
   const final = Math.max(0,Math.min(100,Math.round(raw+risk.penalty)))
-  const g     = getSwingGrade(final)
+  const grade = getSwingGrade(final)
   const d     = ema.detail
 
   return {

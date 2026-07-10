@@ -130,8 +130,8 @@ export function calcDiagnostics(results) {
   const avgScore    = scores.reduce((a, b) => a + b, 0) / scores.length
   const gradeCounts = { 'STRONG BUY': 0, 'BUY': 0, 'HOLD': 0, 'SELL': 0, 'STRONG SELL': 0 }
   tickers.forEach(t => {
-    const g = results[t].grade
-    if (gradeCounts[g] !== undefined) gradeCounts[g]++
+    const gradeLabel = results[t].grade
+    if (gradeCounts[gradeLabel] !== undefined) gradeCounts[gradeLabel]++
   })
 
   return {

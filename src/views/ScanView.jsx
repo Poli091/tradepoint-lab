@@ -45,23 +45,23 @@ const SECTOR_GROUPS = [
 
 /* ── Single scan result badge ─────────────────────────────── */
 function ScanBadge({ ticker, score, grade, onClick, active }) {
-  const g = getGrade(score ?? 0)
+  const gradeInfo = getGrade(score ?? 0)
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', justifyContent:'space-between',
       padding:'8px 12px', borderRadius:8, cursor:'pointer', width:'100%',
-      border:`1px solid ${active ? g.color : 'var(--border)'}`,
-      background: active ? `${g.color}18` : 'var(--surface-up)',
+      border:`1px solid ${active ? gradeInfo.color : 'var(--border)'}`,
+      background: active ? `${gradeInfo.color}18` : 'var(--surface-up)',
       transition:'all 0.13s',
       marginBottom:4,
     }}>
-      <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color: active ? g.color : 'var(--txt)' }}>
+      <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color: active ? gradeInfo.color : 'var(--txt)' }}>
         {ticker}
       </span>
       {score != null && (
         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-          <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: g.color }}>{score}</span>
-          <span style={{ fontSize:10, color: g.color, background:`${g.color}18`, padding:'1px 6px', borderRadius:4 }}>
+          <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: gradeInfo.color }}>{score}</span>
+          <span style={{ fontSize:10, color: gradeInfo.color, background:`${gradeInfo.color}18`, padding:'1px 6px', borderRadius:4 }}>
             {grade}
           </span>
         </div>
@@ -173,14 +173,14 @@ export default function ScanView() {
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                   {tickers.map(t => {
                     const h = scanHistory.find(s => s.ticker === t)
-                    const g = h?.score != null ? getGrade(h.score) : null
+                    const gradeInfo = h?.score != null ? getGrade(h.score) : null
                     return (
                       <button key={t} onClick={() => handleScan(t)} style={{
                         padding:'3px 8px', borderRadius:5, cursor:'pointer',
-                        border:`1px solid ${activeTicker === t ? color : g ? g.color+'66' : 'var(--border)'}`,
-                        background: activeTicker === t ? `${color}22` : g ? `${g.color}11` : 'transparent',
+                        border:`1px solid ${activeTicker === t ? color : g ? gradeInfo.color+'66' : 'var(--border)'}`,
+                        background: activeTicker === t ? `${color}22` : g ? `${gradeInfo.color}11` : 'transparent',
                         fontFamily:'var(--mono)', fontSize:11, fontWeight:600,
-                        color: activeTicker === t ? color : g ? g.color : 'var(--txt-sec)',
+                        color: activeTicker === t ? color : g ? gradeInfo.color : 'var(--txt-sec)',
                         transition:'all 0.11s',
                       }}>
                         {t}{h?.score != null ? ` ${h.score}` : ''}

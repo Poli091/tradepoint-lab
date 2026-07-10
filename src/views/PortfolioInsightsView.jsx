@@ -155,7 +155,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
   )
 
   const gradeBarData = Object.entries(GRADE_CONFIG)
-    .map(([g, cfg]) => ({ name: cfg.short, count: stats.gradeCounts[g] ?? 0, color: cfg.color, full: g }))
+    .map(([g, cfg]) => ({ name: cfg.short, count: stats.gradeCounts[g] ?? 0, color: cfgrade.color, full: g }))
     .filter(d => d.count > 0)
 
   return (
@@ -209,7 +209,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
               if (!tickers?.length) return null
               return (
                 <div key={g} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  <div style={{ width:6, height:6, borderRadius:'50%', background:cfg.color, flexShrink:0 }} />
+                  <div style={{ width:6, height:6, borderRadius:'50%', background:cfgrade.color, flexShrink:0 }} />
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>
                     {cfg.short}: {tickers.join(', ')}
                   </span>
@@ -273,18 +273,18 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
             textTransform:'uppercase', letterSpacing:'0.06em' }}>Highest conviction</div>
           {stats.best.map(p => {
             const cv = convictionResults[p.ticker]
-            const g  = GRADE_CONFIG[cv?.grade ?? getGrade(p.score).label]
+            const gradeConfig  = GRADE_CONFIG[cv?.grade ?? getGrade(p.score).label]
             return (
               <div key={p.ticker} style={{ display:'flex', alignItems:'center',
                 justifyContent:'space-between', marginBottom:6 }}>
                 <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color:'var(--txt)' }}>{p.ticker}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{p.name}</span>
-                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: g?.color ?? 'var(--txt)' }}>
+                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: grade?.color ?? 'var(--txt)' }}>
                     {p.score}
                   </span>
                   <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, fontWeight:700,
-                    background:`${g?.color}22`, color: g?.color }}>
+                    background:`${grade?.color}22`, color: grade?.color }}>
                     {cv?.grade ?? getGrade(p.score).label}
                   </span>
                 </div>
@@ -297,18 +297,18 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
             textTransform:'uppercase', letterSpacing:'0.06em' }}>Lowest conviction</div>
           {stats.worst.map(p => {
             const cv = convictionResults[p.ticker]
-            const g  = GRADE_CONFIG[cv?.grade ?? getGrade(p.score).label]
+            const gradeConfig  = GRADE_CONFIG[cv?.grade ?? getGrade(p.score).label]
             return (
               <div key={p.ticker} style={{ display:'flex', alignItems:'center',
                 justifyContent:'space-between', marginBottom:6 }}>
                 <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color:'var(--txt)' }}>{p.ticker}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{p.name}</span>
-                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: g?.color ?? 'var(--txt)' }}>
+                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: grade?.color ?? 'var(--txt)' }}>
                     {p.score}
                   </span>
                   <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, fontWeight:700,
-                    background:`${g?.color}22`, color: g?.color }}>
+                    background:`${grade?.color}22`, color: grade?.color }}>
                     {cv?.grade ?? getGrade(p.score).label}
                   </span>
                 </div>
