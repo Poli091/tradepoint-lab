@@ -231,50 +231,70 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            {/* Alignment Score — grade agreement + similarity */}
+            {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {mode === 'long-term' && altResult && result && (() => {
-              // Grade → numeric rank
               const RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
-              const ltRank = RANK[result.grade]    ?? 2
-              const swRank = RANK[altResult.grade] ?? 2
-              const gradeDist = Math.abs(ltRank - swRank)
+              const ltR = RANK[result.grade]    ?? 2
+              const swR = RANK[altResult.grade] ?? 2
+              const dist = Math.abs(ltR - swR)
 
-              // Agreement: based on grade distance (primary — 60% weight)
-              const agreement = gradeDist===0?100 : gradeDist===1?75 : gradeDist===2?50 : gradeDist===3?25 : 0
+              // Agreement ceiling — grade distance determines max possible alignment
+              const ceiling   = dist===0?100 : dist===1?75 : dist===2?50 : dist===3?25 : 0
 
-              // Similarity: score closeness (secondary — 40% weight)
+              // Similarity — only meaningful within same grade ceiling
               const similarity = Math.max(0, 100 - Math.abs(result.finalScore - altResult.finalScore))
 
-              // Combined
-              const alignment = Math.round(agreement * 0.6 + similarity * 0.4)
+              // Alignment = similarity CAPPED by agreement ceiling (no arbitrary weights)
+              const alignment  = Math.min(similarity, ceiling)
 
-              // Direction
-              const ltBull = ltRank >= 3, swBull = swRank >= 3
-              const ltBear = ltRank <= 1, swBear = swRank <= 1
-              const bothBull = ltBull && swBull
-              const bothBear = ltBear && swBear
+              // Direction flags
+              const ltBull = ltR >= 3, swBull = swR >= 3
+              const ltBear = ltR <= 1, swBear = swR <= 1
+              const bothBull = ltBull && swBull, bothBear = ltBear && swBear
 
-              // Labels
-              const qualityLabel = alignment>=90?'Highly Aligned' : alignment>=75?'Aligned' : alignment>=50?'Mixed Signals' : 'Strong Divergence'
-              const thesisLabel  = bothBull?'Bullish Thesis ↑' : bothBear?'Bearish Thesis ↓' : ltBull?'Counter-Trend ↑↓' : 'Counter-Trend ↓↑'
-              const color = alignment>=75 ? (bothBull?'var(--green)':bothBear?'var(--red)':'var(--amber)')
-                          : alignment>=50 ? 'var(--amber)' : 'var(--red)'
+              // Matrix label
+              const matrixLabel =
+                alignment >= 85 && bothBull ? '🟢 High Conviction Bullish' :
+                alignment >= 85 && bothBear ? '🔴 High Conviction Bearish' :
+                alignment >= 70 && bothBull ? '🟢 Aligned Bullish' :
+                alignment >= 70 && bothBear ? '🔴 Aligned Bearish' :
+                alignment >= 50             ? '🟡 Mixed Signals' :
+                ltBull !== swBull           ? '🟠 Counter-Trend' :
+                                              '⚫ Strong Divergence'
+
+              // Strategy phrase
+              const strategy =
+                bothBull                    ? 'Suitable for accumulation' :
+                ltBull && !swBull && !swBear? 'Wait for a better entry' :
+                ltBull && swBear            ? 'Wait for technical recovery' :
+                !ltBull && !ltBear && swBull? 'Momentum play — watch fundamentals' :
+                ltBear && swBull            ? 'Short-term trade only' :
+                bothBear                    ? 'Consider reducing position' :
+                                              'Monitor — no clear signal'
+
+              const color =
+                alignment >= 70 && bothBull ? 'var(--green)' :
+                alignment >= 70 && bothBear ? 'var(--red)'   :
+                alignment >= 50             ? 'var(--amber)'  :
+                                              'var(--red)'
 
               return (
-                <div title={`LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Agreement: ${agreement}% · Similarity: ${similarity}%`}
+                <div
+                  title={`LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Ceiling: ${ceiling}% · Similarity: ${similarity}%`}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center',
                     padding:'4px 10px', borderRadius:6, marginRight:6,
                     background:`${color}15`, border:`1px solid ${color}44`,
-                    cursor:'default', minWidth:72 }}>
-                  <div style={{ fontSize:13, fontWeight:800, color, lineHeight:1 }}>
+                    cursor:'default', minWidth:76 }}>
+                  <div style={{ fontSize:13, fontWeight:800, color, lineHeight:1.1 }}>
                     {alignment}%
                   </div>
-                  <div style={{ fontSize:8, color, fontWeight:700, letterSpacing:'0.02em',
-                    whiteSpace:'nowrap', marginTop:2 }}>
-                    {qualityLabel}
+                  <div style={{ fontSize:7.5, color, fontWeight:700,
+                    whiteSpace:'nowrap', marginTop:2, textAlign:'center' }}>
+                    {matrixLabel}
                   </div>
-                  <div style={{ fontSize:7, color:'var(--txt-muted)', whiteSpace:'nowrap', marginTop:1 }}>
-                    {thesisLabel}
+                  <div style={{ fontSize:7, color:'var(--txt-muted)',
+                    whiteSpace:'nowrap', marginTop:1, textAlign:'center', fontStyle:'italic' }}>
+                    {strategy}
                   </div>
                 </div>
               )
