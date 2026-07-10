@@ -630,35 +630,52 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 )
               })()}
 
-              {/* ══ DECISION ENGINE ══ */}
+              {/* ══ DECISION ENGINE v2 ══ */}
               {decision && (
                 <div style={{ background:`${decision.color}18`,
                   border:`1px solid ${decision.color}44`,
                   borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
 
-                  {/* Header */}
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-                    <div>
+                  {/* Header row */}
+                  <div style={{ display:'flex', justifyContent:'space-between',
+                    alignItems:'flex-start', marginBottom:10 }}>
+                    <div style={{ flex:1 }}>
                       <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
-                        textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>
+                        textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>
                         Decision
                       </div>
-                      <div style={{ fontSize:16, fontWeight:800, color:decision.color, lineHeight:1.2 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:decision.color, lineHeight:1.2 }}>
                         {decision.action}
                       </div>
-                    </div>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:2 }}>Confidence</div>
-                      <div style={{ fontSize:20, fontWeight:800, color:decision.color, lineHeight:1 }}>
-                        {decision.confidence}%
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:4, fontStyle:'italic' }}>
+                        {decision.driver}
                       </div>
-                      {decision.analysts && (
-                        <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2 }}>
-                          Analysts: {decision.analysts.label}
-                        </div>
-                      )}
+                    </div>
+                    <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:2 }}>
+                        Decision Strength
+                      </div>
+                      <div style={{ fontSize:18, fontWeight:800, color:decision.color, lineHeight:1 }}>
+                        {decision.strength}%
+                      </div>
+                      {/* Strength bar */}
+                      <div style={{ width:64, height:3, background:'var(--border)', borderRadius:2,
+                        marginTop:3, marginLeft:'auto' }}>
+                        <div style={{ height:'100%', width:`${decision.strength}%`,
+                          background:decision.color, borderRadius:2 }} />
+                      </div>
                     </div>
                   </div>
+
+                  {/* Investment Phase pill */}
+                  {decision.phase && (
+                    <div style={{ display:'inline-block', fontSize:9, fontWeight:700,
+                      padding:'2px 8px', borderRadius:4, marginBottom:10,
+                      background:`${decision.color}22`, color:decision.color,
+                      letterSpacing:'0.04em', textTransform:'uppercase' }}>
+                      Investment Phase: {decision.phase}
+                    </div>
+                  )}
 
                   {/* Because */}
                   {decision.because.length > 0 && (
@@ -669,27 +686,33 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
                       {decision.because.map((b, i) => (
                         <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6,
-                          fontSize:10, color: b.ok?'var(--txt)':'var(--txt-muted)', marginBottom:3 }}>
-                          <span style={{ color:b.ok?'var(--green)':'var(--red)', fontWeight:700, flexShrink:0 }}>
+                          fontSize:10, color:'var(--txt)', marginBottom:4 }}>
+                          <span style={{ color:b.ok?'var(--green)':'var(--red)',
+                            fontWeight:700, flexShrink:0, marginTop:0.5 }}>
                             {b.ok?'✓':'✗'}
                           </span>
-                          {b.text}
+                          <span>{b.text}</span>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* What would change this */}
-                  {decision.invalidation.length > 0 && (
+                  {/* To upgrade / To downgrade */}
+                  {decision.conditions?.conds?.length > 0 && (
                     <div style={{ borderTop:`1px solid ${decision.color}33`, paddingTop:8 }}>
                       <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
                         textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
-                        What would change this decision
+                        {decision.conditions.label}
                       </div>
-                      {decision.invalidation.map((c, i) => (
+                      {decision.conditions.conds.map((c, i) => (
                         <div key={i} style={{ fontSize:10, color:'var(--txt-muted)',
-                          marginBottom:2, display:'flex', gap:6 }}>
-                          <span style={{ color:'var(--amber)' }}>→</span> {c}
+                          marginBottom:3, display:'flex', gap:6, alignItems:'flex-start' }}>
+                          <span style={{
+                            color: decision.conditions.direction==='upgrade'?'var(--green)':'var(--amber)',
+                            flexShrink:0 }}>
+                            {decision.conditions.direction==='upgrade'?'↑':'→'}
+                          </span>
+                          {c}
                         </div>
                       ))}
                     </div>
