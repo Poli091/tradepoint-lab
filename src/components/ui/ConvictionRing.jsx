@@ -1,32 +1,18 @@
 /**
  * MODULE: UI / ConvictionRing.jsx
  * Circular SVG progress ring showing the conviction score (0–100).
- *
- * Grade colors (from engine):
- *   STRONG BUY  #22C55E   BUY  #86EFAC   HOLD  #FBBF24
- *   SELL        #F97316   STRONG SELL  #EF4444
- *
- * States:
- *   score + grade  → real engine score with grade color
- *   score only     → legacy color logic (green/amber/red)
- *   loading=true   → spinning ring (computing)
- *   score=null     → empty ring (no data yet)
+ * Grade colors sourced from conviction/grade/index.js — single source of truth.
+ * NOTE: SVG stroke requires hex values (CSS vars not supported in SVG attributes).
  */
 
-const GRADE_COLORS = {
-  'STRONG BUY':  '#22C55E',
-  'BUY':         '#86EFAC',
-  'HOLD':        '#FBBF24',
-  'SELL':        '#F97316',
-  'STRONG SELL': '#EF4444',
-}
+import { getGradeColor } from '../../conviction/grade/index.js'
 
 function legacyColor(score) {
-  if (score >= 85) return '#22C55E'
-  if (score >= 70) return '#86EFAC'
-  if (score >= 55) return '#FBBF24'
-  if (score >= 40) return '#F97316'
-  return '#EF4444'
+  return score >= 85 ? '#22C55E'
+       : score >= 70 ? '#86EFAC'
+       : score >= 55 ? '#FBBF24'
+       : score >= 40 ? '#F97316'
+       : '#EF4444'
 }
 
 export default function ConvictionRing({ score, grade, loading = false, size = 42 }) {
@@ -36,12 +22,9 @@ export default function ConvictionRing({ score, grade, loading = false, size = 4
   const cx   = size / 2
   const cy   = size / 2
 
-  // Color from grade (real engine) or legacy logic
-  const color = grade
-    ? (GRADE_COLORS[grade] ?? legacyColor(score ?? 0))
-    : legacyColor(score ?? 0)
+  // Single source: getGradeColor from grade/index.js
+  const color = grade ? getGradeColor(grade) : legacyColor(score ?? 0)
 
-  // Loading state — pulsing empty ring
   if (loading) {
     return (
       <div style={{ position:'relative', width:size, height:size, flexShrink:0 }}>
@@ -57,17 +40,14 @@ export default function ConvictionRing({ score, grade, loading = false, size = 4
     )
   }
 
-  // No score yet — empty ring
   if (score == null) {
     return (
       <div style={{ position:'relative', width:size, height:size, flexShrink:0 }}>
         <svg width={size} height={size}>
           <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={strokeWidth} />
         </svg>
-        <div style={{
-          position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
-          fontFamily:'var(--mono)', fontSize:9, color:'var(--txt-muted)',
-        }}>—</div>
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
+          fontFamily:'var(--mono)', fontSize:9, color:'var(--txt-muted)' }}>—</div>
       </div>
     )
   }
@@ -82,11 +62,9 @@ export default function ConvictionRing({ score, grade, loading = false, size = 4
           strokeDasharray={`${fill.toFixed(2)} ${(circ-fill).toFixed(2)}`}
           strokeLinecap="round" />
       </svg>
-      <div style={{
-        position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
+      <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
         fontFamily:'var(--mono)', fontSize: size < 38 ? 9 : 11,
-        fontWeight:700, color, letterSpacing:'-0.02em',
-      }}>
+        fontWeight:700, color, letterSpacing:'-0.02em' }}>
         {Math.round(score)}
       </div>
     </div>

@@ -13,19 +13,20 @@ import { calcPnL } from '../utils/finance.js'
 import { fUSD, fPct } from '../utils/format.js'
 import { getGrade } from '../conviction/grade/index.js'
 
+// Grade config references CSS vars via getGradeColor (SVG cells still need hex — handled by getGrade)
 const GRADE_CONFIG = {
-  'STRONG BUY':  { color:'#22C55E', short:'S.BUY'  },
-  'BUY':         { color:'#86EFAC', short:'BUY'    },
-  'HOLD':        { color:'#FBBF24', short:'HOLD'   },
-  'SELL':        { color:'#F97316', short:'SELL'   },
-  'STRONG SELL': { color:'#EF4444', short:'S.SELL' },
+  'STRONG BUY':  { color:'var(--grade-strong-buy)',  short:'S.BUY'  },
+  'BUY':         { color:'var(--grade-buy)',          short:'BUY'    },
+  'HOLD':        { color:'var(--grade-hold)',         short:'HOLD'   },
+  'SELL':        { color:'var(--grade-sell)',         short:'SELL'   },
+  'STRONG SELL': { color:'var(--grade-strong-sell)',  short:'S.SELL' },
 }
 
 /* ── Stat pill ─────────────────────────────────── */
 function Stat({ label, value, sub, color }) {
   return (
     <div style={{ background:'var(--surface)', border:'1px solid var(--border)',
-      borderRadius:10, padding:'12px 16px' }}>
+      borderRadius:'var(--radius-lg)', padding:'12px 16px' }}>
       <div style={{ fontSize:10, color:'var(--txt-muted)', textTransform:'uppercase',
         letterSpacing:'0.07em', fontWeight:600, marginBottom:4 }}>{label}</div>
       <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700,
@@ -39,7 +40,7 @@ function Stat({ label, value, sub, color }) {
 function Section({ title, children }) {
   return (
     <div style={{ background:'var(--surface)', border:'1px solid var(--border)',
-      borderRadius:12, padding:'16px', marginBottom:14 }}>
+      borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:14 }}>
       <div style={{ fontSize:12, fontWeight:700, color:'var(--txt)', marginBottom:14,
         textTransform:'uppercase', letterSpacing:'0.05em' }}>{title}</div>
       {children}
@@ -320,7 +321,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
       {/* ── Risk signals ── */}
       {stats.lowConviction.length > 0 && (
         <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)',
-          borderRadius:10, padding:'12px 16px', marginTop:4 }}>
+          borderRadius:'var(--radius-lg)', padding:'12px 16px', marginTop:4 }}>
           <div style={{ fontSize:11, fontWeight:700, color:'var(--red)', marginBottom:6 }}>
             ⚠ {stats.lowConviction.length} position{stats.lowConviction.length > 1 ? 's' : ''} below 50/100
           </div>

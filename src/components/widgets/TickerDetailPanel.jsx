@@ -368,7 +368,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               ))}
             </div>
             <button onClick={recompute} disabled={loading}
-              style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
+              style={{ width:32, height:32, borderRadius:'var(--radius)', border:'1px solid var(--border)',
                 background:'transparent', cursor:loading?'wait':'pointer',
                 color:loading?'var(--accent)':'var(--txt-muted)',
                 display:'flex', alignItems:'center', justifyContent:'center',
@@ -377,7 +377,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </button>
             {!embedded && (
               <button onClick={onClose}
-                style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
+                style={{ width:32, height:32, borderRadius:'var(--radius)', border:'1px solid var(--border)',
                   background:'transparent', cursor:'pointer', color:'var(--txt-muted)',
                   display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <X size={14} />
@@ -421,7 +421,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
           {error && !result && (
             <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)',
-              borderRadius:8, padding:'12px', marginBottom:16, fontSize:12, color:'var(--red)' }}>
+              borderRadius:'var(--radius)', padding:'12px', marginBottom:16, fontSize:12, color:'var(--red)' }}>
               ⚠ {error}
             </div>
           )}
@@ -431,7 +431,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {activeTab === 'score' && (
                 <>
 {/* ══ SECTION 1: CONVICTION SCORE ══ */}
-              <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:12, padding:'16px', marginBottom:16 }}>
+              <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
                 {/* Score + Grade + Confidence */}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
                   <div>
@@ -489,13 +489,13 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {/* ══ SCORE HISTORY ══ */}
               {(() => {
                 if (historyLoading) return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px',
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px',
                     marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
                     Loading score history…
                   </div>
                 )
                 if (!scoreHistory || scoreHistory.length === 0) return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px',
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px',
                     marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
                     No snapshots yet — first snapshot runs next Sunday via Cron.
                   </div>
@@ -519,7 +519,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 ]
 
                 return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'12px 14px', marginBottom:10 }}>
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px', marginBottom:10 }}>
                     {/* Header */}
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
                       <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
@@ -648,7 +648,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {decision && (
                 <div style={{ background:`${decision.color}18`,
                   border:`1px solid ${decision.color}44`,
-                  borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
+                  borderRadius:'var(--radius-lg)', padding:'14px 16px', marginBottom:14 }}>
 
                   {/* TradePoint View vs Analyst badge row */}
                   <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
@@ -781,7 +781,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 if (!next) return null
                 const pts = next.min - result.finalScore
                 return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'8px 12px',
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'8px 12px',
                     marginBottom:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span style={{ fontSize:11, color:'var(--txt-muted)' }}>
                       Next grade: <span style={{ color:next.color, fontWeight:700 }}>{next.label}</span>
@@ -819,7 +819,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 const icS = f.interestCoverage==null?null:f.interestCoverage>=10?5:f.interestCoverage>=5?4:f.interestCoverage>=3?3:f.interestCoverage>=1?1:0
 
                 return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px', marginBottom:10 }}>
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'10px 12px', marginBottom:10 }}>
                     <div style={{ fontSize:10, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase',
                       letterSpacing:'0.06em', marginBottom:8 }}>Score computation detail</div>
 
@@ -858,7 +858,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   { label:'Gate 2', g:result.gates.gate2 },
                 ].map(({label, g}) => (
                   <div key={label} style={{
-                    flex:1, padding:'8px 12px', borderRadius:8,
+                    flex:1, padding:'8px 12px', borderRadius:'var(--radius)',
                     border:`1px solid ${g.skipped ? 'var(--border)' : g.pass ? 'var(--green)' : 'var(--red)'}`,
                     background: g.skipped ? 'transparent' : g.pass ? 'var(--green-dim)' : 'var(--red-dim)',
                     textAlign:'center',
@@ -874,7 +874,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
               {/* ══ SECTION 3: CONSENSUS WALL ST. ══ */}
               {(result.wallStreet.targetMean || result.wallStreet.analysts > 0) && (
-                <div style={{ background:'var(--surface-up)', borderRadius:10, padding:'14px', marginBottom:4 }}>
+                <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'14px', marginBottom:4 }}>
                   <div style={{ fontSize:10, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:600, marginBottom:10 }}>
                     Consensus Wall St.
                   </div>
@@ -1074,7 +1074,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     const pct   = d => Math.round((d.s/d.m)*100)
                     const col   = p => p>=65?'var(--green)':p>=40?'var(--amber)':'var(--red)'
                     return (
-                      <div style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 14px', marginBottom:10 }}>
+                      <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'10px 14px', marginBottom:10 }}>
                         <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase',
                           letterSpacing:'0.07em', marginBottom:8 }}>Model Summary</div>
                         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8 }}>
@@ -1110,7 +1110,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
                   {!aiData && !aiLoading && (
                     <button onClick={generateAI} style={{
-                      width:'100%', padding:'10px', borderRadius:8,
+                      width:'100%', padding:'10px', borderRadius:'var(--radius)',
                       border:'1px dashed var(--border)', background:'transparent',
                       cursor:'pointer', color:'var(--txt-sec)', fontSize:12,
                       fontFamily:'var(--sans)', display:'flex', alignItems:'center',
@@ -1195,7 +1195,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           { key:'bear',      icon:'📉', label:'Why these scores are low',  data:aiData.bear,      note:'7d',  dims:bottom2 },
                           { key:'catalysts', icon:'🎯', label:'What would move the score', data:aiData.catalysts, note:'7d',  dims:bottom2 },
                         ].map(({ key, icon, label, data, note, dims }) => (
-                          <div key={key} style={{ background:'var(--surface-up)', borderRadius:8, padding:'10px 12px' }}>
+                          <div key={key} style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'10px 12px' }}>
                             <div style={{ fontSize:11, fontWeight:700, color:'var(--txt-sec)', marginBottom:6, display:'flex', justifyContent:'space-between' }}>
                               <span>{icon} {label}</span>
                               <span style={{ fontSize:9, color:'var(--txt-muted)', fontWeight:400 }}>{note} cache</span>
