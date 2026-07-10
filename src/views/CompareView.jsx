@@ -315,7 +315,7 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
     riskEdgeTicker && {
       label: 'Risk Edge',
       ticker: riskEdgeTicker,
-      detail: `${Math.abs(rpDelta)} fewer penalty pts`,
+      detail: `${Math.abs(rpDelta)} fewer model penalty pts`,  // model penalties only
       color: 'var(--purple)',
     },
   ].filter(Boolean)
@@ -341,29 +341,46 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
         </div>
       ))}
 
-      {/* Conclusion */}
-      <div style={{marginTop:10,paddingTop:8,borderTop:'1px solid var(--border)',
-        fontSize:10,color:'var(--txt)',lineHeight:1.6}}>
-        {ltAndTimingSplit ? (
-          <>
-            <span style={{color:gc(ltEdgeTicker===tA?rA.grade:rB.grade),fontWeight:700}}>
-              {ltEdgeTicker}
-            </span> has stronger long-term conviction.{' '}
-            <span style={{color:'var(--accent)',fontWeight:700}}>{timingEdgeTicker}</span>
-            {' '}currently offers the better technical entry.
-          </>
-        ) : ltEdgeTicker ? (
-          <>
-            <span style={{color:gc(ltEdgeTicker===tA?rA.grade:rB.grade),fontWeight:700}}>
-              {ltEdgeTicker}
-            </span> leads across both conviction and timing.
-          </>
-        ) : (
-          <span style={{color:'var(--txt-muted)'}}>
-            No clear edge — both tickers score closely across all dimensions.
-          </span>
-        )}
-      </div>
+      {/* Conclusion — 6 deterministic states */}
+      {(() => {
+        // Thresholds: LT >3 pts = edge, Swing >2 pts = timing edge
+        const ltClear     = Math.abs(ltDelta) > 3
+        const timingClear = Math.abs(swDelta) > 2
+        const ltWinner    = ltEdgeTicker
+        const swWinner    = timingEdgeTicker
+        const ltLoserColor  = gc(ltWinner === tA ? rB.grade : rA.grade)
+        const ltWinnerColor = gc(ltWinner === tA ? rA.grade : rB.grade)
+
+        let line1 = null, line2 = null
+
+        if (ltClear && timingClear && ltWinner !== swWinner) {
+          // Split: different leaders
+          line1 = <><span style={{color:ltWinnerColor,fontWeight:700}}>{ltWinner}</span> has stronger long-term conviction.</>
+          line2 = <><span style={{color:'var(--accent)',fontWeight:700}}>{swWinner}</span> currently offers the better technical entry.</>
+        } else if (ltClear && timingClear && ltWinner === swWinner) {
+          // Same winner across both
+          line1 = <><span style={{color:ltWinnerColor,fontWeight:700}}>{ltWinner}</span> leads across both conviction and timing.</>
+        } else if (ltClear && !timingClear) {
+          // LT edge, timing comparable
+          line1 = <><span style={{color:ltWinnerColor,fontWeight:700}}>{ltWinner}</span> has stronger long-term conviction.</>
+          line2 = <span style={{color:'var(--txt-muted)'}}>Current technical timing is comparable.</span>
+        } else if (!ltClear && timingClear) {
+          // Timing edge, LT comparable
+          line1 = <span style={{color:'var(--txt-muted)'}}>Long-term conviction is comparable.</span>
+          line2 = <><span style={{color:'var(--accent)',fontWeight:700}}>{swWinner}</span> offers the stronger technical setup.</>
+        } else {
+          // No clear edge
+          line1 = <span style={{color:'var(--txt-muted)'}}>No clear edge — both tickers score closely across all dimensions.</span>
+        }
+
+        return (
+          <div style={{marginTop:10,paddingTop:8,borderTop:'1px solid var(--border)',
+            fontSize:10,color:'var(--txt)',lineHeight:1.7}}>
+            <div>{line1}</div>
+            {line2 && <div style={{marginTop:2}}>{line2}</div>}
+          </div>
+        )
+      })()}
 
       {/* Stale data warning */}
       {staleWarning(rA, rB) && (
