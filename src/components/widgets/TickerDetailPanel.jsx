@@ -231,37 +231,50 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            {/* Alignment Score — numeric + label */}
+            {/* Alignment Score — grade agreement + similarity */}
             {mode === 'long-term' && altResult && result && (() => {
-              const ltScore  = result.finalScore
-              const swScore  = altResult.finalScore
-              const alignment = Math.max(0, 100 - Math.abs(ltScore - swScore))
-              const ltBuy  = ['STRONG BUY','BUY'].includes(result.grade)
-              const swBuy  = ['STRONG BUY','BUY'].includes(altResult.grade)
-              const bothBuy  = ltBuy && swBuy
-              const bothSell = !ltBuy && !swBuy
+              // Grade → numeric rank
+              const RANK = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
+              const ltRank = RANK[result.grade]    ?? 2
+              const swRank = RANK[altResult.grade] ?? 2
+              const gradeDist = Math.abs(ltRank - swRank)
 
-              const color = alignment >= 80
-                ? (bothBuy ? 'var(--green)' : 'var(--red)')
-                : alignment >= 50 ? 'var(--amber)' : 'var(--red)'
+              // Agreement: based on grade distance (primary — 60% weight)
+              const agreement = gradeDist===0?100 : gradeDist===1?75 : gradeDist===2?50 : gradeDist===3?25 : 0
 
-              const label = bothBuy   ? 'Aligned ↑'
-                : bothSell  ? 'Aligned ↓'
-                : ltBuy     ? 'LT Bull / SW Weak'
-                :              'Counter-Trend'
+              // Similarity: score closeness (secondary — 40% weight)
+              const similarity = Math.max(0, 100 - Math.abs(result.finalScore - altResult.finalScore))
+
+              // Combined
+              const alignment = Math.round(agreement * 0.6 + similarity * 0.4)
+
+              // Direction
+              const ltBull = ltRank >= 3, swBull = swRank >= 3
+              const ltBear = ltRank <= 1, swBear = swRank <= 1
+              const bothBull = ltBull && swBull
+              const bothBear = ltBear && swBear
+
+              // Labels
+              const qualityLabel = alignment>=90?'Highly Aligned' : alignment>=75?'Aligned' : alignment>=50?'Mixed Signals' : 'Strong Divergence'
+              const thesisLabel  = bothBull?'Bullish Thesis ↑' : bothBear?'Bearish Thesis ↓' : ltBull?'Counter-Trend ↑↓' : 'Counter-Trend ↓↑'
+              const color = alignment>=75 ? (bothBull?'var(--green)':bothBear?'var(--red)':'var(--amber)')
+                          : alignment>=50 ? 'var(--amber)' : 'var(--red)'
 
               return (
-                <div title={`Long-Term: ${ltScore} · Swing: ${swScore}`}
+                <div title={`LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Agreement: ${agreement}% · Similarity: ${similarity}%`}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center',
-                    padding:'3px 8px', borderRadius:6, marginRight:6,
-                    background:`${color}18`, border:`1px solid ${color}44`,
-                    cursor:'default', minWidth:60 }}>
-                  <div style={{ fontSize:11, fontWeight:800, color, lineHeight:1 }}>
+                    padding:'4px 10px', borderRadius:6, marginRight:6,
+                    background:`${color}15`, border:`1px solid ${color}44`,
+                    cursor:'default', minWidth:72 }}>
+                  <div style={{ fontSize:13, fontWeight:800, color, lineHeight:1 }}>
                     {alignment}%
                   </div>
-                  <div style={{ fontSize:7, color, fontWeight:600, letterSpacing:'0.03em',
-                    whiteSpace:'nowrap', marginTop:1 }}>
-                    {label}
+                  <div style={{ fontSize:8, color, fontWeight:700, letterSpacing:'0.02em',
+                    whiteSpace:'nowrap', marginTop:2 }}>
+                    {qualityLabel}
+                  </div>
+                  <div style={{ fontSize:7, color:'var(--txt-muted)', whiteSpace:'nowrap', marginTop:1 }}>
+                    {thesisLabel}
                   </div>
                 </div>
               )
