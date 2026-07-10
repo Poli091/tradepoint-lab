@@ -709,7 +709,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   {decision.because && (
                     <div style={{ marginBottom:10 }}>
                       {[
-                        {label:'Engine', items: decision.because.engine ?? []},
+                        {label:'TradePoint Engines', items: decision.because.engine ?? []},
                         {label:'Market', items: decision.because.market ?? []},
                         {label:'Risk',   items: decision.because.risk   ?? []},
                       ].filter(g => g.items.length > 0).map(group => (
