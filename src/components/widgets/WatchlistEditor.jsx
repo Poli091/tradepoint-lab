@@ -136,7 +136,7 @@ export default function WatchlistEditor({ onClose, onSaved }) {
     <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center',
       justifyContent:'center', background:'rgba(0,0,0,0.5)' }}
       onClick={e => e.target===e.currentTarget && onClose?.()}>
-      <div style={{ background:'var(--surface)', borderRadius:12, width:'100%', maxWidth:500,
+      <div style={{ background:'var(--surface)', borderRadius:'var(--radius-lg)', width:'100%', maxWidth:500,
         maxHeight:'85vh', display:'flex', flexDirection:'column',
         border:'1px solid var(--border)', boxShadow:'0 24px 64px rgba(0,0,0,0.5)', overflow:'hidden' }}>
 

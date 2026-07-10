@@ -49,7 +49,7 @@ function ScanBadge({ ticker, score, grade, onClick, active }) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', justifyContent:'space-between',
-      padding:'8px 12px', borderRadius:8, cursor:'pointer', width:'100%',
+      padding:'8px 12px', borderRadius:'var(--radius)', cursor:'pointer', width:'100%',
       border:`1px solid ${active ? gradeInfo.color : 'var(--border)'}`,
       background: active ? `${gradeInfo.color}18` : 'var(--surface-up)',
       transition:'all 0.13s',

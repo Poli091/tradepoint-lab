@@ -61,7 +61,7 @@ export default function OrderPanel({ ticker, side, setSide, orderType, setOrderT
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>Order entry</div>
 
       {/* Buy / Sell */}
-      <div style={{ display: 'flex', background: 'var(--surface-up)', borderRadius: 8, padding: 2, gap: 2 }}>
+      <div style={{ display: 'flex', background: 'var(--surface-up)', borderRadius:'var(--radius)', padding: 2, gap: 2 }}>
         {['buy', 'sell'].map(s => {
           const active = side === s
           const st = SIDE_STYLE[s].active
@@ -140,7 +140,7 @@ export default function OrderPanel({ ticker, side, setSide, orderType, setOrderT
 
       {/* Estimated total */}
       <div style={{
-        background: 'var(--surface-up)', borderRadius: 8, padding: '10px 12px',
+        background: 'var(--surface-up)', borderRadius:'var(--radius)', padding: '10px 12px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <span style={{ fontSize: 11, color: 'var(--txt-muted)' }}>Est. total</span>
@@ -151,7 +151,7 @@ export default function OrderPanel({ ticker, side, setSide, orderType, setOrderT
 
       {/* Submit */}
       <button onClick={handleSubmit} style={{
-        padding: '11px', borderRadius: 8, border: `1px solid ${sideColor}`,
+        padding: '11px', borderRadius:'var(--radius)', border: `1px solid ${sideColor}`,
         background: submitted ? sideColor : `${sideColor}22`,
         color: submitted ? '#fff' : sideColor,
         fontFamily: 'var(--sans)', fontWeight: 700, fontSize: 14,

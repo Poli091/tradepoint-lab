@@ -28,7 +28,7 @@ function ChartTooltip({ active, payload }) {
   return (
     <div style={{
       background:'var(--surface-up)', border:'1px solid var(--border)',
-      borderRadius:8, padding:'8px 12px',
+      borderRadius:'var(--radius)', padding:'8px 12px',
     }}>
       <div style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color:'var(--txt)' }}>
         {fUSD(payload[0].value)}
@@ -131,7 +131,7 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
         {/* Range picker */}
         <div style={{
           display:'flex', gap:2,
-          background:'var(--surface-up)', borderRadius:8, padding:2,
+          background:'var(--surface-up)', borderRadius:'var(--radius)', padding:2,
         }}>
           {RANGES.map(r => (
             <button key={r} onClick={() => onRangeChange(r)} style={{

@@ -35,7 +35,7 @@ function GlowButton({ onClick, disabled, loading, icon: Icon, children, danger }
       onClick={onClick}
       disabled={disabled || loading}
       style={{
-        width: '100%', padding: '13px 16px', borderRadius: 10,
+        width: '100%', padding: '13px 16px', borderRadius:'var(--radius-lg)',
         border: danger ? '1px solid rgba(248,113,113,0.3)' : 'none',
         cursor: loading || disabled ? 'wait' : 'pointer',
         background: danger
@@ -148,7 +148,7 @@ export default function LockScreen() {
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)',
-              borderRadius: 10, padding: '10px 14px', marginBottom: 20,
+              borderRadius:'var(--radius-lg)', padding: '10px 14px', marginBottom: 20,
             }}>
               <ShieldOff size={14} color="#FBBF24" />
               <span style={{ fontSize: 12, color: '#FBBF24', fontFamily: 'Inter, system-ui' }}>
@@ -211,7 +211,7 @@ export default function LockScreen() {
                 <div style={{
                   background: 'rgba(248,113,113,0.08)',
                   border: '1px solid rgba(248,113,113,0.2)',
-                  borderRadius: 10, padding: '14px', marginBottom: 12,
+                  borderRadius:'var(--radius-lg)', padding: '14px', marginBottom: 12,
                 }}>
                   <p style={{ fontSize: 12, color: '#F87171', lineHeight: 1.6, margin: 0 }}>
                     This will permanently delete all API keys, cached data, and your passkey profile from this device. <strong>This cannot be undone.</strong>
@@ -219,7 +219,7 @@ export default function LockScreen() {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={handleDeleteClick} style={{
-                    flex: 1, padding: '9px', borderRadius: 8, cursor: 'pointer',
+                    flex: 1, padding: '9px', borderRadius:'var(--radius)', cursor: 'pointer',
                     border: '1px solid rgba(248,113,113,0.4)',
                     background: 'rgba(248,113,113,0.12)',
                     color: '#F87171', fontSize: 12, fontWeight: 600,
@@ -228,7 +228,7 @@ export default function LockScreen() {
                     Yes, delete everything
                   </button>
                   <button onClick={() => { setDeleteConfirm(false); setDeleteStep2(false) }} style={{
-                    padding: '9px 16px', borderRadius: 8, cursor: 'pointer',
+                    padding: '9px 16px', borderRadius:'var(--radius)', cursor: 'pointer',
                     border: '1px solid rgba(255,255,255,0.08)',
                     background: 'transparent',
                     color: 'rgba(255,255,255,0.4)', fontSize: 12,

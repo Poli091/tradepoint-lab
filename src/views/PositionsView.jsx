@@ -15,7 +15,7 @@ function Pill({ label, value, valueColor, sub }) {
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 10, padding: '10px 16px', flexShrink: 0,
+      borderRadius:'var(--radius-lg)', padding: '10px 16px', flexShrink: 0,
     }}>
       <div style={{ fontSize: 10, color: 'var(--txt-muted)', textTransform: 'uppercase',
         letterSpacing: '0.07em', fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -29,16 +29,16 @@ function Pill({ label, value, valueColor, sub }) {
 /* ── Grade distribution bar ─────────────────────────────── */
 function GradeBar({ counts, total }) {
   const GRADES = [
-    { label: 'STRONG BUY', short: 'SB', color: '#22C55E' },
-    { label: 'BUY',        short: 'B',  color: '#86EFAC' },
-    { label: 'HOLD',       short: 'H',  color: '#FBBF24' },
-    { label: 'SELL',       short: 'S',  color: '#F97316' },
-    { label: 'STRONG SELL',short: 'SS', color: '#EF4444' },
+    { label: 'STRONG BUY', short: 'SB', color: 'var(--grade-strong-buy)' },
+    { label: 'BUY',        short: 'B',  color: 'var(--grade-buy)' },
+    { label: 'HOLD',       short: 'H',  color: 'var(--grade-hold)' },
+    { label: 'SELL',       short: 'S',  color: 'var(--grade-sell)' },
+    { label: 'STRONG SELL',short: 'SS', color: 'var(--grade-strong-sell)' },
   ]
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 10, padding: '10px 16px', flexShrink: 0,
+      borderRadius:'var(--radius-lg)', padding: '10px 16px', flexShrink: 0,
     }}>
       <div style={{ fontSize: 10, color: 'var(--txt-muted)', textTransform: 'uppercase',
         letterSpacing: '0.07em', fontWeight: 600, marginBottom: 8 }}>Grade distribution</div>

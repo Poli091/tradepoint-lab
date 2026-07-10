@@ -67,7 +67,7 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
             }}>
               {/* Countdown box */}
               <div style={{
-                width: 60, height: 60, borderRadius: 10, flexShrink: 0,
+                width: 60, height: 60, borderRadius:'var(--radius-lg)', flexShrink: 0,
                 background: 'var(--surface-up)', border: '1px solid var(--border)',
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',

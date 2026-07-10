@@ -36,7 +36,7 @@ function gradeColor(grade) {
 /* ── Sub-components ────────────────────────────────────── */
 function SummaryCard({ label, value, sub, color }) {
   return (
-    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px', flex:1 }}>
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px', flex:1 }}>
       <div style={{ fontSize:10, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:600, marginBottom:8 }}>{label}</div>
       <div style={{ fontFamily:'var(--mono)', fontSize:22, fontWeight:700, color: color ?? 'var(--txt)', lineHeight:1 }}>{value}</div>
       {sub && <div style={{ fontSize:11, color:'var(--txt-muted)', marginTop:4 }}>{sub}</div>}
@@ -131,7 +131,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
         </div>
         <button onClick={recompute} disabled={isLoading} style={{
           display:'flex', alignItems:'center', gap:6, padding:'7px 14px',
-          borderRadius:8, border:'1px solid var(--border)', background:'transparent',
+          borderRadius:'var(--radius)', border:'1px solid var(--border)', background:'transparent',
           cursor: isLoading ? 'wait' : 'pointer', color:'var(--txt-sec)', fontSize:12,
         }}>
           <RotateCcw size={13} style={{ animation: isLoading ? 'tp-spin 1s linear infinite' : 'none' }} />
@@ -142,7 +142,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
 
       {/* Error */}
       {error && (
-        <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--red)', display:'flex', gap:8 }}>
+        <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:'var(--radius)', padding:'10px 14px', fontSize:12, color:'var(--red)', display:'flex', gap:8 }}>
           <AlertTriangle size={14} /> {error}
         </div>
       )}
@@ -158,7 +158,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
 
       {/* Progress bar */}
       {isLoading && (
-        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'12px 16px' }}>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:'12px 16px' }}>
           <div style={{ fontSize:12, color:'var(--txt-sec)', marginBottom:8 }}>
             Computing conviction scores… {progress.done}/{progress.total}
           </div>
@@ -190,7 +190,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
           </div>
 
           {/* ═══ PANEL 2: BREAKDOWN TABLE ═══ */}
-          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', overflow:'hidden' }}>
             <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)' }}>
               <span style={{ fontSize:13, fontWeight:700, color:'var(--txt)' }}>Full breakdown table</span>
               <span style={{ fontSize:11, color:'var(--txt-muted)', marginLeft:8 }}>Click headers to sort · bars show % of max</span>
@@ -251,7 +251,7 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
 
             {/* Panel 3: Component impact bars */}
-            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px' }}>
               <div style={{ fontSize:13, fontWeight:700, color:'var(--txt)', marginBottom:4 }}>Component efficiency</div>
               <div style={{ fontSize:11, color:'var(--txt-muted)', marginBottom:14 }}>Average % of max across all positions</div>
               {diag.dimStats.map(d => (
@@ -273,12 +273,12 @@ export default function DiagnosticsView({ visiblePositions, prices }) {
             </div>
 
             {/* Panel 4: Score loss ranking */}
-            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px' }}>
               <div style={{ fontSize:13, fontWeight:700, color:'var(--txt)', marginBottom:4 }}>Score loss ranking</div>
               <div style={{ fontSize:11, color:'var(--txt-muted)', marginBottom:14 }}>Which component costs most — investigate lowest first</div>
               {diag.rankingByLimit.map((d, i) => (
                 <div key={d.key} style={{
-                  display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:8, marginBottom:6,
+                  display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:'var(--radius)', marginBottom:6,
                   background: i === 0 ? 'var(--red-dim)' : i === 1 ? 'var(--amber-dim)' : 'var(--surface-up)',
                   border: `1px solid ${i === 0 ? 'var(--red)' : i === 1 ? 'var(--amber)' : 'var(--border)'}`,
                 }}>

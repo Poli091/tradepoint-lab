@@ -332,7 +332,7 @@ export default function SettingsPanel({ open, onClose }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              width: 30, height: 30, borderRadius: 8,
+              width: 30, height: 30, borderRadius:'var(--radius)',
               background: 'var(--accent-dim)', display: 'flex',
               alignItems: 'center', justifyContent: 'center',
             }}>
@@ -360,7 +360,7 @@ export default function SettingsPanel({ open, onClose }) {
           <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
             {[['en', t.langEnglish], ['es', t.langSpanish]].map(([code, label]) => (
               <button key={code} onClick={() => switchLang(code)} style={{
-                padding: '8px 20px', borderRadius: 8, border: 'none',
+                padding: '8px 20px', borderRadius:'var(--radius)', border: 'none',
                 cursor: 'pointer', fontSize: 13, fontWeight: 600,
                 background: lang === code ? 'var(--accent)' : 'var(--surface-up)',
                 color:      lang === code ? '#fff'           : 'var(--txt-sec)',
@@ -376,7 +376,7 @@ export default function SettingsPanel({ open, onClose }) {
           {sectionLabel(<><Key size={13} />{t.sectionApiKeys}</>)}
 
           {/* Alpaca Keys — grouped */}
-          <div style={{ marginBottom: 18, background: 'var(--surface-up)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ marginBottom: 18, background: 'var(--surface-up)', borderRadius:'var(--radius)', padding: '12px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>Alpaca Keys</span>
               <span style={{
@@ -413,7 +413,7 @@ export default function SettingsPanel({ open, onClose }) {
         }}>
           {/* Save all */}
           <button onClick={handleSaveAll} style={{
-            flex: 1, padding: '10px', borderRadius: 8, border: 'none',
+            flex: 1, padding: '10px', borderRadius:'var(--radius)', border: 'none',
             cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 600,
             background: allSavedMsg ? 'var(--green-dim)' : 'var(--accent)',
             color: allSavedMsg ? 'var(--green)' : '#fff',
@@ -424,7 +424,7 @@ export default function SettingsPanel({ open, onClose }) {
 
           {/* Scan watchlist */}
           <button onClick={handleScanWatchlist} disabled={scanning} style={{
-            padding: '10px 14px', borderRadius: 8,
+            padding: '10px 14px', borderRadius:'var(--radius)',
             border: '1px solid var(--border)',
             cursor: scanning ? 'wait' : 'pointer',
             fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
@@ -440,7 +440,7 @@ export default function SettingsPanel({ open, onClose }) {
 
           {/* Clear all keys */}
           <button onClick={handleClearAll} style={{
-            padding: '10px 14px', borderRadius: 8,
+            padding: '10px 14px', borderRadius:'var(--radius)',
             border: '1px solid var(--border)',
             cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
             background: clearConfirm ? 'var(--red-dim)' : 'transparent',
@@ -454,7 +454,7 @@ export default function SettingsPanel({ open, onClose }) {
 
           {/* Cancel */}
           <button onClick={onClose} style={{
-            padding: '10px 14px', borderRadius: 8,
+            padding: '10px 14px', borderRadius:'var(--radius)',
             border: '1px solid var(--border)',
             cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
             background: 'transparent', color: 'var(--txt-muted)',

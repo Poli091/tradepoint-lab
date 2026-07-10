@@ -16,7 +16,7 @@ function NavButton({ label, Icon, active, onClick }) {
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       style={{
-        width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
+        width: 44, height: 44, borderRadius:'var(--radius-lg)', border: 'none', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: active ? 'var(--accent-dim)' : 'transparent',
         color:      active ? 'var(--accent)'     : 'var(--txt-muted)',
@@ -38,7 +38,7 @@ function IconBtn({ label, Icon, onClick, color, bg }) {
       title={label}
       aria-label={label}
       style={{
-        width: 44, height: 44, borderRadius: 10, border: 'none', cursor: 'pointer',
+        width: 44, height: 44, borderRadius:'var(--radius-lg)', border: 'none', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: bg || 'var(--surface-up)',
         color: color || 'var(--txt-muted)',
@@ -102,7 +102,7 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     }}>
       {/* Logo */}
       <div style={{
-        width: 36, height: 36, borderRadius: 10,
+        width: 36, height: 36, borderRadius:'var(--radius-lg)',
         background: 'linear-gradient(135deg, var(--accent), var(--purple))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
