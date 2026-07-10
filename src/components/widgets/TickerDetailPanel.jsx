@@ -13,7 +13,7 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 import { useConviction }           from '../../hooks/useConviction.js'
 import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
@@ -636,62 +636,96 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   border:`1px solid ${decision.color}44`,
                   borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
 
-                  {/* Header row */}
-                  <div style={{ display:'flex', justifyContent:'space-between',
-                    alignItems:'flex-start', marginBottom:10 }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
-                        textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>
-                        Decision
+                  {/* TradePoint View vs Analyst badge row */}
+                  <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:8, fontWeight:700, color:decision.color,
+                        textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>
+                        TradePoint View
                       </div>
-                      <div style={{ fontSize:15, fontWeight:800, color:decision.color, lineHeight:1.2 }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:decision.color, lineHeight:1.2 }}>
                         {decision.action}
                       </div>
-                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:4, fontStyle:'italic' }}>
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:3, fontStyle:'italic' }}>
                         {decision.driver}
                       </div>
                     </div>
-                    <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
-                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:2 }}>
-                        Decision Strength
+                    {decision.analysts && (
+                      <div style={{ flexShrink:0, textAlign:'right' }}>
+                        <div style={{ fontSize:8, fontWeight:700, color:'var(--txt-muted)',
+                          textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>
+                          Analyst Consensus
+                        </div>
+                        <div style={{ fontSize:13, fontWeight:700,
+                          color: decision.analysts.score>=75?'var(--green)':decision.analysts.score>=50?'var(--amber)':'var(--red)' }}>
+                          {decision.analysts.label}
+                        </div>
                       </div>
-                      <div style={{ fontSize:18, fontWeight:800, color:decision.color, lineHeight:1 }}>
-                        {decision.strength}%
-                      </div>
-                      {/* Strength bar */}
-                      <div style={{ width:64, height:3, background:'var(--border)', borderRadius:2,
-                        marginTop:3, marginLeft:'auto' }}>
-                        <div style={{ height:'100%', width:`${decision.strength}%`,
-                          background:decision.color, borderRadius:2 }} />
-                      </div>
+                    )}
+                  </div>
+
+                  {/* Decision Strength bar */}
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                      <span style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em' }}>Decision Strength</span>
+                      <span style={{ fontSize:9, fontFamily:'var(--mono)', fontWeight:700, color:decision.color }}>
+                        {decision.strength}% · {decision.strengthLabel}
+                      </span>
+                    </div>
+                    <div style={{ height:4, background:'var(--border)', borderRadius:2 }}>
+                      <div style={{ height:'100%', width:`${decision.strength}%`,
+                        background:decision.color, borderRadius:2, transition:'width 0.3s' }} />
                     </div>
                   </div>
 
-                  {/* Investment Phase pill */}
-                  {decision.phase && (
-                    <div style={{ display:'inline-block', fontSize:9, fontWeight:700,
-                      padding:'2px 8px', borderRadius:4, marginBottom:10,
-                      background:`${decision.color}22`, color:decision.color,
-                      letterSpacing:'0.04em', textTransform:'uppercase' }}>
-                      Investment Phase: {decision.phase}
-                    </div>
-                  )}
-
-                  {/* Because */}
-                  {decision.because.length > 0 && (
-                    <div style={{ marginBottom:10 }}>
-                      <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
-                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
-                        Because
+                  {/* Investment Phase cycle */}
+                  {decision.phase && (() => {
+                    const PHASES = ['Avoidance','Monitoring','Selective Accumulation','Accumulation','Holding','Distribution']
+                    const cur = decision.phase
+                    return (
+                      <div style={{ display:'flex', alignItems:'center', gap:3, marginBottom:10,
+                        overflowX:'auto', paddingBottom:2 }}>
+                        {PHASES.map((p, i) => {
+                          const active = p===cur || (cur==='Monitoring'&&p==='Monitoring')
+                          return (
+                            <React.Fragment key={p}>
+                              <div style={{
+                                fontSize:8, padding:'2px 6px', borderRadius:3, fontWeight:700,
+                                whiteSpace:'nowrap', flexShrink:0,
+                                background: active?decision.color:'transparent',
+                                color: active?'#fff':'var(--txt-muted)',
+                                border:`1px solid ${active?decision.color:'var(--border)'}`,
+                              }}>{p}</div>
+                              {i<PHASES.length-1 && <span style={{fontSize:8,color:'var(--border)',flexShrink:0}}>›</span>}
+                            </React.Fragment>
+                          )
+                        })}
                       </div>
-                      {decision.because.map((b, i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6,
-                          fontSize:10, color:'var(--txt)', marginBottom:4 }}>
-                          <span style={{ color:b.ok?'var(--green)':'var(--red)',
-                            fontWeight:700, flexShrink:0, marginTop:0.5 }}>
-                            {b.ok?'✓':'✗'}
-                          </span>
-                          <span>{b.text}</span>
+                    )
+                  })()}
+
+                  {/* Because — grouped Engine / Market / Risk */}
+                  {decision.because && (
+                    <div style={{ marginBottom:10 }}>
+                      {[
+                        {label:'Engine', items: decision.because.engine ?? []},
+                        {label:'Market', items: decision.because.market ?? []},
+                        {label:'Risk',   items: decision.because.risk   ?? []},
+                      ].filter(g => g.items.length > 0).map(group => (
+                        <div key={group.label} style={{ marginBottom:6 }}>
+                          <div style={{ fontSize:8, fontWeight:700, color:'var(--txt-muted)',
+                            textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
+                            {group.label}
+                          </div>
+                          {group.items.map((b, i) => (
+                            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:5,
+                              fontSize:10, color:'var(--txt)', marginBottom:2 }}>
+                              <span style={{ color:b.ok?'var(--green)':'var(--red)',
+                                fontWeight:700, flexShrink:0 }}>{b.ok?'✓':'✗'}</span>
+                              {b.text}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
@@ -706,9 +740,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
                       {decision.conditions.conds.map((c, i) => (
                         <div key={i} style={{ fontSize:10, color:'var(--txt-muted)',
-                          marginBottom:3, display:'flex', gap:6, alignItems:'flex-start' }}>
+                          marginBottom:3, display:'flex', gap:6 }}>
                           <span style={{
-                            color: decision.conditions.direction==='upgrade'?'var(--green)':'var(--amber)',
+                            color:decision.conditions.direction==='upgrade'?'var(--green)':'var(--amber)',
                             flexShrink:0 }}>
                             {decision.conditions.direction==='upgrade'?'↑':'→'}
                           </span>

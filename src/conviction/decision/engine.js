@@ -123,22 +123,37 @@ function primaryDriver(ltResult, swResult, alignment) {
   return 'Balanced signal across components'
 }
 
-/* ── Because bullets (explicit, auditable) ───────────── */
+/* ── Grouped evidence (Engine / Market / Risk) ───────── */
 function buildBecause(ltResult, swResult, alignment, analysts) {
-  const bullets=[], ltR=GRADE_RANK[ltResult?.grade]??2, swR=swResult?(GRADE_RANK[swResult.grade]??2):null
-
-  // Always show the core motor outputs first
-  bullets.push({ok:ltR>=3, text:`Long-Term: ${ltResult?.grade} (${ltResult?.finalScore??'—'}/100)`})
-  if (swR!=null) bullets.push({ok:swR>=3, text:`Swing: ${swResult.grade} (${swResult.finalScore}/100)`})
-  if (alignment!=null) bullets.push({ok:alignment>=75, text:`Alignment: ${alignment}%`})
-  if (analysts) bullets.push({ok:analysts.score>=75, text:`Analysts: ${analysts.label}`})
-
-  // Risk
+  const ltR = GRADE_RANK[ltResult?.grade]??2
+  const swR = swResult?(GRADE_RANK[swResult.grade]??2):null
   const riskPen = ltResult?.riskPenalty??0
-  if (riskPen<-1) bullets.push({ok:false, text:`Risk: Active penalties (${riskPen} pts)`})
-  else bullets.push({ok:true, text:'Risk: Within acceptable limits'})
 
-  return bullets.slice(0,5)
+  // Alignment: measure agreement, not quality — phrasing reflects that
+  const alignOk = alignment!=null && alignment>=60
+  const alignTxt = alignment==null ? 'Alignment: N/A'
+    : ltR>=3&&swR!=null&&swR>=3 ? `Engines agree (${alignment}%)`
+    : ltR<=1&&swR!=null&&swR<=1 ? `Engines agree bearish (${alignment}%)`
+    : alignment>=60 ? `Alignment: ${alignment}%`
+    : `Engines diverge (${alignment}%)`
+
+  const engine = [
+    {ok:ltR>=3,     text:`Long-Term: ${ltResult?.grade} (${ltResult?.finalScore??'—'}/100)`},
+    ...(swR!=null?[{ok:swR>=3, text:`Swing: ${swResult.grade} (${swResult.finalScore}/100)`}]:[]),
+    ...(alignment!=null?[{ok:alignOk, text:alignTxt}]:[]),
+  ]
+  const market = analysts ? [{ok:analysts.score>=75, text:`Analysts: ${analysts.label}`}] : []
+  const risk   = [{
+    ok: riskPen>=-1,
+    text: riskPen<-1?`Risk: Active penalties (${riskPen} pts)`:'Risk: Within acceptable limits'
+  }]
+
+  return { engine, market, risk }
+}
+
+/* ── Decision Strength label ─────────────────────────── */
+function strengthLabel(s) {
+  return s>=85?'Very High':s>=70?'High':s>=55?'Moderate':s>=40?'Weak':'Very Weak'
 }
 
 /* ── Upgrade / Downgrade conditions ─────────────────── */
@@ -186,14 +201,15 @@ export function computeDecision(ltResult, swResult, alignment) {
                          :(ACTION_LT_ONLY[ltGrade]??'Monitor position')
   const phase   = swGrade?(PHASE_MATRIX[`${ltGrade}|${swGrade}`]??PHASE_LT_ONLY[ltGrade]??'Monitoring')
                          :(PHASE_LT_ONLY[ltGrade]??'Monitoring')
-  const strength   = calcStrength(ltResult, swResult, alignment)
-  const driver     = primaryDriver(ltResult, swResult, alignment)
-  const because    = buildBecause(ltResult, swResult, alignment, analysts)
-  const conditions = buildConditions(action, ltResult, swResult)
+  const strength    = calcStrength(ltResult, swResult, alignment)
+  const driver      = primaryDriver(ltResult, swResult, alignment)
+  const because     = buildBecause(ltResult, swResult, alignment, analysts)
+  const conditions  = buildConditions(action, ltResult, swResult)
+  const strengthLbl = strengthLabel(strength)
 
   return {
     action, phase, color:decisionColor(action),
-    strength, driver, because, conditions,
+    strength, strengthLabel:strengthLbl, driver, because, conditions,
     analysts, swingUsed:!!swResult, ltGrade, swGrade, alignment,
   }
 }
