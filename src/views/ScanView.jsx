@@ -177,10 +177,10 @@ export default function ScanView() {
                     return (
                       <button key={t} onClick={() => handleScan(t)} style={{
                         padding:'3px 8px', borderRadius:5, cursor:'pointer',
-                        border:`1px solid ${activeTicker === t ? color : g ? gradeInfo.color+'66' : 'var(--border)'}`,
-                        background: activeTicker === t ? `${color}22` : g ? `${gradeInfo.color}11` : 'transparent',
+                        border:`1px solid ${activeTicker === t ? color : gradeInfo ? gradeInfo.color+'66' : 'var(--border)'}`,
+                        background: activeTicker === t ? `${color}22` : gradeInfo ? `${gradeInfo.color}11` : 'transparent',
                         fontFamily:'var(--mono)', fontSize:11, fontWeight:600,
-                        color: activeTicker === t ? color : g ? gradeInfo.color : 'var(--txt-sec)',
+                        color: activeTicker === t ? color : gradeInfo ? gradeInfo.color : 'var(--txt-sec)',
                         transition:'all 0.11s',
                       }}>
                         {t}{h?.score != null ? ` ${h.score}` : ''}
