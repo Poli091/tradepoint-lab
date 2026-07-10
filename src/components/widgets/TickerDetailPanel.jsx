@@ -13,9 +13,10 @@
  * Uses useConviction — one hook, one call, everything included.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
-import { useConviction }  from '../../hooks/useConviction.js'
+import { useConviction }           from '../../hooks/useConviction.js'
+import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
 import { POSITIONS }      from '../../data/positions.js'
 import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
@@ -135,6 +136,19 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   const [activeTab, setActiveTab] = useState('score')
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
+
+  // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
+  const altResult = useMemo(() => {
+    if (!result) return null
+    try {
+      if (mode === 'long-term') {
+        const ohlcv    = result.ohlcv    ?? []
+        const spyOhlcv = result.spyOhlcv ?? []
+        return runSwingConviction(result.fundamentalsData, ohlcv, spyOhlcv)
+      }
+      return null  // in swing mode, long-term is already available as the other hook
+    } catch { return null }
+  }, [result, mode])
   const [aiData,    setAiData]    = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
@@ -217,6 +231,27 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {/* Alignment badge — shows when both scores are available */}
+            {mode === 'long-term' && altResult && result && (() => {
+              const ltGrade = result.grade, swGrade = altResult.grade
+              const ltScore = result.finalScore, swScore = altResult.finalScore
+              const ltBuy = ['STRONG BUY','BUY'].includes(ltGrade)
+              const swBuy = ['STRONG BUY','BUY'].includes(swGrade)
+              const aligned = ltBuy === swBuy
+              const bothBuy = ltBuy && swBuy
+              const color = bothBuy?'var(--green)':aligned?'var(--amber)':'var(--red)'
+              const label = bothBuy?'Aligned ↑':ltBuy&&!swBuy?'LT Bull / SW Weak':!ltBuy&&swBuy?'Counter-Trend':'Aligned ↓'
+              return (
+                <div style={{ fontSize:9, padding:'3px 8px', borderRadius:4, marginRight:6,
+                  background:`${color}18`, color, fontWeight:700, whiteSpace:'nowrap' }}>
+                  {label}
+                  <span style={{ fontWeight:400, marginLeft:4, opacity:0.8 }}>
+                    LT:{ltScore} SW:{swScore}
+                  </span>
+                </div>
+              )
+            })()}
+
             {/* Mode toggle */}
             <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
               border:'1px solid var(--border)', overflow:'hidden', marginRight:4 }}>

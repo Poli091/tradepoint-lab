@@ -10,7 +10,7 @@
  *   ADX / Trend Quality:   10pts  (trend strength, not direction)
  *   ATR Quality (pctile):  10pts  (compared to own 1Y history)
  *   Business Momentum:     10pts  (revenue/EPS acceleration + beats)
- *   Setup Bonus:           10pts  (setup-specific confirmation)
+ *   Setup Bonus:            5pts  (combination alignment, not double-counting)
  *   Earnings Catalyst:      5pts  (proximity + beat streak)
  *   Risk:                  -5pts  max
  *
@@ -215,6 +215,66 @@ function scoreEarnings(fund) {
   return {score,max:5,detail:{consecutiveBeats:beats}}
 }
 
+
+/* ── Setup confidence (0-100%) ────────────────────── */
+function setupConfidence(setup, emaD, adxD, macdD, rvolD) {
+  const conditions = {
+    'Breakout': [
+      emaD?.ordered, emaD?.a20&&emaD?.a50&&emaD?.a200,
+      adxD?.adx>=20, macdD?.line>0,
+      rvolD?.rvol>=1.5, macdD?.bullCross,
+    ],
+    'Trend Continuation': [
+      emaD?.ordered, adxD?.adx>=20, macdD?.line>0,
+      (adxD?.diPlus??0)>(adxD?.diMinus??0), emaD?.a20,
+    ],
+    'Pullback': [
+      emaD?.a50&&emaD?.a200, !emaD?.a20,
+      adxD?.adx>=15, (adxD?.diPlus??0)>(adxD?.diMinus??0),
+    ],
+    'Recovery': [emaD?.a20, !emaD?.a50, rvolD?.rvol>=1.2, macdD?.line>0],
+    'Range':    [adxD?.adx<18, !emaD?.ordered],
+    'Distribution': [!emaD?.a200, !emaD?.a50, (adxD?.diMinus??0)>(adxD?.diPlus??0)],
+  }
+  const conds = conditions[setup] ?? []
+  if (!conds.length) return 50
+  const met = conds.filter(Boolean).length
+  return Math.round((met / conds.length) * 100)
+}
+
+/* ── Setup reasons (bullet points) ────────────────── */
+function setupReasons(setup, emaD, adxD, macdD, rvolD, rsD) {
+  const reasons = []
+  const d=emaD??{}, a=adxD??{}, m=macdD??{}, r=rvolD??{}, rs=rsD??{}
+
+  if (d.ordered)              reasons.push('EMA stack bullish (20>50>200)')
+  if (d.a20&&!d.ordered)      reasons.push(`Price above EMA20 ($${d.e20?.toFixed(0)??'—'})`)
+  if (d.a50)                  reasons.push(`Price above EMA50 ($${d.e50?.toFixed(0)??'—'})`)
+  if (d.a200)                 reasons.push(`Price above EMA200 ($${d.e200?.toFixed(0)??'—'})`)
+  if (m.bullCross)            reasons.push('MACD fresh bullish crossover')
+  if (m.line>0&&!m.bullCross) reasons.push('MACD above zero')
+  if ((a.adx??0)>=25)         reasons.push(`ADX ${a.adx} — strong trend`)
+  else if((a.adx??0)>=18)     reasons.push(`ADX ${a.adx} — mild trend`)
+  else if((a.adx??0)<18)      reasons.push(`ADX ${a.adx} — range/weak trend`)
+  if ((a.diPlus??0)>(a.diMinus??0)) reasons.push(`DI+ ${a.diPlus} > DI− ${a.diMinus} (bull direction)`)
+  if ((r.rvol??0)>=2)         reasons.push(`RVOL ${r.rvol?.toFixed(1)}x — strong volume`)
+  else if((r.rvol??0)>=1.5)   reasons.push(`RVOL ${r.rvol?.toFixed(1)}x — above average`)
+  if ((rs.rs1M??0)>0)         reasons.push(`Outperforming SPY 1M (+${rs.rs1M?.toFixed(1)}%)`)
+  if (d.distFromEMA20>12)     reasons.push(`⚠ ${d.distFromEMA20?.toFixed(1)}% above EMA20 — extended`)
+
+  return reasons.slice(0, 5)  // max 5 bullets
+}
+
+/* ── Momentum Exhaustion detection ────────────────── */
+function detectExhaustion(emaD, rsiVal, rvolD) {
+  const signals = []
+  if ((rsiVal??0)>78)                    signals.push(`RSI ${rsiVal?.toFixed(0)} — overbought`)
+  if ((emaD?.distFromEMA20??0)>12)       signals.push(`Price ${emaD?.distFromEMA20?.toFixed(1)}% above EMA20`)
+  if ((rvolD?.rvol??1)<0.8&&(rsiVal??0)>65) signals.push('Volume declining on rally')
+  const exhausted = signals.length >= 2
+  return { exhausted, signals, warning: exhausted ? '⚠ Momentum may be exhausted' : null }
+}
+
 /* ── Setup Detection ─────────────────────────────── */
 function detectSetup(emaD, adxD, macdD, rvolD, ohlcv) {
   const {a20,a50,a200,ordered,distFromEMA20,current,e20}=emaD
@@ -232,17 +292,19 @@ function detectSetup(emaD, adxD, macdD, rvolD, ohlcv) {
   return 'Mixed'
 }
 
-/* ── Setup Bonus (10pts) ─────────────────────────── */
+/* ── Setup Alignment Bonus (5pts max — rewards combination, not individual indicators) ── */
 function scoreSetupBonus(setup, emaD, rvolD, macdD) {
-  const rv=rvolD?.rvol??0, macdBull=macdD?.line>0
+  // Small bonus for when ALL key conditions align cleanly
+  // Not double-counting: rewards the COMBINATION being right together
+  const rv=rvolD?.rvol??0, macdBull=macdD?.line>0, ordered=emaD?.ordered
   switch(setup) {
-    case 'Breakout':           return rv>2&&macdBull?10:rv>1.5?7:5
-    case 'Trend Continuation': return macdBull&&emaD.ordered?8:6
-    case 'Pullback':           return rv>1&&macdBull?7:4
-    case 'Recovery':           return rv>1.5?6:3
-    case 'Range':              return 2
+    case 'Breakout':           return ordered&&rv>2&&macdBull?5:ordered&&rv>1.5?3:1
+    case 'Trend Continuation': return ordered&&macdBull?4:ordered?2:1
+    case 'Pullback':           return macdBull&&rv>1?3:2
+    case 'Recovery':           return rv>1.5?3:2
+    case 'Range':              return 1
     case 'Distribution':       return 0
-    default:                   return 3
+    default:                   return 1
   }
 }
 
@@ -303,9 +365,13 @@ export function runSwingConviction(fund, ohlcv, spyOhlcv) {
   const earn  = scoreEarnings(fund)
   const risk  = scoreRisk(fund)
 
-  const setup = detectSetup(ema.detail, adx.detail, mac.detail, rvol.detail, ohlcv)
-  const setupB = scoreSetupBonus(setup, ema.detail, rvol.detail, mac.detail)
-  const levels = calcLevels(ohlcv, setup)
+  const setup      = detectSetup(ema.detail, adx.detail, mac.detail, rvol.detail, ohlcv)
+  const setupConf  = setupConfidence(setup, ema.detail, adx.detail, mac.detail, rvol.detail)
+  const setupWhy   = setupReasons(setup, ema.detail, adx.detail, mac.detail, rvol.detail, rs.detail)
+  const setupB     = scoreSetupBonus(setup, ema.detail, rvol.detail, mac.detail)
+  const levels     = calcLevels(ohlcv, setup)
+  const rsiVal     = calcRSI((ohlcv??[]).map(x=>x.price??x.close).filter(Boolean))
+  const exhaustion = detectExhaustion(ema.detail, rsiVal, rvol.detail)
 
   const raw   = ema.score+rs.score+mac.score+rvol.score+adx.score+atrQ.score+biz.score+setupB+earn.score
   const final = Math.max(0,Math.min(100,Math.round(raw+risk.penalty)))
@@ -315,7 +381,8 @@ export function runSwingConviction(fund, ohlcv, spyOhlcv) {
   return {
     mode:'swing', finalScore:final, rawScore:Math.round(raw),
     grade:g.label, gradeColor:g.color, riskPenalty:risk.penalty,
-    setup, levels,
+    setup, setupConfidence:setupConf, setupReasons:setupWhy,
+    exhaustion, levels,
     breakdown:{ema,rs,macd:mac,rvol,adx,atrQuality:atrQ,businessMomentum:biz,setupBonus:{score:setupB,max:10},earnings:earn,risk},
     technical:{
       ema20:d.e20, ema50:d.e50, ema200:d.e200,
