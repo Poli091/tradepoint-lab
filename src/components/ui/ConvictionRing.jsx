@@ -1,18 +1,29 @@
 /**
  * MODULE: UI / ConvictionRing.jsx
  * Circular SVG progress ring showing the conviction score (0–100).
- * Grade colors sourced from conviction/grade/index.js — single source of truth.
- * NOTE: SVG stroke requires hex values (CSS vars not supported in SVG attributes).
+ *
+ * NOTE: SVG stroke requires hex values — CSS vars are NOT supported in SVG attributes.
+ * Grade colors are kept local here intentionally to avoid bundler dependency issues.
+ *
+ * Single source of truth for grade→color mapping: conviction/grade/index.js
+ * These hex values MUST match the values defined there.
  */
 
-import { getGradeColor } from '../../conviction/grade/index.js'
+// Grade hex colors — must match conviction/grade/index.js GRADES array
+const GRADE_HEX = {
+  'STRONG BUY':  '#22C55E',
+  'BUY':         '#86EFAC',
+  'HOLD':        '#FBBF24',
+  'SELL':        '#F97316',
+  'STRONG SELL': '#EF4444',
+}
 
-function legacyColor(score) {
-  return score >= 85 ? '#22C55E'
-       : score >= 70 ? '#86EFAC'
-       : score >= 55 ? '#FBBF24'
-       : score >= 40 ? '#F97316'
-       : '#EF4444'
+function scoreToHex(score) {
+  if (score >= 85) return '#22C55E'
+  if (score >= 70) return '#86EFAC'
+  if (score >= 55) return '#FBBF24'
+  if (score >= 40) return '#F97316'
+  return '#EF4444'
 }
 
 export default function ConvictionRing({ score, grade, loading = false, size = 42 }) {
@@ -22,8 +33,7 @@ export default function ConvictionRing({ score, grade, loading = false, size = 4
   const cx   = size / 2
   const cy   = size / 2
 
-  // Single source: getGradeColor from grade/index.js
-  const color = grade ? getGradeColor(grade) : legacyColor(score ?? 0)
+  const color = grade ? (GRADE_HEX[grade] ?? scoreToHex(score ?? 0)) : scoreToHex(score ?? 0)
 
   if (loading) {
     return (
