@@ -4,13 +4,14 @@
  * score vs upside correlation, risk metrics.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, Cell, ReferenceLine,
 } from 'recharts'
 import { calcPnL } from '../utils/finance.js'
 import { fUSD, fPct } from '../utils/format.js'
+import { workerAPI } from '../utils/api/worker.js'
 import { getGrade } from '../conviction/grade/index.js'
 
 // Grade config: color = hex (required for SVG/recharts), cssVar = for JSX style props
@@ -49,6 +50,10 @@ function Section({ title, children }) {
 }
 
 export default function PortfolioInsightsView({ visiblePositions = [], convictionResults = {}, prices = {} }) {
+  const [review,        setReview]        = useState(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError,   setReviewError]   = useState(null)
+  const [reviewKey,     setReviewKey]     = useState(null)
 
   const stats = useMemo(() => {
     if (!visiblePositions.length) return null
@@ -145,6 +150,60 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
       worst: withScores.slice(-3).reverse(),
       lowConviction, highConviction,
       total: positions.length,
+    }
+  }, [visiblePositions, convictionResults])
+
+  // Build payload from current convictionResults and positions
+  const generateReview = useCallback(async () => {
+    if (!visiblePositions.length) return
+    setReviewLoading(true); setReviewError(null)
+    try {
+      const SECTOR_MAP = {
+        VST:'Utilities',CEG:'Utilities',NEE:'Utilities',
+        NVDA:'Semiconductors',AVGO:'Semiconductors',MU:'Semiconductors',
+        META:'Comm. Services',GOOGL:'Comm. Services',
+        APP:'Software/AI',PLTR:'Software/AI',NOW:'Software/AI',TEAM:'Software/AI',
+        PODD:'MedTech',ISRG:'MedTech',VRTX:'MedTech',
+        AXON:'Defense',MELI:'Fintech',FICO:'Fintech',
+      }
+      const totalVal = visiblePositions.reduce((s,p)=>s+(p.currentPrice||0)*(p.qty||0),0)
+      const positions = visiblePositions.map(p => {
+        const cv = convictionResults[p.ticker]
+        const val = (p.currentPrice||0)*(p.qty||0)
+        return {
+          ticker:   p.ticker,
+          weight:   totalVal > 0 ? (val/totalVal)*100 : 0,
+          value:    val,
+          sector:   SECTOR_MAP[p.ticker] ?? 'Other',
+          conviction: cv ? {
+            score: cv.finalScore, grade: cv.grade,
+            gate:  cv.activeGate || 'none',
+            components: {
+              growth:    cv.breakdown?.growth?.score,
+              quality:   cv.breakdown?.quality?.score,
+              strength:  cv.breakdown?.strength?.score,
+              valuation: cv.breakdown?.valuation?.score,
+              technical: cv.breakdown?.technical?.score,
+            },
+            riskPenalty: cv.riskPenalty,
+          } : null,
+          swing:    cv ? { score: null, grade: null } : null,
+          decision: cv?.decision?.action ?? null,
+          nextEarnings: p.nextEarnings ?? null,
+        }
+      })
+
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v1.0' })
+      if (res?.data) {
+        setReview(res.data)
+        setReviewKey(res.meta?.cacheKey ?? null)
+      } else {
+        setReviewError('No review data returned')
+      }
+    } catch(err) {
+      setReviewError(err.message)
+    } finally {
+      setReviewLoading(false)
     }
   }, [visiblePositions, convictionResults])
 

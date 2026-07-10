@@ -757,6 +757,134 @@ Rules:
    Zero external API calls — all data from cache.
 ════════════════════════════════════════════════════════════ */
 
+
+async function handlePortfolioReview(request, keys, kv, db) {
+  if (!keys.groq) return json({ error: 'Groq key not configured' }, 401)
+  const body = await request.json().catch(() => null)
+  if (!body?.positions?.length) return json({ error: 'positions required' }, 400)
+  const { positions, modelVersion = 'conviction-v1.0' } = body
+
+  // Cache key: portfolio hash + ISO week + model version
+  const stateStr = positions.map(p => `${p.ticker}:${p.conviction?.score}:${p.conviction?.grade}`).sort().join(',')
+  const hashVal  = [...stateStr].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)
+  const d = new Date(); const thu = new Date(d); thu.setDate(d.getDate() - ((d.getDay()+6)%7) + 3)
+  const yr = thu.getFullYear(); const ft = new Date(yr,0,4)
+  const week = `${yr}-W${String(1+Math.round(((thu-ft)/86400000-3+((ft.getDay()+6)%7))/7)).padStart(2,'0')}`
+  const cacheKey = `portfolio-review:${week}:${modelVersion}:${Math.abs(hashVal)}`
+  const { value: cached } = await kvGet(kv, cacheKey)
+  if (cached) return json({ data: cached, meta: { fromCache: true, cacheKey } })
+
+  // Fetch last D1 snapshot per ticker for historical delta
+  const histMap = {}
+  if (db) {
+    try {
+      const tickers = positions.map(p => p.ticker)
+      const ph = tickers.map(() => '?').join(',')
+      const rows = await db.prepare(
+        `SELECT ticker, score, grade, snapshot_date FROM snapshots
+         WHERE ticker IN (${ph}) AND grade != 'BENCHMARK'
+         ORDER BY snapshot_date DESC`
+      ).bind(...tickers).all()
+      for (const row of (rows.results ?? [])) {
+        if (!histMap[row.ticker]) histMap[row.ticker] = row
+      }
+    } catch(e) { console.error('[PortfolioReview] D1:', e.message) }
+  }
+
+  // Deterministic portfolio metrics
+  const gradeCounts = {'STRONG BUY':0,'BUY':0,'HOLD':0,'SELL':0,'STRONG SELL':0}
+  for (const p of positions) { const g = p.conviction?.grade; if (g && gradeCounts[g]!==undefined) gradeCounts[g]++ }
+
+  const sectorPct = {}
+  for (const p of positions) { const s = p.sector||'Other'; sectorPct[s] = (sectorPct[s]||0)+(p.weight||0) }
+  const topSector = Object.entries(sectorPct).sort((a,b)=>b[1]-a[1])[0]
+
+  const top3 = [...positions].sort((a,b)=>(b.weight||0)-(a.weight||0)).slice(0,3)
+  const top3Pct = top3.reduce((s,p)=>s+(p.weight||0), 0)
+
+  const gatePositions = positions.filter(p => p.conviction?.gate && p.conviction.gate !== 'none' && p.conviction.gate !== 'None')
+
+  const THRESH = {'STRONG BUY':85,'BUY':70,'HOLD':55,'SELL':40,'STRONG SELL':0}
+  const nearDowngrade = positions.filter(p => {
+    const s=p.conviction?.score, g=p.conviction?.grade
+    if (!s||!g) return false
+    const t=THRESH[g]; return t>0 && (s-t)<=5
+  })
+
+  const now = Date.now()
+  const upcomingEarnings = positions
+    .filter(p=>p.nextEarnings)
+    .map(p=>({ticker:p.ticker,date:p.nextEarnings,weight:p.weight||0,
+      daysAway:Math.round((new Date(p.nextEarnings)-now)/86400000)}))
+    .filter(e=>e.daysAway>=0&&e.daysAway<=21)
+    .sort((a,b)=>a.daysAway-b.daysAway)
+
+  const deltas = positions
+    .filter(p=>histMap[p.ticker])
+    .map(p=>{
+      const h=histMap[p.ticker], cs=p.conviction?.score||0, ps=h.score||0
+      return {ticker:p.ticker,scoreDelta:cs-ps,prevGrade:h.grade,currGrade:p.conviction?.grade,
+        gradeChanged:h.grade!==p.conviction?.grade,snapshotDate:h.snapshot_date}
+    })
+    .filter(d=>d.scoreDelta!==0||d.gradeChanged)
+    .sort((a,b)=>Math.abs(b.scoreDelta)-Math.abs(a.scoreDelta))
+
+  // Build Groq prompt with pre-computed context
+  const posSummary = positions.map(p => {
+    const h=histMap[p.ticker]
+    const delta=h?` (prev ${h.score}/${h.grade} on ${h.snapshot_date})`:'  '
+    return `${p.ticker} ${(p.weight||0).toFixed(1)}% | LT:${p.conviction?.score||'?'} ${p.conviction?.grade||'?'} | Swing:${p.swing?.score||'?'} ${p.swing?.grade||'?'} | Gate:${p.conviction?.gate||'none'}${delta}`
+  }).join('\n')
+
+  const metricsText = `Grades: ${Object.entries(gradeCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(', ')}
+Active gates: ${gatePositions.length>0?gatePositions.map(p=>p.ticker).join(', '):'none'}
+Near downgrade (≤5pts from threshold): ${nearDowngrade.length>0?nearDowngrade.map(p=>`${p.ticker}(${p.conviction?.score})`).join(', '):'none'}
+Top sector: ${topSector?`${topSector[0]} ${topSector[1].toFixed(1)}%`:'n/a'}
+Top 3 concentration: ${top3Pct.toFixed(1)}% (${top3.map(p=>p.ticker).join(', ')})
+Earnings next 21 days: ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
+Score changes vs last snapshot: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'no changes'}`
+
+  const prompt = `You are reviewing a quantitative investment portfolio. All metrics below were computed deterministically — do not recalculate them.
+
+POSITIONS (${positions.length}):
+${posSummary}
+
+PRE-COMPUTED METRICS:
+${metricsText}
+
+Return ONLY valid JSON:
+{
+  "portfolioSummary": { "status": "Constructive|Neutral|Cautious|Defensive", "text": "2-3 sentences" },
+  "concentration": { "level": "Low|Moderate|High", "primaryRisk": "one line" },
+  "spotlight": [{ "ticker": "...", "reason": "one sentence", "severity": "low|medium|high" }],
+  "watchZone": [{ "ticker": "...", "reason": "one sentence", "trigger": "what to watch" }],
+  "weeklyPriority": { "ticker": "...", "action": "Review|Monitor|Consider reducing|etc", "reason": "one sentence" },
+  "dataCoverage": { "positionsAnalyzed": ${len(positions)}, "historicalComparisonsAvailable": ${len(histMap)} }
+}
+Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only provided data. Raw JSON only.`
+
+  const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method:'POST',
+    headers:{'Authorization':`Bearer ${keys.groq}`,'Content-Type':'application/json'},
+    body:JSON.stringify({model:'llama-3.1-70b-versatile',
+      messages:[{role:'user',content:prompt}],
+      temperature:0.2,max_tokens:800,response_format:{type:'json_object'}})
+  })
+  const gd = await gr.json()
+  let parsed = {}
+  try { parsed = JSON.parse(gd.choices?.[0]?.message?.content??'{}') } catch {}
+
+  const data = { ...parsed,
+    metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
+      nearDowngrade:nearDowngrade.map(p=>p.ticker), topSector, top3Pct,
+      upcomingEarnings, deltas },
+    generatedAt:Date.now(), week, modelVersion }
+
+  const meta2 = buildMeta('portfolio','portfolio-review',604800,false)
+  await kvSet(kv, cacheKey, data, 604800, meta2)
+  return json({ data, meta:meta2 })
+}
+
 async function handleWeeklySnapshot(env) {
   const kv = env.TRADEPOINT_KV
   const db = env.TRADEPOINT_DB
@@ -981,6 +1109,8 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'portfolio-review':
+          return await handlePortfolioReview(request, keys, kv, db)
         case 'market-intelligence':
           return await handleMarketIntelligence(param1, keys, kv)
         case 'groq-debug':

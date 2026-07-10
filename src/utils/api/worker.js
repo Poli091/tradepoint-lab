@@ -133,4 +133,15 @@ export const workerAPI = {
   /** Market Intelligence — narrative + drivers + market vs model (6h cache). */
   marketIntelligence: (ticker) =>
     workerGet(`/api/market-intelligence/${ticker}`),
+
+  /** Portfolio Weekly Review — Groq analysis of full portfolio (7d cache, hash-keyed). */
+  portfolioReview: (payload) => {
+    const base = getWorkerUrl()
+    if (!base) throw new Error('Worker URL not configured')
+    return fetch(`${base.replace(/\/$/, '')}/api/portfolio-review`, {
+      method: 'POST',
+      headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json())
+  },
 }
