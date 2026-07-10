@@ -231,23 +231,38 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            {/* Alignment badge — shows when both scores are available */}
+            {/* Alignment Score — numeric + label */}
             {mode === 'long-term' && altResult && result && (() => {
-              const ltGrade = result.grade, swGrade = altResult.grade
-              const ltScore = result.finalScore, swScore = altResult.finalScore
-              const ltBuy = ['STRONG BUY','BUY'].includes(ltGrade)
-              const swBuy = ['STRONG BUY','BUY'].includes(swGrade)
-              const aligned = ltBuy === swBuy
-              const bothBuy = ltBuy && swBuy
-              const color = bothBuy?'var(--green)':aligned?'var(--amber)':'var(--red)'
-              const label = bothBuy?'Aligned ↑':ltBuy&&!swBuy?'LT Bull / SW Weak':!ltBuy&&swBuy?'Counter-Trend':'Aligned ↓'
+              const ltScore  = result.finalScore
+              const swScore  = altResult.finalScore
+              const alignment = Math.max(0, 100 - Math.abs(ltScore - swScore))
+              const ltBuy  = ['STRONG BUY','BUY'].includes(result.grade)
+              const swBuy  = ['STRONG BUY','BUY'].includes(altResult.grade)
+              const bothBuy  = ltBuy && swBuy
+              const bothSell = !ltBuy && !swBuy
+
+              const color = alignment >= 80
+                ? (bothBuy ? 'var(--green)' : 'var(--red)')
+                : alignment >= 50 ? 'var(--amber)' : 'var(--red)'
+
+              const label = bothBuy   ? 'Aligned ↑'
+                : bothSell  ? 'Aligned ↓'
+                : ltBuy     ? 'LT Bull / SW Weak'
+                :              'Counter-Trend'
+
               return (
-                <div style={{ fontSize:9, padding:'3px 8px', borderRadius:4, marginRight:6,
-                  background:`${color}18`, color, fontWeight:700, whiteSpace:'nowrap' }}>
-                  {label}
-                  <span style={{ fontWeight:400, marginLeft:4, opacity:0.8 }}>
-                    LT:{ltScore} SW:{swScore}
-                  </span>
+                <div title={`Long-Term: ${ltScore} · Swing: ${swScore}`}
+                  style={{ display:'flex', flexDirection:'column', alignItems:'center',
+                    padding:'3px 8px', borderRadius:6, marginRight:6,
+                    background:`${color}18`, border:`1px solid ${color}44`,
+                    cursor:'default', minWidth:60 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color, lineHeight:1 }}>
+                    {alignment}%
+                  </div>
+                  <div style={{ fontSize:7, color, fontWeight:600, letterSpacing:'0.03em',
+                    whiteSpace:'nowrap', marginTop:1 }}>
+                    {label}
+                  </div>
                 </div>
               )
             })()}
