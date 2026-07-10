@@ -4,7 +4,7 @@
  * Mobile:  fixed bottom navigation bar.
  */
 
-import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Search, Settings, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Search, Settings, Sun, Moon, PieChart } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint.js'
 import { useLang }        from '../../context/LanguageContext.jsx'
 
