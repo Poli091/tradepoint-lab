@@ -26,21 +26,21 @@ export const GRADES = [
  * Falls back to hex for canvas/SVG contexts via grade.color.
  */
 export function gradeVar(gradeLabel) {
-  const g = GRADES.find(g => g.label === gradeLabel)
-  return g?.cssVar ?? 'var(--txt-muted)'
+  const found = GRADES.find(entry => entry.label === gradeLabel)
+  return found?.cssVar ?? 'var(--txt-muted)'
 }
 
 export function gradeBgVar(gradeLabel) {
-  const g = GRADES.find(g => g.label === gradeLabel)
-  return g?.bg ?? 'transparent'
+  const found = GRADES.find(entry => entry.label === gradeLabel)
+  return found?.bg ?? 'transparent'
 }
 
 /** Get the display color for a grade label */
-export function getGradeColor(grade) {
-  const g = GRADES.find(g => g.label === grade)
-  return g?.color ?? 'var(--txt-muted)'
+export function getGradeColor(gradeLabel) {
+  const found = GRADES.find(entry => entry.label === gradeLabel)
+  return found?.color ?? 'var(--txt-muted)'
 }
 
 export function getGrade(finalScore) {
-  return GRADES.find(g => finalScore >= g.min) ?? GRADES[GRADES.length - 1]
+  return GRADES.find(entry => finalScore >= entry.min) ?? GRADES[GRADES.length - 1]
 }

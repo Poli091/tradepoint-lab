@@ -13,13 +13,13 @@ import { calcPnL } from '../utils/finance.js'
 import { fUSD, fPct } from '../utils/format.js'
 import { getGrade } from '../conviction/grade/index.js'
 
-// Grade config references CSS vars via getGradeColor (SVG cells still need hex — handled by getGrade)
+// Grade config: color = hex (required for SVG/recharts), cssVar = for JSX style props
 const GRADE_CONFIG = {
-  'STRONG BUY':  { color:'var(--grade-strong-buy)',  short:'S.BUY'  },
-  'BUY':         { color:'var(--grade-buy)',          short:'BUY'    },
-  'HOLD':        { color:'var(--grade-hold)',         short:'HOLD'   },
-  'SELL':        { color:'var(--grade-sell)',         short:'SELL'   },
-  'STRONG SELL': { color:'var(--grade-strong-sell)',  short:'S.SELL' },
+  'STRONG BUY':  { color:'#22C55E', cssVar:'var(--grade-strong-buy)',  short:'S.BUY'  },
+  'BUY':         { color:'#86EFAC', cssVar:'var(--grade-buy)',          short:'BUY'    },
+  'HOLD':        { color:'#FBBF24', cssVar:'var(--grade-hold)',         short:'HOLD'   },
+  'SELL':        { color:'#F97316', cssVar:'var(--grade-sell)',         short:'SELL'   },
+  'STRONG SELL': { color:'#EF4444', cssVar:'var(--grade-strong-sell)',  short:'S.SELL' },
 }
 
 /* ── Stat pill ─────────────────────────────────── */
