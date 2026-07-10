@@ -173,6 +173,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
   const [news,      setNews]      = useState(null)
+  const [marketIntel, setMarketIntel] = useState(null)
+  const [miLoading,   setMiLoading]   = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
@@ -214,6 +216,17 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         .then(r => setScoreHistory(r?.snapshots ?? []))
         .catch(() => setScoreHistory([]))
         .finally(() => setHistoryLoading(false))
+    }
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-load Market Intelligence when market tab opens
+  useEffect(() => {
+    if (activeTab === 'market' && !marketIntel && !miLoading && ticker) {
+      setMiLoading(true)
+      workerAPI.marketIntelligence(ticker)
+        .then(r => setMarketIntel(r?.data ?? null))
+        .catch(() => setMarketIntel(null))
+        .finally(() => setMiLoading(false))
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -381,6 +394,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             { id:'score',        label:'Score'        },
             { id:'fundamentals', label:'Fundamentals' },
             { id:'ai',           label:'AI Analysis'  },
+            { id:'market',       label:'Market Intel' },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               flex:1, padding:'10px 0', fontSize:11, fontWeight:600,

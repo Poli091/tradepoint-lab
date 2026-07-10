@@ -611,6 +611,117 @@ async function handleGetAllHistory(db) {
 /* ── GET /api/news/:ticker — company news (8h cache) ── */
 
 
+
+/* ── GET /api/market-intelligence/:ticker ────────────────────────
+   Single Groq call returning narrative + drivers + market-vs-model.
+   Passes conviction context so Groq knows what the model thinks.
+   Cache: 6h for narrative, but fetches fresh news each time.
+─────────────────────────────────────────────────────────────────── */
+async function handleMarketIntelligence(ticker, keys, kv) {
+  const t = ticker.toUpperCase()
+  const cacheKey = `market_intel:${t}`
+
+  // Check cache (6h)
+  const { value, metadata } = await kvGet(kv, cacheKey)
+  if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
+
+  if (!keys.groq)    return json({ error: 'Groq key not configured' }, 401)
+  if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
+
+  // 1. Fetch fresh news from Finnhub (last 7 days)
+  const now  = new Date()
+  const from = new Date(now - 7*24*60*60*1000).toISOString().split('T')[0]
+  const to   = now.toISOString().split('T')[0]
+  const newsRes = await fetch(
+    `https://finnhub.io/api/v1/company-news?symbol=${t}&from=${from}&to=${to}`,
+    { headers: { 'X-Finnhub-Token': keys.finnhub } }
+  )
+  const rawNews  = newsRes.ok ? await newsRes.json() : []
+  const articles = (rawNews || []).slice(0, 15)
+  const headlines = articles.map((a,i) => `${i+1}. [${a.source}] ${a.headline}`).join('
+')
+
+  // 2. Get conviction context from KV (for grounding)
+  const fund      = await kv.get(`fund:${t}`, 'json').catch(() => null)
+  const ohlcv     = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => [])
+  const spyOhlcv  = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => [])
+  const priceD    = await kv.get(`price:${t}`, 'json').catch(() => null)
+  const score     = fund ? computeConviction(fund, ohlcv??[], spyOhlcv??[], priceD?.price??null) : null
+
+  const scoreCtx = score ? [
+    `Conviction Score: ${score.finalScore}/100 (${score.grade})`,
+    `Growth: ${score.breakdown.growth.score}/25`,
+    `Technical: ${score.breakdown.technical.score}/15`,
+    `Valuation: ${score.breakdown.valuation.score}/15 via ${score.breakdown.valuation.metric??'N/A'}`,
+    `Risk penalty: ${score.breakdown.risk.penalty}`,
+  ].join(' | ') : 'No quantitative data available'
+
+  // 3. Single Groq call — JSON output only
+  const prompt = `You are analyzing market sentiment for ${t} within a quantitative investment system.
+
+QUANTITATIVE MODEL CONTEXT (do not modify or contradict):
+${scoreCtx}
+
+NEWS — last 7 days (${articles.length} articles):
+${headlines || 'No recent news available.'}
+
+Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+{
+  "narrative": {
+    "summary": "2-3 sentence summary of the dominant market narrative this week",
+    "sentiment": "Bullish" or "Mixed" or "Neutral" or "Bearish",
+    "shift": "None" or "Positive" or "Negative"
+  },
+  "drivers": {
+    "positive": ["up to 3 specific positive developments from the news above"],
+    "negative": ["up to 3 specific risks or headwinds from the news above"]
+  },
+  "marketVsModel": {
+    "status": "Supports" or "Mostly Supports" or "Mixed" or "Contradicts",
+    "reason": "1 sentence explaining whether the news narrative reinforces or questions the quantitative thesis"
+  }
+}
+
+Rules:
+- Base everything only on the news provided above
+- Never invent facts not in the news
+- If no relevant news, say so in summary and return "Neutral" sentiment
+- The model score is final — news never changes it; your role is to explain alignment
+- Return raw JSON only, no surrounding text`
+
+  const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${keys.groq}` },
+    body: JSON.stringify({
+      model:'llama-3.3-70b-versatile', max_tokens:600, temperature:0.2,
+      messages:[{role:'user', content:prompt}],
+      response_format:{ type:'json_object' }
+    }),
+  })
+
+  if (!gRes.ok) return json({ error: `Groq ${gRes.status}` }, 502)
+  const gd = await gRes.json()
+  const raw = gd.choices?.[0]?.message?.content ?? '{}'
+
+  let parsed
+  try { parsed = JSON.parse(raw) }
+  catch { parsed = { narrative:{summary:raw,sentiment:'Neutral',shift:'None'}, drivers:{positive:[],negative:[]}, marketVsModel:{status:'Mixed',reason:'Could not parse response'} } }
+
+  const data = {
+    ticker: t,
+    narrative:     parsed.narrative    ?? {},
+    drivers:       parsed.drivers      ?? { positive:[], negative:[] },
+    marketVsModel: parsed.marketVsModel ?? {},
+    headlines:     articles.map(a=>({ headline:a.headline, source:a.source, url:a.url, datetime:a.datetime })),
+    sourcesUsed:   articles.length,
+    generatedAt:   Date.now(),
+  }
+
+  const meta2 = buildMeta(t, 'market_intel', TTL.MARKET_INTEL, false)
+  await kvSet(kv, cacheKey, data, TTL.MARKET_INTEL, meta2)
+  return json({ data, meta: meta2 })
+}
+
 /* ════════════════════════════════════════════════════════════
    CRON — WEEKLY SNAPSHOT ENGINE
    Runs every Sunday via Cloudflare Cron Trigger.
@@ -819,6 +930,8 @@ export default {
           return await handleEarnings(keys, kv)
         case 'debug':
           return await handleDebug(param1, keys)
+        case 'market-intelligence':
+          return await handleMarketIntelligence(param1, keys, kv)
         case 'groq-debug':
           return await handleGroqDebug(param1, param2, keys, kv)
         case 'snapshots':
