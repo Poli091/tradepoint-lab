@@ -998,39 +998,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     + FMP (Consensus Wall St. target)
                     + Alpaca (OHLCV → EMA · RSI · Relative Strength)
                   </div>
-                                    {/* ── NEWS (5 most recent) ── */}
-                  {news && news.length > 0 && (
-                    <>
-                      <SectionHeader icon={TrendingUp} label="Recent News" />
-                      {news.slice(0, 5).map((item, i) => {
-                        const date = new Date(item.datetime * 1000)
-                        const daysAgo = Math.floor((Date.now() - date) / 86400000)
-                        const timeLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`
-                        return (
-                          <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
-                            style={{ display:'block', marginBottom:8, textDecoration:'none',
-                              padding:'8px 10px', borderRadius:6, background:'var(--surface-up)',
-                              transition:'background 0.1s', cursor:'pointer' }}
-                            onMouseEnter={e => e.currentTarget.style.background='var(--surface-hov)'}
-                            onMouseLeave={e => e.currentTarget.style.background='var(--surface-up)'}>
-                            <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5, marginBottom:3 }}>
-                              {item.headline}
-                            </div>
-                            <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--txt-muted)' }}>
-                              <span>{item.source}</span>
-                              <span>·</span>
-                              <span>{timeLabel}</span>
-                            </div>
-                          </a>
-                        )
-                      })}
-                      {news.length > 5 && (
-                        <div style={{ fontSize:9, color:'var(--txt-muted)', textAlign:'center', padding:'4px 0' }}>
-                          +{news.length - 5} more in Market Intel tab
-                        </div>
-                      )}
-                    </>
-                  )}
+                                    {/* News moved to Market Intel tab */}
 
                   <div style={{ marginTop:8, fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
                     Sector profile: {result.sectorProfile} · Conviction model: TradePoint v1.0
@@ -1082,14 +1050,31 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           {(marketIntel.drivers?.negative??[]).map((d,i)=><div key={i} style={{display:'flex',gap:5,fontSize:10,color:'var(--txt)',marginBottom:4,lineHeight:1.4}}><span style={{color:'var(--red)',flexShrink:0}}>✗</span>{d}</div>)}
                         </div>
                       </div>
-                      <div style={{fontSize:9,fontWeight:700,color:'var(--txt-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Headlines</div>
-                      {(marketIntel.headlines??[]).slice(0,6).map((h,i)=>(
-                        <a key={i} href={h.url||'#'} target="_blank" rel="noopener noreferrer"
-                          style={{display:'block',padding:'7px 8px',marginBottom:4,background:'var(--surface-up)',borderRadius:'var(--radius)',textDecoration:'none'}}>
-                          <div style={{fontSize:10,color:'var(--txt)',lineHeight:1.4}}>{h.headline}</div>
-                          <div style={{fontSize:9,color:'var(--txt-muted)',marginTop:2}}>{h.source}</div>
-                        </a>
-                      ))}
+                      {(marketIntel.headlines??[]).length > 0 && (
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:'var(--txt-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Headlines</div>
+                          {(showAllHeadlines ? (marketIntel.headlines??[]) : (marketIntel.headlines??[]).slice(0,5)).map((h,i)=>(
+                            <a key={i} href={h.url||'#'} target="_blank" rel="noopener noreferrer"
+                              style={{display:'block',padding:'7px 8px',marginBottom:4,background:'var(--surface-up)',borderRadius:'var(--radius)',textDecoration:'none'}}
+                              onMouseEnter={e=>e.currentTarget.style.background='var(--surface-hov)'}
+                              onMouseLeave={e=>e.currentTarget.style.background='var(--surface-up)'}>
+                              <div style={{fontSize:10,color:'var(--txt)',lineHeight:1.4}}>{h.headline}</div>
+                              <div style={{fontSize:9,color:'var(--txt-muted)',marginTop:2}}>{h.source}</div>
+                            </a>
+                          ))}
+                          {(marketIntel.headlines??[]).length > 5 && (
+                            <button onClick={()=>setShowAllHeadlines(s=>!s)}
+                              style={{width:'100%',padding:'6px',marginTop:4,
+                                border:'1px solid var(--border)',borderRadius:'var(--radius)',
+                                background:'transparent',cursor:'pointer',fontSize:10,
+                                color:'var(--accent)',fontWeight:600}}>
+                              {showAllHeadlines
+                                ? '▲ Show less'
+                                : `▼ Show all ${(marketIntel.headlines??[]).length} headlines`}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
