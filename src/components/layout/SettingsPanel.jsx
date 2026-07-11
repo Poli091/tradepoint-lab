@@ -30,7 +30,7 @@ function SectionLabel({ icon: Icon, label }) {
 /* ── Main settings panel ────────────────────────────────── */
 export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
   const { lang, switchLang, t } = useLang()
-  const { profileName, deleteProfile, unlock } = useAuth()
+  const { profileName, deleteProfile, lock } = useAuth()
   const overlayRef = useRef(null)
 
   // Worker URL state
@@ -48,11 +48,15 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
   // Auto-test worker on open
   useEffect(() => {
     if (!open) return
+    setWorkerStatus(null)
     setWorkerTesting(true)
-    workerAPI.status()
-      .then(r => setWorkerStatus(r?.ok === true))
-      .catch(() => setWorkerStatus(false))
-      .finally(() => setWorkerTesting(false))
+    const timer = setTimeout(() => {
+      workerAPI.status()
+        .then(r => setWorkerStatus(r?.ok === true))
+        .catch(() => setWorkerStatus(false))
+        .finally(() => setWorkerTesting(false))
+    }, 300)
+    return () => clearTimeout(timer)
   }, [open])
 
   // Escape to close
@@ -211,7 +215,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
                   Secured with passkey on this device
                 </div>
               </div>
-              <button onClick={() => { onClose(); setTimeout(() => unlock(), 100) }}
+              <button onClick={() => { onClose(); setTimeout(() => lock(), 100) }}
                 style={{ padding:'6px 12px', borderRadius:'var(--radius)',
                   border:'1px solid var(--border)', background:'transparent',
                   cursor:'pointer', fontSize:11, color:'var(--txt-muted)',
@@ -276,12 +280,14 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
           <div>
             <SectionLabel icon={Globe} label="Language" />
             <div style={{ display:'flex', gap:8 }}>
-              {[['en', 'English'],['es', 'Español']].map(([code, label]) => (
+              {['en', 'es'].map(code => (
                 <button key={code} onClick={() => switchLang(code)}
                   style={{ padding:'8px 20px', borderRadius:'var(--radius)',
                     border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
                     background: lang === code ? 'var(--accent)' : 'var(--surface-up)',
-                    color: lang === code ? '#fff' : 'var(--txt-sec)' }}>{label}</button>
+                    color: lang === code ? '#fff' : 'var(--txt-sec)' }}>
+                  {code === 'en' ? 'English' : 'Español'}
+                </button>
               ))}
             </div>
           </div>
@@ -335,6 +341,17 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
             </div>
           </div>
 
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)',
+          display:'flex', justifyContent:'flex-end', gap:8, flexShrink:0 }}>
+          <button onClick={onClose} style={{ padding:'9px 20px',
+            borderRadius:'var(--radius)', border:'1px solid var(--border)',
+            background:'transparent', cursor:'pointer', fontSize:13,
+            fontWeight:600, color:'var(--txt-muted)' }}>
+            Close
+          </button>
         </div>
       </div>
     </div>

@@ -73,6 +73,11 @@ export function AuthProvider({ children }) {
     setAuthenticated(true)
   }, [clearLockTimer])
 
+  const lock = useCallback(() => {
+    clearLockTimer()
+    setAuthenticated(false)
+  }, [clearLockTimer])
+
   const bypassUnsupported = useCallback(() => {
     setAuthenticated(true)
   }, [])
@@ -87,7 +92,7 @@ export function AuthProvider({ children }) {
   }, [clearLockTimer])
 
   return (
-    <AuthContext.Provider value={{ authenticated, hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile, userId, profileName }}>
+    <AuthContext.Provider value={{ authenticated, hasPasskey, webAuthnOk, register, unlock, lock, bypassUnsupported, deleteProfile, userId, profileName }}>
       {children}
     </AuthContext.Provider>
   )
