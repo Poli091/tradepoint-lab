@@ -196,6 +196,7 @@ export default function PositionsView({
         onSelectTicker={handleSelect}
         convictionResults={convictionResults}
         convictionLoading={convictionLoading}
+        prices={prices}
       />
 
       {/* ── Detail panel ── */}
