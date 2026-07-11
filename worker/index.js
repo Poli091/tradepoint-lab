@@ -12,6 +12,7 @@ import { computeConviction } from './conviction.js'
 ════════════════════════════════════════════════════════════ */
 const TTL = {
   PRICE:        5  * 60,
+  OHLCV_LONG:   7  * 24 * 60 * 60,   // 7 days — long-range bars rarely change
   OHLCV:        24 * 60 * 60,
   ANALYST:      24 * 60 * 60,
   NEWS:         8  * 60 * 60,
@@ -32,7 +33,18 @@ const CORS = {
   ].join(', '),
 }
 
-const RANGE_DAYS = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }
+const RANGE_DAYS = {
+  '1D':  1,    // intraday — 5Min bars, handled separately
+  '1W':  10,   // 7 trading days + buffer
+  '1M':  35,
+  '3M':  95,
+  '6M':  185,
+  '1Y':  365,
+  '2Y':  730,
+  '5Y':  1825,
+  'ALL': 3650,
+  // YTD computed dynamically
+}
 
 /* ════════════════════════════════════════════════════════════
    MODULE 2 — UTILITIES
@@ -213,25 +225,161 @@ async function handlePrice(ticker, keys, kv) {
   return json({ data, meta: meta2 })
 }
 
-async function handleOHLCV(ticker, range, keys, kv) {
-  const t = ticker.toUpperCase(), r = (range || '3M').toUpperCase()
+/* ── OHLCV bar date formatter ────────────────────────────────────────── */
+function formatBarDate(isoDate, res) {
+  const d = new Date(isoDate + 'T12:00:00Z')
+  if (res === 'M') return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+}
+
+/* ── Long-range handler: 2Y / 5Y / ALL via Finnhub → D1 + KV ────────── */
+async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
+  const t      = ticker.toUpperCase()
+  const kvKey  = `ohlcv:${t}:${range}`
+  const res    = range === 'ALL' ? 'M' : 'W'
+  const calDays = range === '2Y' ? 730 : range === '5Y' ? 1825 : 3650
+  const rangeStart = new Date(Date.now() - calDays * 86_400_000).toISOString().split('T')[0]
+
+  // Layer 1: KV (7-day cache)
+  const { value, metadata } = await kvGet(kv, kvKey)
+  if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
+
+  // Layer 2: D1 (permanent bar store)
+  let storedBars = []
+  if (db) {
+    try {
+      const rows = await db.prepare(
+        `SELECT bar_date, close, open, high, low, volume FROM ohlcv_bars
+         WHERE ticker = ? AND res = ? AND bar_date >= ?
+         ORDER BY bar_date ASC`
+      ).bind(t, res, rangeStart).all()
+      storedBars = rows.results ?? []
+    } catch (e) { console.error('[D1 OHLCV read]', e.message) }
+  }
+
+  // If D1 has data fresh within 8 days, skip Finnhub
+  const lastStored = storedBars.length > 0 ? storedBars[storedBars.length - 1] : null
+  const daysSinceLast = lastStored
+    ? (Date.now() - new Date(lastStored.bar_date + 'T12:00:00Z').getTime()) / 86_400_000
+    : Infinity
+
+  let allBars = [...storedBars]
+
+  if (daysSinceLast > 8) {
+    // Fetch only missing bars (from last stored + 1 day, or full range if nothing stored)
+    if (!keys.finnhub) {
+      if (storedBars.length) {
+        // Return stale D1 data with warning
+        const data = storedBars.map(b => ({ date: formatBarDate(b.bar_date, res), price: parseFloat(b.close.toFixed(2)), open: b.open, high: b.high, low: b.low, volume: b.volume }))
+        return json({ data, meta: { source: 'd1_stale', warning: 'Finnhub key not configured — returning stored data' } })
+      }
+      return json({ error: 'Finnhub key required for long-range chart data (2Y/5Y/ALL)' }, 401)
+    }
+
+    const fetchFromSec = lastStored
+      ? Math.floor(new Date(lastStored.bar_date + 'T12:00:00Z').getTime() / 1000) + 86400
+      : Math.floor(new Date(rangeStart).getTime() / 1000)
+    const fetchToSec = Math.floor(Date.now() / 1000)
+
+    const raw = await fetchJSON(
+      `https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=${res}&from=${fetchFromSec}&to=${fetchToSec}&token=${keys.finnhub}`
+    ).catch(e => { console.error('[Finnhub candle]', t, e.message); return null })
+
+    if (raw?.s === 'ok' && raw.c?.length > 0) {
+      const newBars = raw.t.map((ts, i) => ({
+        bar_date: new Date(ts * 1000).toISOString().split('T')[0],
+        close: raw.c[i], open: raw.o[i], high: raw.h[i], low: raw.l[i], volume: raw.v[i],
+      }))
+
+      // Persist to D1 — INSERT OR IGNORE so re-runs are safe
+      if (db && newBars.length > 0) {
+        try {
+          const stmt = db.prepare(
+            'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          )
+          await db.batch(newBars.map(b => stmt.bind(t, b.bar_date, res, b.open, b.high, b.low, b.close, b.volume)))
+        } catch (e) { console.error('[D1 OHLCV save]', e.message) }
+      }
+
+      // Merge + sort (avoid duplicates via Set on bar_date)
+      const seen = new Set(storedBars.map(b => b.bar_date))
+      for (const b of newBars) { if (!seen.has(b.bar_date)) { allBars.push(b); seen.add(b.bar_date) } }
+      allBars.sort((a, b) => a.bar_date.localeCompare(b.bar_date))
+    }
+  }
+
+  if (!allBars.length) return json({ data: [], meta: buildMeta(t, 'ohlcv', TTL.OHLCV_LONG, false) })
+
+  const data = allBars.map(b => ({
+    date:   formatBarDate(b.bar_date, res),
+    price:  parseFloat(b.close.toFixed(2)),
+    open:   b.open, high: b.high, low: b.low, volume: b.volume,
+  }))
+
+  const meta2 = buildMeta(t, 'ohlcv', TTL.OHLCV_LONG, false)
+  await kvSet(kv, kvKey, data, TTL.OHLCV_LONG, meta2)
+  return json({ data, meta: meta2 })
+}
+
+/* ── Short-range handler: 1D / 1W / 1M / 6M / YTD / 1Y via Alpaca ───── */
+async function handleOHLCV(ticker, range, keys, kv, db) {
+  const t = ticker.toUpperCase()
+  const r = (range || '3M').toUpperCase()
+
+  // Route long ranges to Finnhub + D1 handler
+  if (r === '2Y' || r === '5Y' || r === 'ALL') return handleLongRangeOHLCV(t, r, keys, kv, db)
+
   const kvKey = `ohlcv:${t}:${r}`
   const { value, metadata } = await kvGet(kv, kvKey)
   if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
-  if (!keys.alpacaKey || !keys.alpacaSecret) return json({ error: 'Alpaca keys not configured' }, 401)
-  const days = RANGE_DAYS[r] || 90
-  const end   = new Date().toISOString().split('T')[0]
-  const start = new Date(Date.now() - days * 86_400_000).toISOString().split('T')[0]
-  const raw = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${start}&end=${end}&limit=500&feed=iex`,
-    { headers: { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret } }
-  )
-  const data = (raw.bars || []).map(bar => ({
-    date: new Date(bar.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    price: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
-  }))
-  const meta2 = buildMeta(t, 'ohlcv', TTL.OHLCV, false)
-  await kvSet(kv, kvKey, data, TTL.OHLCV, meta2)
+
+  if (!keys.alpacaKey || !keys.alpacaSecret)
+    return json({ error: 'Alpaca keys not configured' }, 401)
+
+  const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  let data, cacheTtl
+
+  if (r === '1D') {
+    const today = new Date().toISOString().split('T')[0]
+    const raw = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=5Min&start=${today}&limit=200&feed=iex&adjustment=split`,
+      { headers: alpacaHdr }
+    )
+    data = (raw.bars || []).map(bar => ({
+      date:  new Date(bar.t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      price: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
+    }))
+    cacheTtl = 5 * 60
+  } else if (r === 'YTD') {
+    const now   = new Date()
+    const start = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
+    const end   = now.toISOString().split('T')[0]
+    const raw = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${start}&end=${end}&limit=500&feed=iex&adjustment=split`,
+      { headers: alpacaHdr }
+    )
+    data = (raw.bars || []).map(bar => ({
+      date:  new Date(bar.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      price: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
+    }))
+    cacheTtl = TTL.OHLCV
+  } else {
+    const calDays = RANGE_DAYS[r] || 95
+    const end     = new Date().toISOString().split('T')[0]
+    const start   = new Date(Date.now() - calDays * 86_400_000).toISOString().split('T')[0]
+    const raw = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${start}&end=${end}&limit=600&feed=iex&adjustment=split`,
+      { headers: alpacaHdr }
+    )
+    data = (raw.bars || []).map(bar => ({
+      date:  new Date(bar.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      price: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
+    }))
+    cacheTtl = TTL.OHLCV
+  }
+
+  const meta2 = buildMeta(t, 'ohlcv', cacheTtl, false)
+  await kvSet(kv, kvKey, data, cacheTtl, meta2)
   return json({ data, meta: meta2 })
 }
 
@@ -1126,7 +1274,7 @@ export default {
         case 'price':
           return await handlePrice(param1, keys, kv)
         case 'ohlcv':
-          return await handleOHLCV(param1, param2, keys, kv)
+          return await handleOHLCV(param1, param2, keys, kv, db)
         case 'news':
           return await handleNews(param1, keys, kv)
         case 'moat':
