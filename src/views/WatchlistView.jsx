@@ -4,11 +4,10 @@
  */
 
 import { useMemo, useState, useEffect } from 'react'
-import Sparkline       from '../components/ui/Sparkline.jsx'
+import LiveMiniChart   from '../components/widgets/LiveMiniChart.jsx'
 import Badge           from '../components/ui/Badge.jsx'
 import ConvictionRing  from '../components/ui/ConvictionRing.jsx'
 import { WATCHLIST }   from '../data/watchlist.js'
-import { genSparklines } from '../utils/chartData.js'
 import { fUSD, fPct }  from '../utils/format.js'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import WatchlistEditor from '../components/widgets/WatchlistEditor.jsx'
@@ -26,7 +25,6 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
   const { t } = useLang()
   const [scanning,     setScanning]     = useState(false)
   const [scanProgress, setScanProgress] = useState({ done:0, total:0 })
-  const sparklines = useMemo(() => genSparklines(items, 21), [items])
 
   const handleScanWatchlist = async () => {
     const list = items.length > 0 ? items : WATCHLIST
@@ -78,9 +76,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
         {items.map(item => {
-          const isUp  = item.dayChangePct >= 0
-          const spark = sparklines[item.ticker] ?? []
-          const cv    = convictionResults[item.ticker]
+          const cv = convictionResults[item.ticker]
 
           return (
             <div key={item.ticker}
@@ -123,9 +119,9 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
                 </div>
               </div>
 
-              {/* Sparkline */}
-              <div style={{ marginBottom: 10 }}>
-                <Sparkline data={spark} positive={isUp} width="100%" height={40} />
+              {/* Live intraday chart */}
+              <div style={{ marginBottom: 10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <LiveMiniChart ticker={item.ticker} prices={prices} width={140} height={44} />
               </div>
 
               {/* Price row */}
@@ -135,8 +131,8 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
                     {fUSD(item.currentPrice)}
                   </div>
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600,
-                    color: isUp ? 'var(--green)' : 'var(--red)', marginTop: 3 }}>
-                    {fPct(item.dayChangePct)} today
+                    color: (item.dayChangePct ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', marginTop: 3 }}>
+                    {item.dayChangePct != null ? fPct(item.dayChangePct) + ' today' : '—'}
                   </div>
                 </div>
 
@@ -160,7 +156,11 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--txt-muted)' }}>Analyst upside</span>
                 <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
-                  +{item.upside?.toFixed(1)}%
+                  {cv?.wallStreet?.upside != null
+                    ? `+${cv.wallStreet.upside.toFixed(1)}%`
+                    : item.upside != null && item.upside !== 0
+                      ? `+${item.upside.toFixed(1)}%`
+                      : '—'}
                 </span>
               </div>
             </div>

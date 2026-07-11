@@ -205,8 +205,8 @@ export default function PositionsTable({
                   {/* Upside — prefer engine's Wall Street consensus, fallback to manual */}
                   <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {(() => {
-                      const upside = cv?.wallStreet?.upside ?? pos.upside
-                      if (upside == null) return <span style={{ color:'var(--txt-muted)', fontSize:11 }}>—</span>
+                      const upside = cv?.wallStreet?.upside ?? (pos.upside && pos.upside !== 0 ? pos.upside : null)
+                      if (upside == null || upside === 0) return <span style={{ color:'var(--txt-muted)', fontSize:11 }}>—</span>
                       return (
                         <span style={{
                           fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700,
