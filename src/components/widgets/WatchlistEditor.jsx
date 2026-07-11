@@ -115,6 +115,8 @@ function ItemForm({ initial, onSave, onCancel }) {
   )
 }
 
+import { autoAddEarnings } from '../../utils/autoAddEarnings.js'
+
 export default function WatchlistEditor({ onClose, onSaved }) {
   const [items,        setItems]        = useState(() => loadWatchlist() ?? [])
   const [editing,      setEditing]      = useState(null)
@@ -122,7 +124,7 @@ export default function WatchlistEditor({ onClose, onSaved }) {
   const [saved,        setSaved]        = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
-  const handleAdd    = (item) => { setItems(prev => [...prev.filter(i=>i.ticker!==item.ticker), item]); setAdding(false) }
+  const handleAdd    = (item) => { setItems(prev => [...prev.filter(i=>i.ticker!==item.ticker), item]); autoAddEarnings(item.ticker); setAdding(false) }
   const handleUpdate = (item) => { setItems(prev => prev.map(i => i.ticker===item.ticker ? item : i)); setEditing(null) }
   const handleDelete = (t)    => setItems(prev => prev.filter(i => i.ticker !== t))
 

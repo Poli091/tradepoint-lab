@@ -159,6 +159,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [news,      setNews]      = useState(null)
   const [marketIntel, setMarketIntel] = useState(null)
   const [miLoading,   setMiLoading]   = useState(false)
+  const [showAllHeadlines, setShowAllHeadlines] = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 

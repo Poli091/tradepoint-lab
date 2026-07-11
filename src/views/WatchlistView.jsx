@@ -14,21 +14,60 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import WatchlistEditor from '../components/widgets/WatchlistEditor.jsx'
 import { loadWatchlist } from '../utils/watchlistStorage.js'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
+import { workerAPI } from '../utils/api/worker.js'
+import { runConviction } from '../conviction/index.js'
 
 export default function WatchlistView({ convictionResults = {}, prices = {} }) {
   const [items,       setItems]       = useState(() => loadWatchlist() ?? WATCHLIST)
   const [editorOpen,  setEditorOpen]  = useState(false)
   const [activeTicker, setActiveTicker] = useState(null)
+  const [scanning,     setScanning]     = useState(false)
+  const [scanProgress, setScanProgress] = useState({ done:0, total:0 })
   const sparklines = useMemo(() => genSparklines(items, 21), [items])
+
+  const handleScanWatchlist = async () => {
+    const list = items.length > 0 ? items : WATCHLIST
+    setScanning(true)
+    setScanProgress({ done:0, total:list.length })
+    try {
+      const spyRes = await workerAPI.ohlcv('SPY', '1Y').catch(() => null)
+      const spyOhlcv = spyRes?.data ?? []
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i]
+        try {
+          const [fundRes, ohlcvRes] = await Promise.all([
+            workerAPI.fundamentals(item.ticker),
+            workerAPI.ohlcv(item.ticker, '1Y'),
+          ])
+          if (fundRes?.data) {
+            const result = runConviction({ fundamentals: fundRes.data, ohlcv: ohlcvRes?.data ?? [], spyOhlcv, prices: {} })
+            await workerAPI.saveAnalysis(item.ticker, result).catch(() => {})
+          }
+        } catch(e) { console.warn('[Scan watchlist]', item.ticker, e.message) }
+        setScanProgress({ done:i+1, total:list.length })
+        if (i < list.length - 1) await new Promise(r => setTimeout(r, 300))
+      }
+    } finally { setScanning(false) }
+  }
 
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <h1 style={{ fontSize:18, fontWeight:700, color:'var(--txt)', margin:0 }}>Watchlist</h1>
-        <button onClick={() => setEditorOpen(true)} style={{
-          padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
-          background:'transparent', cursor:'pointer', fontSize:12,
-          color:'var(--accent)', fontWeight:600 }}>⚙ Manage</button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={handleScanWatchlist} disabled={scanning} style={{
+            padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
+            background: scanning ? 'var(--accent-dim)' : 'transparent',
+            cursor: scanning ? 'wait' : 'pointer', fontSize:12, fontWeight:600,
+            color: scanning ? 'var(--accent)' : 'var(--txt-muted)', whiteSpace:'nowrap',
+          }}>
+            {scanning ? `Scanning ${scanProgress.done}/${scanProgress.total}…` : '⚡ Scan watchlist'}
+          </button>
+          <button onClick={() => setEditorOpen(true)} style={{
+            padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
+            background:'transparent', cursor:'pointer', fontSize:12,
+            color:'var(--accent)', fontWeight:600 }}>⚙ Manage</button>
+        </div>
       </div>
 
       {items.length === 0 && (

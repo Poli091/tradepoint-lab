@@ -422,22 +422,6 @@ export default function SettingsPanel({ open, onClose }) {
             {allSavedMsg ? t.allSaved : t.btnSaveAll}
           </button>
 
-          {/* Scan watchlist */}
-          <button onClick={handleScanWatchlist} disabled={scanning} style={{
-            padding: '10px 14px', borderRadius:'var(--radius)',
-            border: '1px solid var(--border)',
-            cursor: scanning ? 'wait' : 'pointer',
-            fontFamily: 'var(--sans)', fontSize: 12, fontWeight: 600,
-            background: scanning ? 'var(--accent-dim)' : 'transparent',
-            color: scanning ? 'var(--accent)' : 'var(--txt-muted)',
-            transition: 'all 0.18s', whiteSpace: 'nowrap',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            {scanning
-              ? `Scanning ${scanProgress.done}/${scanProgress.total}…`
-              : `⚡ Scan watchlist`}
-          </button>
-
           {/* Clear all keys */}
           <button onClick={handleClearAll} style={{
             padding: '10px 14px', borderRadius:'var(--radius)',

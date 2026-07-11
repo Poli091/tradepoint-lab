@@ -135,6 +135,8 @@ function PositionForm({ initial, onSave, onCancel }) {
   )
 }
 
+import { autoAddEarnings } from '../../utils/autoAddEarnings.js'
+
 export default function PositionEditor({ onClose, onSaved }) {
   const [positions, setPositions] = useState(() => loadOverrides() ?? POSITIONS.map(p => ({ ...p })))
   const [editing,   setEditing]   = useState(null)    // position being edited
@@ -146,6 +148,7 @@ export default function PositionEditor({ onClose, onSaved }) {
     const next = [...positions.filter(p => p.ticker !== pos.ticker), pos]
     setPositions(next)
     setAdding(false)
+    autoAddEarnings(pos.ticker)  // auto-add earnings to calendar
   }
 
   const handleEdit = (pos) => {

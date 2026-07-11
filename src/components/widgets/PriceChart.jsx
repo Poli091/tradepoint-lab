@@ -56,7 +56,10 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
     const load = async () => {
       setIsLive(false)
 
-      // 1. Show generated data immediately (no blank state)
+      // 1. If no ticker selected, show empty state
+      if (!ticker) { setChartData([]); return }
+
+      // 2. Show generated data immediately (no blank state)
       const days      = RANGE_DAYS[range] || 63
       const generated = genPriceData(livePrice || 100, days)
       if (!cancelled) setChartData(generated)
