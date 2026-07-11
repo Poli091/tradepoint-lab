@@ -7,18 +7,16 @@
  */
 
 import { useMemo } from 'react'
-import Sparkline       from '../ui/Sparkline.jsx'
+import LiveMiniChart  from './LiveMiniChart.jsx'
 import Badge           from '../ui/Badge.jsx'
 import ConvictionRing  from '../ui/ConvictionRing.jsx'
 import { WATCHLIST }        from '../../data/watchlist.js'
 import { loadWatchlist }    from '../../utils/watchlistStorage.js'
-import { genSparklines } from '../../utils/chartData.js'
 import { fUSD, fPct }  from '../../utils/format.js'
 import { getGradeColor } from '../../conviction/grade/index.js'
 
-export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker, onManage }) {
-  const items      = loadWatchlist() ?? WATCHLIST
-  const sparklines = useMemo(() => genSparklines(items, 21), [items])
+export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker, onManage, prices = {} }) {
+  const items = loadWatchlist() ?? WATCHLIST
 
   return (
     <div style={{
@@ -62,9 +60,7 @@ export default function WatchlistPanel({ style = {}, convictionResults = {}, onS
 
       {/* Items */}
       {items.map(item => {
-        const isUp  = item.dayChangePct >= 0
-        const spark = sparklines[item.ticker] ?? []
-        const cv    = convictionResults[item.ticker]
+        const cv = convictionResults[item.ticker]
 
         return (
           <div
@@ -92,18 +88,15 @@ export default function WatchlistPanel({ style = {}, convictionResults = {}, onS
               </div>
             </div>
 
-            {/* Sparkline */}
-            <Sparkline data={spark} positive={isUp} width={52} height={22} />
-
-            {/* Price + change */}
-            <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 52 }}>
+            {/* Price */}
+            <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 44 }}>
               <div style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, color: 'var(--txt)' }}>
                 {fUSD(item.currentPrice)}
               </div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 600, color: isUp ? 'var(--green)' : 'var(--red)' }}>
-                {item.dayChangePct != null ? fPct(item.dayChangePct) : '—'}
-              </div>
             </div>
+
+            {/* Live sparkline + % change */}
+            <LiveMiniChart ticker={item.ticker} prices={prices} width={64} height={28} />
 
             {/* Conviction ring — shows when computed */}
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>

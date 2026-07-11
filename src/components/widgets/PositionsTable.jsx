@@ -10,6 +10,7 @@ import { RotateCcw }             from 'lucide-react'
 import ConvictionRing             from '../ui/ConvictionRing.jsx'
 import { calcPnL }               from '../../utils/finance.js'
 import { fUSD, fPct, fSignedUSD } from '../../utils/format.js'
+import LiveMiniChart from './LiveMiniChart.jsx'
 import { getFundamentalsInfo, clearFundamentals } from '../../utils/api/index.js'
 import { getGradeColor } from '../../conviction/grade/index.js'
 
@@ -19,6 +20,7 @@ const SORT_COLS = [
   { key: 'dayChangePct',label: 'Day %',       align: 'right' },
   { key: 'value',       label: 'Mkt Value',   align: 'right' },
   { key: 'gain',        label: 'P&L',         align: 'right' },
+  { key: 'chart',       label: 'Today',       align: 'center', noSort: true },
   { key: 'upside',      label: 'Upside ↑',    align: 'right' },
   { key: 'conviction',  label: 'Conviction',  align: 'right' },
 ]
@@ -107,7 +109,7 @@ export default function PositionsTable({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
@@ -182,6 +184,11 @@ export default function PositionsTable({
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--txt-muted)' }}>
                       {pos.qty} sh
                     </div>
+                  </td>
+
+                  {/* Day Chart */}
+                  <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <LiveMiniChart ticker={pos.ticker} prices={prices} width={60} height={26} compact />
                   </td>
 
                   {/* P&L */}

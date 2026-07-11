@@ -230,6 +230,7 @@ export default function DashboardView({
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           selectedTicker={ticker}
           onSelectTicker={handleSelectTicker}
+          prices={prices}
           convictionResults={convictionResults}
           convictionLoading={convictionLoading}
         />
@@ -237,6 +238,7 @@ export default function DashboardView({
           key={watchlistSeed}
           style={{ width: isMobile ? '100%' : 260, flexShrink: 0 }}
           convictionResults={watchlistResults}
+          prices={prices}
           onSelectTicker={handleSelectTicker}
           onManage={() => setWatchlistEditorOpen(true)}
         />
