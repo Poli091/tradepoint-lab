@@ -121,6 +121,9 @@ export const workerAPI = {
   insiderActivity: (ticker) =>
     workerGet(`/api/insider/${ticker}`),
 
+  /** Generic GET to worker endpoint */
+  get: (path) => workerGet(path),
+
   /** Finnhub symbol search — US stocks, ETFs, international ADRs. Cached 24h. */
   searchSymbols: (query) =>
     workerGet(`/api/search/${encodeURIComponent(query.trim().toUpperCase())}`),

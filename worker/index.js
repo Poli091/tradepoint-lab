@@ -1800,6 +1800,73 @@ async function handleSymbolSearch(query, keys, kv) {
   return json({ results })
 }
 
+
+/* ── Sector Trends: aggregate RS + breadth per industry from D1 ─────────
+   Queries latest conviction analysis per ticker, groups by industry,
+   computes RS multi-horizon averages and EMA breadth.
+   Cached 1h in KV.
+─────────────────────────────────────────────────────────────────── */
+async function handleSectorTrends(db, kv) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+
+  const kvKey  = 'sector:trends:v1'
+  const { value } = await kvGet(kv, kvKey)
+  if (value) return json({ tickers: value, fromCache: true })
+
+  try {
+    // Latest analysis per ticker (last 60 days)
+    const rows = await db.prepare(`
+      SELECT a.ticker, a.final_score, a.grade, a.technical_score,
+             a.rs_weighted, a.ema200, a.price, a.upside_pct, a.analysis_date,
+             a.full_json
+      FROM analyses a
+      INNER JOIN (
+        SELECT ticker, MAX(analysis_date) AS latest
+        FROM analyses
+        WHERE analysis_date >= date('now', '-60 days')
+        GROUP BY ticker
+      ) m ON a.ticker = m.ticker AND a.analysis_date = m.latest
+    `).all()
+
+    const tickers = (rows.results ?? []).map(r => {
+      let rs1M = null, rs3M = null, rs6M = null, aboveEMA50 = null, aboveEMA200 = null
+      try {
+        const full = JSON.parse(r.full_json ?? '{}')
+        const tech = full.technical ?? {}
+        const rs   = tech.relStrengths ?? {}
+        rs1M        = rs['1M']  ?? null
+        rs3M        = rs['3M']  ?? null
+        rs6M        = rs['6M']  ?? null
+        aboveEMA50  = tech.aboveEMA50  ?? null
+        aboveEMA200 = tech.aboveEMA200 ?? (r.price && r.ema200 ? r.price > r.ema200 : null)
+      } catch { aboveEMA200 = r.price && r.ema200 ? r.price > r.ema200 : null }
+
+      // Industry Trend Score: 40% RS1M + 35% RS3M + 25% RS6M (fallback to rs_weighted)
+      let trendScore = null
+      if (rs1M != null && rs3M != null && rs6M != null) {
+        trendScore = rs1M * 0.40 + rs3M * 0.35 + rs6M * 0.25
+      } else if (r.rs_weighted != null) {
+        trendScore = r.rs_weighted
+      }
+
+      return {
+        ticker: r.ticker,
+        score: r.final_score, grade: r.grade,
+        techScore: r.technical_score,
+        rsWeighted: r.rs_weighted,
+        rs1M, rs3M, rs6M, trendScore,
+        aboveEMA200, aboveEMA50,
+        price: r.price, upside: r.upside_pct, date: r.analysis_date,
+      }
+    })
+
+    await kv.put(kvKey, JSON.stringify(tickers), { expirationTtl: 3600 })
+    return json({ tickers })
+  } catch (err) {
+    return json({ error: err.message }, 500)
+  }
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -1860,6 +1927,8 @@ export default {
           return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
+        case 'sector-trends':
+          return await handleSectorTrends(db, kv)
         case 'search':
           return await handleSymbolSearch(param1, keys, kv)
         case 'insider':

@@ -19,6 +19,7 @@ import DiagnosticsView            from './views/DiagnosticsView.jsx'
 import CompareView                from './views/CompareView.jsx'
 import PortfolioInsightsView       from './views/PortfolioInsightsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
+import SectorTrendsView           from './views/SectorTrendsView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { loadOverrides }          from './utils/positionsStorage.js'
 import { loadWatchlist }          from './utils/watchlistStorage.js'
@@ -171,6 +172,8 @@ function AppInner() {
         return <CalendarView convictionResults={convictionResults} prices={prices} />
       case 'scan':
         return <ScanView />
+      case 'market':
+        return <SectorTrendsView onSelectTicker={ticker => { setSearchTicker(ticker); fetchSingle(ticker) }} />
       case 'insights':
         return (
           <PortfolioInsightsView
