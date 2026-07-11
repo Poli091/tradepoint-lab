@@ -1309,6 +1309,7 @@ async function getTickerCIK(ticker, kv) {
 /* ── Parse a single Form 4 XML string ───────────────────── */
 function parseForm4XML(xml, accessionNo, filedDate) {
   const ownerName    = xmlVal(xml, 'rptOwnerName') || 'Unknown'
+  const personCik    = xmlVal(xml, 'rptOwnerCik') || null   // SEC reporting owner CIK
   const isOfficer    = xmlVal(xml, 'isOfficer')  === '1'
   const isDirector   = xmlVal(xml, 'isDirector') === '1'
   const officerTitle = xmlVal(xml, 'officerTitle')
@@ -1335,7 +1336,7 @@ function parseForm4XML(xml, accessionNo, filedDate) {
 
     results.push({
       accession_no: accessionNo, filed_date: filedDate,
-      person_name: ownerName, person_title: title,
+      person_name: ownerName, person_cik: personCik, person_title: title,
       is_officer: isOfficer ? 1 : 0, is_director: isDirector ? 1 : 0,
       transaction_date: txDate || filedDate,
       transaction_code: code, shares, price_per_share: price,
@@ -1392,8 +1393,29 @@ function computeInsiderSummary(transactions, debug = {}) {
   const allSales10b51  = sales.length > 0 && sales.every(tx => tx.is_10b5_1)
   const someSales10b51 = sales.some(tx => tx.is_10b5_1)
 
-  // Detect exercise-and-sell: M+S in same 90d period — usually compensation, not discretionary
-  const hasExerciseAndSell = compensation.some(c => c.transaction_code === 'M') && sales.length > 0
+  // Precise exercise-and-sell detection:
+  // Requires same filing (same accession_no) OR same owner within 3 calendar days.
+  // Does NOT flag M+S that are weeks apart — those may be independent events.
+  const allExercises = transactions.filter(tx => tx.transaction_code === 'M')
+  let hasExerciseAndSell = false
+  outer: for (const ex of allExercises) {
+    for (const sale of sales) {
+      // Case A: same filing — definitively exercise-and-sell
+      if (ex.accession_no && ex.accession_no === sale.accession_no) {
+        hasExerciseAndSell = true; break outer
+      }
+      // Case B: same owner (by CIK preferred, name fallback) within 3 days
+      const sameOwner = (ex.person_cik && ex.person_cik === sale.person_cik) ||
+                        (ex.person_name && ex.person_name === sale.person_name)
+      if (sameOwner) {
+        const exDate   = new Date(ex.transaction_date   || ex.filed_date)
+        const saleDate = new Date(sale.transaction_date || sale.filed_date)
+        if (Math.abs(exDate - saleDate) / 86_400_000 <= 3) {
+          hasExerciseAndSell = true; break outer
+        }
+      }
+    }
+  }
 
   // Max % of holdings sold by any single insider (0 if shares_after unavailable)
   const maxSalePctHoldings = sales.reduce((max, tx) => {
@@ -1551,13 +1573,13 @@ async function handleInsiderActivity(ticker, kv, db) {
     try {
       const stmt = db.prepare(`
         INSERT OR IGNORE INTO insider_transactions
-          (ticker, cik, accession_no, filed_date, person_name, person_title,
+          (ticker, cik, accession_no, filed_date, person_name, person_cik, person_title,
            is_officer, is_director, transaction_date, transaction_code,
            shares, price_per_share, value_usd, shares_after, acquired_disposed, is_10b5_1)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       await db.batch(allNewTx.map(tx => stmt.bind(
-        t, cik, tx.accession_no, tx.filed_date, tx.person_name, tx.person_title,
+        t, cik, tx.accession_no, tx.filed_date, tx.person_name, tx.person_cik, tx.person_title,
         tx.is_officer, tx.is_director, tx.transaction_date, tx.transaction_code,
         tx.shares, tx.price_per_share, tx.value_usd, tx.shares_after,
         tx.acquired_disposed, tx.is_10b5_1
