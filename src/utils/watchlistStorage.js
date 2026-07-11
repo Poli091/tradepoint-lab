@@ -1,18 +1,23 @@
 /**
- * watchlistStorage.js — localStorage persistence for watchlist
+ * watchlistStorage.js — namespaced by userId for multi-user support.
  */
-const LS_KEY = 'tp_watchlist_v1'
+import { getUserId } from '../auth/webauthn.js'
+
+function getKey() {
+  const uid = getUserId()
+  return uid ? `tp_${uid}_watchlist_v1` : 'tp_watchlist_v1'
+}
 
 export function loadWatchlist() {
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = localStorage.getItem(getKey())
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
 
 export function saveWatchlist(items) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(items)) }
+  try { localStorage.setItem(getKey(), JSON.stringify(items)) }
   catch { /* storage full */ }
 }
 
-export function clearWatchlist() { localStorage.removeItem(LS_KEY) }
+export function clearWatchlist() { localStorage.removeItem(getKey()) }

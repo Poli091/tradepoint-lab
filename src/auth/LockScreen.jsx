@@ -78,12 +78,13 @@ function Separator({ label }) {
 
 /* ── Main lock screen ─────────────────────────────────── */
 export default function LockScreen() {
-  const { hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile } = useAuth()
+  const { hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile, profileName } = useAuth()
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState('')
   const [success,       setSuccess]       = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleteStep2,   setDeleteStep2]   = useState(false)
+  const [inputName,     setInputName]     = useState('')
 
   const handle = async (fn) => {
     setLoading(true)
@@ -171,7 +172,28 @@ export default function LockScreen() {
               Secure your dashboard with biometric authentication.<br />
               Your Face ID, Touch ID, or Windows Hello will protect your API keys and trading data.
             </p>
-            <GlowButton onClick={() => handle(register)} loading={loading} icon={Fingerprint}>
+            <div style={{ marginBottom: 16, textAlign: 'left' }}>
+              <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)',
+                fontFamily: 'Inter, system-ui', letterSpacing: '0.06em',
+                textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                Your name
+              </label>
+              <input
+                value={inputName}
+                onChange={e => setInputName(e.target.value)}
+                placeholder="e.g. Cristian"
+                maxLength={30}
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-lg)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.05)', color: '#fff',
+                  fontSize: 14, fontFamily: 'Inter, system-ui', outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                onKeyDown={e => e.key === 'Enter' && !loading && handle(() => register(inputName || 'User'))}
+              />
+            </div>
+            <GlowButton onClick={() => handle(() => register(inputName || 'User'))} loading={loading} icon={Fingerprint}>
               {loading ? 'Setting up…' : 'Set Up Passkey'}
             </GlowButton>
             {error && (
@@ -186,9 +208,12 @@ export default function LockScreen() {
         {/* ── Passkey registered — unlock ── */}
         {webAuthnOk && hasPasskey && !success && (
           <>
+            <p style={{ fontSize: 15, color: '#fff', fontWeight: 600,
+              marginBottom: 6, fontFamily: 'Inter, system-ui' }}>
+              Welcome back{profileName && profileName !== 'User' ? `, ${profileName}` : ''}
+            </p>
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 24, lineHeight: 1.65 }}>
-              A passkey profile is registered on this device.<br />
-              Use your biometric lock to unlock the application and decrypt your keys.
+              Use your passkey or biometric to unlock.
             </p>
 
             <GlowButton onClick={() => handle(unlock)} loading={loading} icon={Fingerprint}>

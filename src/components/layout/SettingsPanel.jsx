@@ -369,59 +369,6 @@ export default function SettingsPanel({ open, onClose }) {
             ))}
           </div>
 
-          {/* ── API Keys ── */}
-          {sectionLabel(<><Globe size={13} />Data sync (Cloudflare Worker)</>)}
-          <WorkerUrlField />
-
-          {sectionLabel(<><Key size={13} />{t.sectionApiKeys}</>)}
-
-          {/* Alpaca Keys — grouped */}
-          <div style={{ marginBottom: 18, background: 'var(--surface-up)', borderRadius:'var(--radius)', padding: '12px 14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-sec)' }}>Alpaca Keys</span>
-              <span style={{
-                fontSize: 10, padding: '1px 7px', borderRadius: 4,
-                fontFamily: 'var(--mono)', fontWeight: 600,
-                background: localStorage.getItem(LS_KEYS.alpacaKey) ? 'var(--green-dim)' : 'var(--surface)',
-                color:      localStorage.getItem(LS_KEYS.alpacaKey) ? 'var(--green)'     : 'var(--txt-muted)',
-              }}>
-                {localStorage.getItem(LS_KEYS.alpacaKey) ? t.configured : t.notConfigured}
-              </span>
-            </div>
-            <KeyField labelKey="alpacaKey"    lsKey={LS_KEYS.alpacaKey}    t={t} subLabel="API Key" />
-            <KeyField labelKey="alpacaSecret" lsKey={LS_KEYS.alpacaSecret} t={t} subLabel="Secret Key" />
-          </div>
-
-          {KEY_FIELDS.map(({ label: labelKey, lsKey }) => (
-            <KeyField
-              key={lsKey + '_' + (clearedMsg ? 'c' : 'n')}
-              labelKey={labelKey}
-              lsKey={lsKey}
-              t={t}
-            />
-          ))}
-
-          <div style={{ height: 8 }} />
-        </div>
-
-        {/* Footer actions */}
-        <div style={{
-          padding: '14px 20px',
-          borderTop: '1px solid var(--border)',
-          display: 'flex', gap: 8, flexShrink: 0,
-          background: 'var(--surface)',
-        }}>
-          {/* Save all */}
-          <button onClick={handleSaveAll} style={{
-            flex: 1, padding: '10px', borderRadius:'var(--radius)', border: 'none',
-            cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 600,
-            background: allSavedMsg ? 'var(--green-dim)' : 'var(--accent)',
-            color: allSavedMsg ? 'var(--green)' : '#fff',
-            transition: 'all 0.18s',
-          }}>
-            {allSavedMsg ? t.allSaved : t.btnSaveAll}
-          </button>
-
           {/* Clear all keys */}
           <button onClick={handleClearAll} style={{
             padding: '10px 14px', borderRadius:'var(--radius)',

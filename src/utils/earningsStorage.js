@@ -1,18 +1,23 @@
 /**
- * earningsStorage.js — localStorage persistence for earnings calendar
+ * earningsStorage.js — namespaced by userId for multi-user support.
  */
-const LS_KEY = 'tp_earnings_v1'
+import { getUserId } from '../auth/webauthn.js'
+
+function getKey() {
+  const uid = getUserId()
+  return uid ? `tp_${uid}_earnings_v1` : 'tp_earnings_v1'
+}
 
 export function loadEarnings() {
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = localStorage.getItem(getKey())
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
 
 export function saveEarnings(items) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(items)) }
+  try { localStorage.setItem(getKey(), JSON.stringify(items)) }
   catch { /* storage full */ }
 }
 
-export function clearEarnings() { localStorage.removeItem(LS_KEY) }
+export function clearEarnings() { localStorage.removeItem(getKey()) }

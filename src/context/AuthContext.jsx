@@ -20,6 +20,9 @@ import {
   registerPasskey,
   authenticatePasskey,
   clearPasskeyRegistration,
+  deleteProfileAndData,
+  getUserId,
+  getProfileName,
 } from '../auth/webauthn.js'
 
 const LOCK_TIMEOUT = 30 * 60 * 1000   // 30 minutes hidden → lock
@@ -31,6 +34,8 @@ export function AuthProvider({ children }) {
   const [authenticated, setAuthenticated] = useState(false)
   const [hasPasskey,    setHasPasskey]    = useState(hasRegisteredPasskey)
   const [webAuthnOk,    setWebAuthnOk]    = useState(isWebAuthnSupported)
+  const [profileName,   setProfileName]   = useState(getProfileName)
+  const [userId,        setUserId]        = useState(getUserId)
   const lockTimerRef = useRef(null)
 
   /* ── 30-min inactivity timer when tab is hidden ── */
@@ -53,9 +58,11 @@ export function AuthProvider({ children }) {
   }, [resetLockTimer, clearLockTimer])
 
   /* ── Auth actions ── */
-  const register = useCallback(async () => {
-    await registerPasskey()
+  const register = useCallback(async (name = 'User') => {
+    await registerPasskey(name)
     setHasPasskey(true)
+    setProfileName(getProfileName())
+    setUserId(getUserId())
     clearLockTimer()
     setAuthenticated(true)
   }, [clearLockTimer])
@@ -71,17 +78,16 @@ export function AuthProvider({ children }) {
   }, [])
 
   const deleteProfile = useCallback(() => {
-    clearPasskeyRegistration()
+    deleteProfileAndData()
     clearLockTimer()
-    const allKeys = []
-    for (let i = 0; i < localStorage.length; i++) allKeys.push(localStorage.key(i))
-    allKeys.forEach(k => localStorage.removeItem(k))
     setAuthenticated(false)
     setHasPasskey(false)
+    setProfileName('User')
+    setUserId(null)
   }, [clearLockTimer])
 
   return (
-    <AuthContext.Provider value={{ authenticated, hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile }}>
+    <AuthContext.Provider value={{ authenticated, hasPasskey, webAuthnOk, register, unlock, bypassUnsupported, deleteProfile, userId, profileName }}>
       {children}
     </AuthContext.Provider>
   )

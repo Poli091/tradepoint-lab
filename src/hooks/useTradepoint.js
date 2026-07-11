@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react'
+import { getUserId } from '../auth/webauthn.js'
 
 export function useTradepoint() {
   // ── Navigation ──────────────────────────────────────────
@@ -29,13 +30,17 @@ export function useTradepoint() {
   const [limitPrice, setLimitPrice] = useState('')
 
   // ── Theme ─────────────────────────────────────────────────
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem('tp-theme') || 'dark'
-  )
+  const [theme, setTheme] = useState(() => {
+    const uid = getUserId()
+    const key = uid ? `tp_${uid}_theme` : 'tp-theme'
+    return localStorage.getItem(key) || 'dark'
+  })
   const toggleTheme = () => {
     setTheme(t => {
       const next = t === 'dark' ? 'light' : 'dark'
-      localStorage.setItem('tp-theme', next)
+      const uid = getUserId()
+      const key = uid ? `tp_${uid}_theme` : 'tp-theme'
+      localStorage.setItem(key, next)
       return next
     })
   }

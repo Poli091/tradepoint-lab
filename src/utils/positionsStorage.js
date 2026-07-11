@@ -1,30 +1,23 @@
 /**
- * positionsStorage.js
- * Local position overrides stored in localStorage.
- * Bridge before multi-user D1 implementation.
- *
- * Merges with the hardcoded positions.js:
- *   - User can add new positions
- *   - User can edit qty/avgPrice of existing ones
- *   - User can delete positions
- *   - Hard-coded positions are the fallback/initial state
+ * positionsStorage.js — namespaced by userId for multi-user support.
  */
+import { getUserId } from '../auth/webauthn.js'
 
-const LS_KEY = 'tp_positions_v1'
+function getKey() {
+  const uid = getUserId()
+  return uid ? `tp_${uid}_positions_v1` : 'tp_positions_v1'
+}
 
 export function loadOverrides() {
   try {
-    const raw = localStorage.getItem(LS_KEY)
-    return raw ? JSON.parse(raw) : null   // null = use hardcoded defaults
+    const raw = localStorage.getItem(getKey())
+    return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
 
 export function saveOverrides(positions) {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(positions))
-  } catch { /* storage full */ }
+  try { localStorage.setItem(getKey(), JSON.stringify(positions)) }
+  catch { /* storage full */ }
 }
 
-export function clearOverrides() {
-  localStorage.removeItem(LS_KEY)
-}
+export function clearOverrides() { localStorage.removeItem(getKey()) }
