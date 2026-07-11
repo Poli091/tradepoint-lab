@@ -655,26 +655,17 @@ async function handleSaveAnalysis(ticker, request, db) {
   try { body = await request.json() }
   catch { return json({ error: 'Invalid JSON body' }, 400) }
 
-  const r   = body
-  const now = new Date()
-  const bd  = r.breakdown ?? {}
+  const r          = body
+  const now        = new Date()
+  const today      = now.toISOString().split('T')[0]
+  const bd         = r.breakdown ?? {}
   const nullFields = (bd.growth?.nullFields ?? 0) + (bd.quality?.nullFields ?? 0)
     + (bd.valuation?.nullFields ?? 0) + (bd.technical?.nullFields ?? 0)
 
+  // Upsert: one canonical row per (ticker, analysis_date).
+  // ON CONFLICT DO UPDATE ensures today's row always reflects the latest run —
+  // no threshold filtering, no missed component/gate/upside changes.
   try {
-    // Dedup: skip if same score+grade already saved today (prevents noise from repeated opens)
-    const today = now.toISOString().split('T')[0]
-    const existing = await db.prepare(
-      `SELECT final_score, grade FROM analyses WHERE ticker = ? AND analysis_date = ? ORDER BY timestamp_ms DESC LIMIT 1`
-    ).bind(ticker.toUpperCase(), today).first().catch(() => null)
-
-    if (existing) {
-      const scoreDiff = Math.abs((existing.final_score ?? 0) - (r.finalScore ?? 0))
-      if (scoreDiff < 1 && existing.grade === r.grade) {
-        return json({ saved: false, reason: 'no_change', ticker: ticker.toUpperCase(), date: today })
-      }
-    }
-
     await db.prepare(`
       INSERT INTO analyses (
         ticker, analysis_date, timestamp_ms,
@@ -686,10 +677,34 @@ async function handleSaveAnalysis(ticker, request, db) {
         rsi, ema200, rs_weighted,
         sector_profile, null_fields, full_json
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(ticker, analysis_date) DO UPDATE SET
+        timestamp_ms    = excluded.timestamp_ms,
+        raw_score       = excluded.raw_score,
+        risk_penalty    = excluded.risk_penalty,
+        final_score     = excluded.final_score,
+        gate_cap        = excluded.gate_cap,
+        active_gate     = excluded.active_gate,
+        grade           = excluded.grade,
+        confidence      = excluded.confidence,
+        model_version   = excluded.model_version,
+        growth_score    = excluded.growth_score,
+        quality_score   = excluded.quality_score,
+        strength_score  = excluded.strength_score,
+        valuation_score = excluded.valuation_score,
+        technical_score = excluded.technical_score,
+        valuation_metric= excluded.valuation_metric,
+        price           = excluded.price,
+        target_mean     = excluded.target_mean,
+        upside_pct      = excluded.upside_pct,
+        analysts        = excluded.analysts,
+        rsi             = excluded.rsi,
+        ema200          = excluded.ema200,
+        rs_weighted     = excluded.rs_weighted,
+        sector_profile  = excluded.sector_profile,
+        null_fields     = excluded.null_fields,
+        full_json       = excluded.full_json
     `).bind(
-      ticker.toUpperCase(),
-      now.toISOString().split('T')[0],
-      now.getTime(),
+      ticker.toUpperCase(), today, now.getTime(),
       r.rawScore        ?? null, r.riskPenalty    ?? null, r.finalScore ?? null,
       r.gateCap         ?? null, r.activeGate     ?? null,
       r.grade           ?? null, r.confidence     ?? null,
@@ -702,11 +717,10 @@ async function handleSaveAnalysis(ticker, request, db) {
       r.wallStreet?.analysts   ?? null,
       r.technical?.rsi        ?? null, r.technical?.ema200      ?? null,
       r.technical?.relStrengthWeighted ?? null,
-      r.sectorProfile ?? null, nullFields,
-      JSON.stringify(r)
+      r.sectorProfile ?? null, nullFields, JSON.stringify(r)
     ).run()
 
-    return json({ saved: true, ticker: ticker.toUpperCase(), date: now.toISOString().split('T')[0] })
+    return json({ saved: true, upserted: true, ticker: ticker.toUpperCase(), date: today })
   } catch (err) {
     console.error('[D1 save]', err.message)
     return json({ error: 'Database write failed: ' + err.message }, 500)
