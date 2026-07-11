@@ -15,7 +15,7 @@
  *    relative performance over the selected period.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   ComposedChart, Area, Line, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -228,15 +228,15 @@ function ChartPanels({ chartData, ind, showRSI, showMACD, mainHeight, panelHeigh
 
 /* ── Quick Add button — watchlist / portfolio ──────────────── */
 function QuickAdd({ ticker }) {
-  const [open,  setOpen]  = React.useState(false)
-  const [mode,  setMode]  = React.useState(null)
-  const [acct,  setAcct]  = React.useState('Brokerage')
-  const [qty,   setQty]   = React.useState('')
-  const [price, setPrice] = React.useState('')
-  const [saved, setSaved] = React.useState(false)
-  const wrapRef = React.useRef(null)
+  const [open,  setOpen]  = useState(false)
+  const [mode,  setMode]  = useState(null)
+  const [acct,  setAcct]  = useState('Brokerage')
+  const [qty,   setQty]   = useState('')
+  const [price, setPrice] = useState('')
+  const [saved, setSaved] = useState(false)
+  const wrapRef = useRef(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) { setOpen(false); setMode(null) } }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
