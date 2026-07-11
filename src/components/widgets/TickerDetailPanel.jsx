@@ -174,6 +174,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [insiderData,    setInsiderData]    = useState(null)
   const [insiderLoading, setInsiderLoading] = useState(false)
   const [insiderError,   setInsiderError]   = useState(null)
+  const [showInsiderDbg, setShowInsiderDbg] = useState(false)
 
   const alignment_ = useMemo(() => {
     if (!result || !altResult) return null
@@ -1381,37 +1382,33 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         </span>
                       </div>
                       {/* Debug diagnostics — collapsible, hidden by default */}
-                      {d._debug && (() => {
-                        const [showDbg, setShowDbg] = React.useState(false)
-                        const codes = Object.entries(d._debug.codeCounts || {})
-                        return (
-                          <div style={{ marginBottom:10 }}>
-                            <button onClick={() => setShowDbg(v => !v)} style={{
-                              fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
-                              background:'transparent', border:'none', cursor:'pointer', padding:0,
-                              textDecoration:'underline dotted',
-                            }}>
-                              {showDbg ? '▲' : '▼'} Data diagnostics
-                            </button>
-                            {showDbg && (
-                              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
-                                {[
-                                  { k:'Filings found',   v: d._debug.filingsFound },
-                                  { k:'New parsed',      v: d._debug.newParsed },
-                                  { k:'Total tx',        v: d._debug.rawTxCount },
-                                  ...codes.map(([c,n]) => ({ k:`Code ${c}`, v:n })),
-                                  { k:'Classifier', v: d.classifierVersion },
-                                ].map(({ k, v }) => (
-                                  <span key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
-                                    background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
-                                    {k}: <span style={{ color:'var(--txt-sec)', fontWeight:600 }}>{v}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })()}
+                      {d._debug && (
+                        <div style={{ marginBottom:10 }}>
+                          <button onClick={() => setShowInsiderDbg(v => !v)} style={{
+                            fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                            background:'transparent', border:'none', cursor:'pointer', padding:0,
+                            textDecoration:'underline dotted',
+                          }}>
+                            {showInsiderDbg ? '▲' : '▼'} Data diagnostics
+                          </button>
+                          {showInsiderDbg && (
+                            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
+                              {[
+                                { k:'Filings found', v: d._debug.filingsFound },
+                                { k:'New parsed',    v: d._debug.newParsed },
+                                { k:'Total tx',      v: d._debug.rawTxCount },
+                                ...Object.entries(d._debug.codeCounts || {}).map(([c,n]) => ({ k:`Code ${c}`, v:n })),
+                                { k:'Classifier',    v: d.classifierVersion || 'insider-v1.0' },
+                              ].map(({ k, v }) => (
+                                <span key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                                  background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
+                                  {k}: <span style={{ color:'var(--txt-sec)', fontWeight:600 }}>{v}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {d.noActivity ? (
                         <div style={{ padding:'12px', background:'var(--surface-up)', borderRadius:'var(--radius)', marginBottom:12 }}>
