@@ -23,6 +23,9 @@ import { POSITIONS }      from '../../data/positions.js'
 import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
 import { workerAPI }       from '../../utils/api/worker.js'
 import { cache }          from '../../utils/cache.js'
+import { loadWatchlist, saveWatchlist } from '../../utils/watchlistStorage.js'
+import { loadOverrides, saveOverrides } from '../../utils/positionsStorage.js'
+import { getGradeColor }   from '../../conviction/grade/index.js'
 
 // Grade rank for alignment calculation — module-level to avoid duplicate naming post-minification
 const GRADE_RANK_MAP = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}

@@ -53,7 +53,6 @@ function getKeys(request, env) {
   const h = k => request.headers.get(k) || ''
   return {
     finnhub:      env.FINNHUB_KEY      || h('X-Finnhub-Key'),
-    fmp:          null, // FMP removed
     alpacaKey:    env.ALPACA_KEY       || h('X-Alpaca-Key'),
     alpacaSecret: env.ALPACA_SECRET    || h('X-Alpaca-Secret'),
     groq:         env.GROQ_KEY         || h('X-Groq-Key'),
@@ -83,21 +82,8 @@ async function fhGet(path, key) {
     .catch(e => { console.error('[Finnhub]', path.split('?')[0], e.message); return null })
 }
 
-async function fmpGet(path, key) {
-  if (!key) return null
-  return fetchJSON(`https://financialmodelingprep.com/api/v3${path}&apikey=${key}`)
-    .catch(e => { console.error('[FMP v3]', path.split('?')[0], e.message); return null })
-}
-
 const delay = ms => new Promise(r => setTimeout(r, ms))
 
-/** FMP /stable/ endpoints — newer API with different free plan coverage */
-async function fmpStableGet(path, key) {
-  if (!key) return null
-  const sep = path.includes('?') ? '&' : '?'
-  return fetchJSON(`https://financialmodelingprep.com/stable${path}${sep}apikey=${key}`)
-    .catch(e => { console.error('[FMP stable]', path.split('?')[0], e.message); return null })
-}
 
 /* ════════════════════════════════════════════════════════════
    MODULE 4 — HANDLERS
@@ -490,9 +476,8 @@ async function handleDebug(ticker, keys) {
   const target   = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
   await delay(200)
   const fhEarnings   = await fhGet(`/stock/earnings?symbol=${t}&limit=4`, keys.finnhub)
-  const fmpPriceTarget = keys.fmp ? await fmpStableGet(`/price-target-consensus?symbol=${t}`, keys.fmp) : null
   return json({
-    keys_configured:  { finnhub: !!keys.finnhub, fmp: !!keys.fmp },
+    keys_configured:  { finnhub: !!keys.finnhub },
     finnhubTarget:    target,
     fmpPriceTarget:   fmpPriceTarget,
     finnhubEarnings:  fhEarnings,
@@ -1129,7 +1114,7 @@ export default {
     try {
       switch (type) {
         case 'status':
-          return json({ ok: true, kv: !!kv, version: '1.1.0', keys: { finnhub: !!keys.finnhub, fmp: !!keys.fmp, alpaca: !!(keys.alpacaKey && keys.alpacaSecret), groq: !!keys.groq } })
+          return json({ ok: true, kv: !!kv, version: '1.1.0', keys: { finnhub: !!keys.finnhub, alpaca: !!(keys.alpacaKey && keys.alpacaSecret), groq: !!keys.groq } })
         case 'fundamentals':
           return await handleFundamentals(param1, keys, kv, refresh)
         case 'price':
