@@ -95,15 +95,38 @@ export default function LiveMiniChart({ ticker, prices, width = 72, height = 32,
 
   const fetchBars = useCallback(async () => {
     if (!ticker || !getWorkerUrl()) return
-    const cacheKey = `${ticker}:1D`
-    // Use the same localStorage cache as PriceChart
+    // Use shared cache with PriceChart
     const cached = cache.getOHLCV(ticker, '1D')
     if (cached?.length > 0) { setBars(cached); return }
     try {
+      // Try today's 1D intraday first
       const r = await workerAPI.ohlcv(ticker, '1D')
       if (r?.data?.length > 0) {
         cache.setOHLCV(ticker, '1D', r.data)
         setBars(r.data)
+        return
+      }
+      // Fallback: market closed / pre-market — use last week to extract last session
+      const rw = await workerAPI.ohlcv(ticker, '1W')
+      if (rw?.data?.length > 0) {
+        // Group bars by date, take the most recent date's bars
+        const byDate = {}
+        for (const bar of rw.data) {
+          const d = bar.date?.split(' ')[0] ?? bar.date ?? ''
+          if (!byDate[d]) byDate[d] = []
+          byDate[d].push(bar)
+        }
+        const dates = Object.keys(byDate).sort()
+        const lastDate = dates[dates.length - 1]
+        const lastBars = byDate[lastDate] ?? []
+        if (lastBars.length > 1) {
+          cache.setOHLCV(ticker, '1D', lastBars)
+          setBars(lastBars)
+        } else {
+          // 1W is daily bars — just use all of them as trend line
+          cache.setOHLCV(ticker, '1D', rw.data.slice(-20))
+          setBars(rw.data.slice(-20))
+        }
       }
     } catch {}
   }, [ticker])

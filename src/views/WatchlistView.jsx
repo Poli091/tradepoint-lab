@@ -128,7 +128,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
                 <div>
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700, color: 'var(--txt)' }}>
-                    {fUSD(item.currentPrice)}
+                    {fUSD(prices[item.ticker]?.price ?? item.currentPrice)}
                   </div>
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600,
                     color: (item.dayChangePct ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', marginTop: 3 }}>

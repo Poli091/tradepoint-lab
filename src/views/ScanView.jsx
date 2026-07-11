@@ -177,7 +177,7 @@ export default function ScanView() {
 
           {/* Grade filter + Recent scans */}
           {/* Grade filter pills */}
-          {scanHistory.some(h => h.grade) && (
+          {scanHistory.length > 0 && (
             <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:8, marginTop:4 }}>
               {[
                 { id:'ALL',         label:'All',       color:'var(--txt-muted)' },
