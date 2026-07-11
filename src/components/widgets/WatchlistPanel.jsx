@@ -11,6 +11,7 @@ import { WATCHLIST }        from '../../data/watchlist.js'
 import { loadWatchlist }    from '../../utils/watchlistStorage.js'
 import { genSparklines } from '../../utils/chartData.js'
 import { fUSD, fPct }  from '../../utils/format.js'
+import { getGradeColor } from '../../conviction/grade/index.js'
 
 export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker }) {
   const items      = loadWatchlist() ?? WATCHLIST
