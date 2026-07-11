@@ -15,6 +15,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
+import {
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 import { useConviction }           from '../../hooks/useConviction.js'
 import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
 import { computeDecision }                    from '../../conviction/decision/engine.js'
@@ -549,28 +553,29 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
               {/* ══ SCORE HISTORY ══ */}
               {(() => {
+                const GRADE_COLOR = {
+                  'STRONG BUY':'#22C55E','BUY':'#86EFAC',
+                  'HOLD':'#FBBF24','SELL':'#F97316','STRONG SELL':'#EF4444',
+                }
+
                 if (historyLoading) return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px',
-                    marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px', marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
                     Loading score history…
                   </div>
                 )
                 if (!scoreHistory || scoreHistory.length === 0) return (
-                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px',
-                    marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
-                    No snapshots yet — first snapshot runs next Sunday via Cron.
+                  <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px', marginBottom:10, fontSize:11, color:'var(--txt-muted)' }}>
+                    No snapshots yet — first snapshot runs next Sunday via cron, or open any ticker to create one.
                   </div>
                 )
 
-                // Chronological order (oldest first for chart)
-                const pts = [...scoreHistory].reverse()
-                const latest = pts[pts.length - 1]
-                const prev   = pts[pts.length - 2]
-                const first  = pts[0]
-                const delta  = latest && first ? (latest.score ?? 0) - (first.score ?? 0) : 0
-                const weekDelta = latest && prev ? (latest.score ?? 0) - (prev.score ?? 0) : null
+                const pts       = [...scoreHistory].reverse()   // oldest first
+                const latest    = pts[pts.length - 1]
+                const prev      = pts[pts.length - 2]
+                const first     = pts[0]
+                const totalDelta  = latest && first ? Math.round(((latest.final_score ?? 0) - (first.final_score ?? 0)) * 10) / 10 : 0
+                const weekDelta   = latest && prev  ? Math.round(((latest.final_score ?? 0) - (prev.final_score  ?? 0)) * 10) / 10 : null
 
-                // Component deltas (latest vs previous)
                 const COMP_KEYS = [
                   { key:'growth_score',    label:'Growth',    max:25 },
                   { key:'quality_score',   label:'Quality',   max:20 },
@@ -579,112 +584,135 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   { key:'technical_score', label:'Technical', max:15 },
                 ]
 
+                // Custom dot for conviction line — colored by grade
+                const GradeDot = ({ cx, cy, payload }) => {
+                  if (cx == null || cy == null) return null
+                  const col = GRADE_COLOR[payload.grade] ?? 'var(--accent)'
+                  return <circle cx={cx} cy={cy} r={3.5} fill={col} stroke="var(--surface)" strokeWidth={1.5} />
+                }
+
+                // Custom tooltip
+                const HistTooltip = ({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0]?.payload
+                  return (
+                    <div style={{ background:'var(--surface-up)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:'8px 12px', fontSize:10 }}>
+                      <div style={{ fontFamily:'var(--mono)', fontWeight:700, color:'var(--txt)', marginBottom:3 }}>
+                        {new Date(d.analysis_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })}
+                      </div>
+                      <div style={{ color: GRADE_COLOR[d.grade] ?? 'var(--txt)', fontWeight:700 }}>
+                        {d.final_score}/100 · {d.grade}
+                      </div>
+                      {d.upside_pct != null && (
+                        <div style={{ color:'var(--green)', marginTop:2 }}>Upside: +{d.upside_pct.toFixed(1)}%</div>
+                      )}
+                      {d.price != null && (
+                        <div style={{ color:'var(--txt-muted)', marginTop:1 }}>Price: {fUSD(d.price)}</div>
+                      )}
+                    </div>
+                  )
+                }
+
+                const hasUpside = pts.some(p => p.upside_pct != null)
+
                 return (
                   <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'12px 14px', marginBottom:10 }}>
+
                     {/* Header */}
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
-                        textTransform:'uppercase', letterSpacing:'0.06em' }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
                         Score History · {pts.length} snapshot{pts.length !== 1 ? 's' : ''}
                       </div>
-                      <div style={{ display:'flex', gap:12, fontSize:11 }}>
+                      <div style={{ display:'flex', gap:10, fontSize:10, fontFamily:'var(--mono)' }}>
                         {weekDelta !== null && (
                           <span style={{ color: weekDelta > 0 ? 'var(--green)' : weekDelta < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight:700 }}>
                             {weekDelta > 0 ? '↑' : weekDelta < 0 ? '↓' : '→'} {weekDelta > 0 ? '+' : ''}{weekDelta} this week
                           </span>
                         )}
                         {pts.length > 1 && (
-                          <span style={{ color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight:600 }}>
-                            {delta > 0 ? '+' : ''}{delta} total
+                          <span style={{ color: totalDelta > 0 ? 'var(--green)' : totalDelta < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight:600 }}>
+                            {totalDelta > 0 ? '+' : ''}{totalDelta} total
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Chart */}
-                    {pts.length >= 2 && (() => {
-                      const scores = pts.map(p => p.score ?? 0)
-                      const minS   = Math.max(0, Math.min(...scores) - 5)
-                      const maxS   = Math.min(100, Math.max(...scores) + 5)
-                      const W = 280, H = 52
-                      const x = i => (i / (pts.length - 1)) * W
-                      const y = s => H - ((s - minS) / (maxS - minS)) * H
-
-                      // Grade color for latest point
-                      const latestColor = result.grade === 'STRONG BUY' ? '#22C55E'
-                        : result.grade === 'BUY' ? '#86EFAC'
-                        : result.grade === 'HOLD' ? '#FBBF24'
-                        : result.grade === 'SELL' ? '#F97316' : '#EF4444'
-
-                      return (
-                        <div style={{ marginBottom:10, overflowX:'auto' }}>
-                          <svg width={W} height={H + 16} style={{ display:'block' }}>
+                    {/* Recharts score + upside chart */}
+                    {pts.length >= 2 && (
+                      <div style={{ marginBottom:10 }}>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <ComposedChart data={pts} margin={{ top:6, right: hasUpside ? 38 : 4, bottom:0, left:0 }}>
+                            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="analysis_date"
+                              tick={{ fill:'var(--txt-muted)', fontSize:8, fontFamily:'var(--mono)' }}
+                              tickLine={false} axisLine={false}
+                              tickFormatter={v => new Date(v).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+                              interval="preserveStartEnd"
+                            />
+                            {/* Conviction score Y-axis (left) */}
+                            <YAxis domain={[Math.max(0, Math.min(...pts.map(p => p.final_score ?? 0)) - 8), Math.min(100, Math.max(...pts.map(p => p.final_score ?? 0)) + 8)]}
+                              tick={{ fill:'var(--txt-muted)', fontSize:8, fontFamily:'var(--mono)' }}
+                              tickLine={false} axisLine={false} width={26}
+                            />
+                            {/* Analyst upside Y-axis (right) */}
+                            {hasUpside && (
+                              <YAxis yAxisId="upside" orientation="right"
+                                tick={{ fill:'var(--green)', fontSize:8, fontFamily:'var(--mono)' }}
+                                tickLine={false} axisLine={false} width={34}
+                                tickFormatter={v => `+${v.toFixed(0)}%`}
+                              />
+                            )}
                             {/* Grade threshold lines */}
-                            {[{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}]
-                              .filter(t => t.v > minS && t.v < maxS)
-                              .map(t => (
-                                <line key={t.v} x1={0} y1={y(t.v)} x2={W} y2={y(t.v)}
-                                  stroke={t.c} strokeWidth={0.5} strokeDasharray="3 3" opacity={0.4} />
-                              ))}
-
-                            {/* Score line */}
-                            {pts.slice(1).map((p, i) => (
-                              <line key={i}
-                                x1={x(i)} y1={y(pts[i].score ?? 0)}
-                                x2={x(i+1)} y2={y(p.score ?? 0)}
-                                stroke="var(--accent)" strokeWidth={1.5} />
+                            {[{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}].map(t => (
+                              <ReferenceLine key={t.v} y={t.v} stroke={t.c} strokeDasharray="4 3" strokeWidth={0.8} opacity={0.5} />
                             ))}
+                            <RTooltip content={<HistTooltip />} />
+                            {/* Analyst upside line */}
+                            {hasUpside && (
+                              <Line yAxisId="upside" type="monotone" dataKey="upside_pct"
+                                stroke="#22C55E" strokeWidth={1.5} strokeDasharray="5 3"
+                                dot={false} connectNulls={false} />
+                            )}
+                            {/* Conviction score line */}
+                            <Line type="monotone" dataKey="final_score"
+                              stroke="var(--accent)" strokeWidth={2}
+                              dot={<GradeDot />}
+                              activeDot={{ r:5, fill:'var(--accent)', stroke:'var(--surface)', strokeWidth:2 }}
+                              connectNulls={false}
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                        {hasUpside && (
+                          <div style={{ display:'flex', gap:12, fontSize:8, color:'var(--txt-muted)', fontFamily:'var(--mono)', marginTop:2 }}>
+                            <span style={{ color:'var(--accent)' }}>── Conviction score</span>
+                            <span style={{ color:'var(--green)' }}>- - Analyst upside</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                            {/* Data points */}
-                            {pts.map((p, i) => (
-                              <g key={i}>
-                                <circle cx={x(i)} cy={y(p.score ?? 0)}
-                                  r={i === pts.length-1 ? 4 : 2.5}
-                                  fill={i === pts.length-1 ? latestColor : 'var(--surface)'}
-                                  stroke={i === pts.length-1 ? latestColor : 'var(--accent)'}
-                                  strokeWidth={1.5} />
-                                {i === 0 || i === pts.length-1 ? (
-                                  <text x={x(i)} y={y(p.score ?? 0) - 7}
-                                    textAnchor={i === 0 ? 'start' : 'end'}
-                                    fontSize={8} fill="var(--txt-muted)">
-                                    {p.score}
-                                  </text>
-                                ) : null}
-                              </g>
-                            ))}
+                    {/* Single snapshot message */}
+                    {pts.length === 1 && (
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:8 }}>
+                        First snapshot: {new Date(pts[0].analysis_date).toLocaleDateString('en-US', { month:'long', day:'numeric' })} · Check back after next analysis
+                      </div>
+                    )}
 
-                            {/* Date labels */}
-                            {[0, pts.length-1].map(i => (
-                              <text key={i} x={x(i)} y={H + 13}
-                                textAnchor={i === 0 ? 'start' : 'end'}
-                                fontSize={8} fill="var(--txt-muted)">
-                                {new Date(pts[i].snapshot_date).toLocaleDateString('en-US', {month:'short', day:'numeric'})}
-                              </text>
-                            ))}
-                          </svg>
-                        </div>
-                      )
-                    })()}
-
-                    {/* Component deltas (latest vs previous) */}
+                    {/* Component week-over-week deltas */}
                     {prev && (
-                      <div>
-                        <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)',
-                          textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
-                          Week-over-week component change
+                      <div style={{ marginBottom:10 }}>
+                        <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
+                          Week-over-week components
                         </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:3 }}>
                           {COMP_KEYS.map(c => {
                             const curr = latest[c.key] ?? 0
-                            const old  = prev[c.key] ?? 0
-                            const d    = curr - old
+                            const old  = prev[c.key]  ?? 0
+                            const d    = Math.round((curr - old) * 10) / 10
                             return (
-                              <div key={c.key} style={{ display:'flex', alignItems:'center',
-                                justifyContent:'space-between', fontSize:10, gap:4 }}>
+                              <div key={c.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:10, gap:4 }}>
                                 <span style={{ color:'var(--txt-muted)' }}>{c.label}</span>
-                                <span style={{ fontFamily:'var(--mono)',
-                                  color: d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--txt-muted)',
-                                  fontWeight: d !== 0 ? 700 : 400 }}>
+                                <span style={{ fontFamily:'var(--mono)', color: d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--txt-muted)', fontWeight: d !== 0 ? 700 : 400 }}>
                                   {d > 0 ? '+' : ''}{d !== 0 ? d : '—'}
                                 </span>
                               </div>
@@ -694,18 +722,44 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
                     )}
 
-                    {/* Single snapshot message */}
-                    {pts.length === 1 && (
-                      <div style={{ fontSize:10, color:'var(--txt-muted)' }}>
-                        First snapshot: {new Date(pts[0].snapshot_date).toLocaleDateString('en-US', {month:'long', day:'numeric'})}
-                        · Next update Sunday
+                    {/* Recent snapshots table */}
+                    {pts.length >= 2 && (
+                      <div>
+                        <div style={{ fontSize:9, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:5 }}>
+                          Recent snapshots
+                        </div>
+                        {[...pts].reverse().slice(0, 6).map((p, i) => (
+                          <div key={i} style={{ display:'flex', alignItems:'center', gap:6, padding:'4px 0', borderBottom:'1px solid var(--border)', fontSize:9 }}>
+                            <span style={{ color:'var(--txt-muted)', fontFamily:'var(--mono)', width:52, flexShrink:0 }}>
+                              {new Date(p.analysis_date).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+                            </span>
+                            <span style={{ fontFamily:'var(--mono)', fontWeight:700, color:'var(--txt)', width:26 }}>
+                              {p.final_score}
+                            </span>
+                            <span style={{ fontSize:8, fontWeight:700, padding:'1px 5px', borderRadius:3, flexShrink:0,
+                              background:`${GRADE_COLOR[p.grade] ?? 'var(--txt-muted)'}22`,
+                              color: GRADE_COLOR[p.grade] ?? 'var(--txt-muted)' }}>
+                              {(p.grade || '').replace('STRONG ', 'S.')}
+                            </span>
+                            {p.upside_pct != null && (
+                              <span style={{ fontFamily:'var(--mono)', color:'var(--green)', marginLeft:'auto' }}>
+                                +{p.upside_pct.toFixed(1)}%
+                              </span>
+                            )}
+                            {p.price != null && (
+                              <span style={{ fontFamily:'var(--mono)', color:'var(--txt-muted)', marginLeft: p.upside_pct != null ? 8 : 'auto' }}>
+                                {fUSD(p.price)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
                 )
               })()}
 
-              {/* ══ DECISION ENGINE v2 ══ */}
+                            {/* ══ DECISION ENGINE v2 ══ */}
               {decision && (
                 <div style={{ background:`${decision.color}18`,
                   border:`1px solid ${decision.color}44`,
