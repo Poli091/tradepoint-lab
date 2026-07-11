@@ -189,9 +189,9 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     // ── Analyst consensus — Finnhub preferred, FMP /stable/ as fallback ──
     // FMP returns array [{targetConsensus, targetHigh...}], Finnhub returns object
     targetMean:        fhTarget?.targetMean ?? null,
-    targetHigh:        fhTarget?.targetHigh    ??
-    targetLow:         fhTarget?.targetLow     ??
-    targetMedian:      fhTarget?.targetMedian  ??
+    targetHigh:        fhTarget?.targetHigh    ?? null,
+    targetLow:         fhTarget?.targetLow     ?? null,
+    targetMedian:      fhTarget?.targetMedian  ?? null,
     strongBuy:         rec.strongBuy                     ?? 0,
     buy:               rec.buy                          ?? 0,
     hold:              rec.hold                         ?? 0,
@@ -202,8 +202,7 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     // Debug — tells the client which sources responded
     _sources: {
       finnhubMetric:   !!fhMetrics,
-      finnhubTarget:   !!(fhTarget?.targetMean ||
-      fmpPriceTarget:  !!
+      finnhubTarget:   !!fhTarget,
       finnhubRecs:     !!fhRecs,
       finnhubEarnings: earns.length > 0,
     },
