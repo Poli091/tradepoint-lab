@@ -11,6 +11,7 @@ import { EARNINGS } from '../data/earnings.js'
 import { POSITIONS } from '../data/positions.js'
 import { loadEarnings } from '../utils/earningsStorage.js'
 import { useLang } from '../context/LanguageContext.jsx'
+import { getGradeColor } from '../conviction/grade/index.js'
 
 const TYPE_LABELS = {
   catalyst: 'Catalyst',
