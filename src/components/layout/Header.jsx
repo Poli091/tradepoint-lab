@@ -12,6 +12,7 @@ import { useBreakpoint }                         from '../../hooks/useBreakpoint
 import { fUSD, fPct, fSignedUSD }               from '../../utils/format.js'
 import { DAY_CHANGES }                           from '../../utils/finance.js'
 import { UNIVERSE }                              from '../../data/tickerUniverse.js'
+import { workerAPI, getWorkerUrl }               from '../../utils/api/worker.js'
 
 /* ── NYSE Market Status ───────────────────────────────────── */
 function useMarketStatus() {
