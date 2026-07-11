@@ -244,11 +244,15 @@ function formatBarDate(isoDate, res) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
 }
 
-/* ── Long-range handler: 2Y / 5Y / ALL via Finnhub → D1 + KV ────────── */
+/* ── Long-range handler: 2Y / 5Y / ALL via Alpaca daily → D1 + KV ──────
+   Fetches in 1-year segments from Alpaca (daily bars), building full history.
+   D1 is the persistent store — subsequent loads only fetch new bars.
+   Finnhub /stock/candle free tier ignores `from` and returns ~90d max.
+   Alpaca IEX daily bars available for several years on the free plan.
+───────────────────────────────────────────────────────────────────── */
 async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
   const t      = ticker.toUpperCase()
   const kvKey  = `ohlcv:${t}:${range}`
-  const res    = range === 'ALL' ? 'M' : 'W'
   const calDays = range === '2Y' ? 730 : range === '5Y' ? 1825 : 3650
   const rangeStart = new Date(Date.now() - calDays * 86_400_000).toISOString().split('T')[0]
 
@@ -256,7 +260,7 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
   const { value, metadata } = await kvGet(kv, kvKey)
   if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
 
-  // Layer 2: D1 (permanent bar store)
+  // Layer 2: D1 (permanent bar store — daily resolution)
   let storedBars = []
   if (db) {
     try {
@@ -264,12 +268,12 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
         `SELECT bar_date, close, open, high, low, volume FROM ohlcv_bars
          WHERE ticker = ? AND res = ? AND bar_date >= ?
          ORDER BY bar_date ASC`
-      ).bind(t, res, rangeStart).all()
+      ).bind(t, 'D', rangeStart).all()
       storedBars = rows.results ?? []
     } catch (e) { console.error('[D1 OHLCV read]', e.message) }
   }
 
-  // If D1 has data fresh within 8 days, skip Finnhub
+  // If D1 has recent data (last bar within 8 days), serve it
   const lastStored = storedBars.length > 0 ? storedBars[storedBars.length - 1] : null
   const daysSinceLast = lastStored
     ? (Date.now() - new Date(lastStored.bar_date + 'T12:00:00Z').getTime()) / 86_400_000
@@ -278,55 +282,72 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
   let allBars = [...storedBars]
 
   if (daysSinceLast > 8) {
-    // Fetch only missing bars (from last stored + 1 day, or full range if nothing stored)
-    if (!keys.finnhub) {
+    // Need to fetch — use Alpaca daily bars, year by year
+    if (!keys.alpacaKey || !keys.alpacaSecret) {
       if (storedBars.length) {
-        // Return stale D1 data with warning
-        const data = storedBars.map(b => ({ date: formatBarDate(b.bar_date, res), price: parseFloat(b.close.toFixed(2)), open: b.open, high: b.high, low: b.low, volume: b.volume }))
-        return json({ data, meta: { source: 'd1_stale', warning: 'Finnhub key not configured — returning stored data' } })
+        const data = storedBars.map(b => ({
+          date: formatBarDate(b.bar_date, 'D'),
+          price: parseFloat(b.close.toFixed(2)), open: b.open, high: b.high, low: b.low, volume: b.volume
+        }))
+        const meta2 = buildMeta(t, 'ohlcv', TTL.OHLCV_LONG, true)
+        await kvSet(kv, kvKey, data, TTL.OHLCV_LONG, meta2)
+        return json({ data, meta: { ...meta2, source: 'd1_stale' } })
       }
-      return json({ error: 'Finnhub key required for long-range chart data (2Y/5Y/ALL)' }, 401)
+      return json({ error: 'Alpaca keys required for long-range chart data' }, 401)
     }
 
-    // Multi-segment fetch: Finnhub free tier returns ~1Y per call regardless of date range.
-    // We chain N calls × 1Y each to build the full requested history.
-    // Segments are requested oldest-first so D1 fills in chronological order.
-    const segYears = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
-    const nowMs    = Date.now()
+    const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+    const nowMs     = Date.now()
+    const segYears  = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
+    const allNewBars = []
 
-    // Only fetch segments we don't already have in D1
+    // Already have data starting from oldestStored — only fetch older segments
     const oldestStored = storedBars.length > 0 ? storedBars[0].bar_date : null
-    const allNewBars   = []
 
     for (let i = segYears - 1; i >= 0; i--) {
-      const segEnd   = Math.floor((nowMs - i * 365 * 86_400_000) / 1000)
-      const segStart = Math.floor((nowMs - (i + 1) * 365 * 86_400_000) / 1000)
-      const segStartDate = new Date(segStart * 1000).toISOString().split('T')[0]
+      const segEndMs   = nowMs - i * 365 * 86_400_000
+      const segStartMs = nowMs - (i + 1) * 365 * 86_400_000
+      const segEnd   = new Date(segEndMs).toISOString().split('T')[0]
+      const segStart = new Date(segStartMs).toISOString().split('T')[0]
 
-      // Skip segment if we already have bars for this period in D1
-      if (oldestStored && segStartDate >= oldestStored) continue
+      // Skip if we already have this period in D1
+      if (oldestStored && segStart >= oldestStored) continue
 
-      await delay(130)   // ~7 req/s — Finnhub recommends ≤10/s
       const raw = await fetchJSON(
-        `https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=${res}&from=${segStart}&to=${segEnd}&token=${keys.finnhub}`
-      ).catch(e => { console.error('[Finnhub segment]', t, i, e.message); return null })
+        `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${segStart}&end=${segEnd}&limit=300&feed=iex&adjustment=split`,
+        { headers: alpacaHdr }
+      ).catch(e => { console.error('[Alpaca segment]', t, i, e.message); return null })
 
-      if (raw?.s === 'ok' && raw.c?.length > 0) {
-        allNewBars.push(...raw.t.map((ts, j) => ({
-          bar_date: new Date(ts * 1000).toISOString().split('T')[0],
-          close: raw.c[j], open: raw.o[j], high: raw.h[j], low: raw.l[j], volume: raw.v[j],
+      if (raw?.bars?.length > 0) {
+        allNewBars.push(...raw.bars.map(bar => ({
+          bar_date: new Date(bar.t).toISOString().split('T')[0],
+          close: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
         })))
       }
     }
 
+    // Always fetch most recent bars (last 8 days of the newest segment)
+    const recentEnd   = new Date(nowMs).toISOString().split('T')[0]
+    const recentStart = new Date(nowMs - 10 * 86_400_000).toISOString().split('T')[0]
+    const recentRaw = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${recentStart}&end=${recentEnd}&limit=15&feed=iex&adjustment=split`,
+      { headers: alpacaHdr }
+    ).catch(() => null)
+    if (recentRaw?.bars?.length > 0) {
+      allNewBars.push(...recentRaw.bars.map(bar => ({
+        bar_date: new Date(bar.t).toISOString().split('T')[0],
+        close: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
+      })))
+    }
+
     if (allNewBars.length > 0) {
-      // Persist all new bars to D1
+      // Save to D1
       if (db) {
         try {
           const stmt = db.prepare(
             'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
           )
-          await db.batch(allNewBars.map(b => stmt.bind(t, b.bar_date, res, b.open, b.high, b.low, b.close, b.volume)))
+          await db.batch(allNewBars.map(b => stmt.bind(t, b.bar_date, 'D', b.open, b.high, b.low, b.close, b.volume)))
         } catch (e) { console.error('[D1 OHLCV save]', e.message) }
       }
 
@@ -340,15 +361,16 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
   if (!allBars.length) return json({ data: [], meta: buildMeta(t, 'ohlcv', TTL.OHLCV_LONG, false) })
 
   const data = allBars.map(b => ({
-    date:   formatBarDate(b.bar_date, res),
-    price:  parseFloat(b.close.toFixed(2)),
-    open:   b.open, high: b.high, low: b.low, volume: b.volume,
+    date:  formatBarDate(b.bar_date, 'D'),
+    price: parseFloat(b.close.toFixed(2)),
+    open:  b.open, high: b.high, low: b.low, volume: b.volume,
   }))
 
   const meta2 = buildMeta(t, 'ohlcv', TTL.OHLCV_LONG, false)
   await kvSet(kv, kvKey, data, TTL.OHLCV_LONG, meta2)
   return json({ data, meta: meta2 })
 }
+
 
 /* ── Short-range handler: 1D / 1W / 1M / 6M / YTD / 1Y via Alpaca ───── */
 async function handleOHLCV(ticker, range, keys, kv, db) {

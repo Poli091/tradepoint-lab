@@ -16,6 +16,7 @@ import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
 import { cache }                    from '../utils/cache.js'
 import { POSITIONS }                from '../data/positions.js'
 import { loadWatchlist }            from '../utils/watchlistStorage.js'
+import { loadOverrides }           from '../utils/positionsStorage.js'
 
 const REFRESH_INTERVAL = 5 * 60 * 1000
 const BATCH_SIZE       = 5
@@ -58,11 +59,16 @@ export function useMarketData() {
     setError(null)
 
     try {
-      // Merge portfolio tickers + watchlist tickers (deduplicated)
+      // Merge ALL ticker sources:
+      //  1. Static POSITIONS (base data, often empty)
+      //  2. User's custom positions from localStorage (loadOverrides)
+      //  3. Watchlist
       const posTickers       = POSITIONS.map(p => p.ticker)
+      const customPositions  = loadOverrides() ?? []
+      const customTickers    = customPositions.map(p => p.ticker)
       const watchlistItems   = loadWatchlist() ?? []
       const watchlistTickers = watchlistItems.map(w => w.ticker)
-      const allTickers       = [...new Set([...posTickers, ...watchlistTickers])]
+      const allTickers       = [...new Set([...posTickers, ...customTickers, ...watchlistTickers])]
 
       const newPrices = {}
       const toFetch   = []
