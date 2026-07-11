@@ -291,7 +291,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const handleAddToWatchlist = () => {
     const wl = loadWatchlist() ?? []
     if (!wl.find(i => i.ticker === ticker)) {
-      saveWatchlist([...wl, { ticker, name: ticker }])
+      saveWatchlist([...wl, {
+        ticker,
+        name:         universeInfo?.name ?? ticker,
+        currentPrice: result?.technical?.currentPrice ?? prices?.[ticker]?.price ?? 0,
+        dayChangePct: null,
+        priority:     'med',
+        upside:       result?.wallStreet?.upside ?? null,
+      }])
     }
     setAddedToWl(true)
     setTimeout(() => setAddedToWl(false), 2000)

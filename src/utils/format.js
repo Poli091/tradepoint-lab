@@ -5,7 +5,8 @@
 
 /** Format as USD with full precision (e.g. $1,234.56) */
 export function fUSD(value) {
-  return '$' + value.toLocaleString('en-US', {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return '$' + Number(value).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -13,12 +14,14 @@ export function fUSD(value) {
 
 /** Format as percentage with optional + sign (e.g. +3.45% or -1.20%) */
 export function fPct(value, showSign = true) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
   const sign = showSign && value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}%`
+  return `${sign}${Number(value).toFixed(2)}%`
 }
 
 /** Format as signed USD (e.g. +$1,234.56 or -$234.00) */
 export function fSignedUSD(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
   const sign = value >= 0 ? '+' : ''
   return `${sign}${fUSD(value)}`
 }
