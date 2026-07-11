@@ -20,6 +20,14 @@ export function useConviction(ticker, prices = {}) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
+  // Clear stale result immediately when ticker changes
+  // This prevents showing NVDA data while loading AVGO
+  useEffect(() => {
+    setResult(null)
+    setError(null)
+    setLoading(false)
+  }, [ticker])
+
   const compute = useCallback(async (forceRefresh = false) => {
     if (!ticker) return
     if (!getWorkerUrl()) {
@@ -27,13 +35,12 @@ export function useConviction(ticker, prices = {}) {
       return
     }
 
-    // Check local cache first — skip network call if still fresh
+    // Skip re-fetch only if we already have a valid result FOR THIS TICKER
+    // and the local cache is still fresh. Never skip for a different ticker.
     if (!forceRefresh) {
       const cachedFund = cache.getFund(ticker)
-      const cachedOhlcv = cache.getOHLCV(ticker, '1Y')
-      const cachedSpy   = cache.getOHLCV('SPY', '1Y')
-      if (cachedFund && result) {
-        // Already have a result and local cache is fresh — no need to re-run
+      if (cachedFund && result?._ticker === ticker) {
+        // Already computed this ticker and cache is fresh — nothing to do
         return
       }
     }
@@ -42,7 +49,6 @@ export function useConviction(ticker, prices = {}) {
     setError(null)
 
     try {
-      // Fetch all data in parallel where possible
       const [fundResult, ohlcvResult, spyResult] = await Promise.all([
         workerAPI.fundamentals(ticker, forceRefresh),
         workerAPI.ohlcv(ticker, '1Y'),
@@ -50,7 +56,7 @@ export function useConviction(ticker, prices = {}) {
       ])
 
       if (!fundResult?.data) throw new Error('No fundamentals data for ' + ticker)
-      // Use Worker's fetchedAt so "Xd ago" reflects when KV was actually populated
+
       const fetchedAt = fundResult.meta?.fetchedAt ?? Date.now()
       cache.setFund(ticker, fundResult.data, fetchedAt)
 
@@ -61,9 +67,10 @@ export function useConviction(ticker, prices = {}) {
         prices,
       })
 
+      // Tag result with ticker so we can detect stale results
       setResult({ ...conviction, _ticker: ticker })
 
-      // Auto-save to D1 — silent failure, never blocks the UI
+      // Auto-save to D1 — silent failure
       workerAPI.saveAnalysis(ticker, conviction).catch(() => {})
 
     } catch (err) {
@@ -72,10 +79,10 @@ export function useConviction(ticker, prices = {}) {
     } finally {
       setLoading(false)
     }
-  }, [ticker]) // prices intentionally omitted — recompute on ticker change only
+  }, [ticker, result]) // result included so the cache check sees current value
 
-  useEffect(() => { compute() }, [compute])
+  useEffect(() => { compute() }, [ticker]) // eslint-disable-line
 
-  const recompute = () => compute(true)  // force-refresh bypasses local + KV cache
+  const recompute = () => compute(true)
   return { result, loading, error, recompute }
 }
