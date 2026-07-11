@@ -360,7 +360,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
             <SectionLabel icon={Info} label={t.sectionAbout} />
             <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.8,
               padding:'10px 12px', background:'var(--surface-up)', borderRadius:'var(--radius-lg)' }}>
-              <div><b style={{ color:'var(--txt)' }}>TradePoint Lab</b> · Conviction Engine v1.0</div>
+              <div><b style={{ color:'var(--txt)' }}>TradePoint Lab</b> · Build 2026-07-11-C · Engine v1.0</div>
               <div>Data: Finnhub · Alpaca · Groq Llama 3.3 70B</div>
               <div>Infrastructure: Cloudflare Pages · Workers · KV · D1</div>
             </div>
