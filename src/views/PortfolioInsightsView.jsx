@@ -339,11 +339,11 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                 <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color:'var(--txt)' }}>{p.ticker}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{p.name}</span>
-                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: gradeCfgradeCfg?.color ?? 'var(--txt)' }}>
+                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: gradeCfg?.color ?? 'var(--txt)' }}>
                     {p.score}
                   </span>
                   <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, fontWeight:700,
-                    background:`${gradeCfgradeCfg?.color}22`, color: gradeCfgradeCfg?.color }}>
+                    background:`${gradeCfg?.color}22`, color: gradeCfg?.color }}>
                     {cv?.grade ?? getGrade(p.score).label}
                   </span>
                 </div>
@@ -363,11 +363,11 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                 <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color:'var(--txt)' }}>{p.ticker}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>{p.name}</span>
-                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: gradeCfgradeCfg?.color ?? 'var(--txt)' }}>
+                  <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700, color: gradeCfg?.color ?? 'var(--txt)' }}>
                     {p.score}
                   </span>
                   <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, fontWeight:700,
-                    background:`${gradeCfgradeCfg?.color}22`, color: gradeCfgradeCfg?.color }}>
+                    background:`${gradeCfg?.color}22`, color: gradeCfg?.color }}>
                     {cv?.grade ?? getGrade(p.score).label}
                   </span>
                 </div>
