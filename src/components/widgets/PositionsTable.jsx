@@ -14,12 +14,13 @@ import { getFundamentalsInfo, clearFundamentals } from '../../utils/api/index.js
 import { getGradeColor } from '../../conviction/grade/index.js'
 
 const SORT_COLS = [
-  { key: 'ticker',      label: 'Symbol',     align: 'left'  },
-  { key: 'price',       label: 'Price',      align: 'right' },
-  { key: 'dayChangePct',label: 'Day %',      align: 'right' },
-  { key: 'gain',        label: 'P&L',        align: 'right' },
-  { key: 'upside',      label: 'Upside ↑',   align: 'right' },
-  { key: 'conviction',  label: 'Conviction', align: 'right' },
+  { key: 'ticker',      label: 'Symbol',      align: 'left'  },
+  { key: 'price',       label: 'Price',       align: 'right' },
+  { key: 'dayChangePct',label: 'Day %',       align: 'right' },
+  { key: 'value',       label: 'Mkt Value',   align: 'right' },
+  { key: 'gain',        label: 'P&L',         align: 'right' },
+  { key: 'upside',      label: 'Upside ↑',    align: 'right' },
+  { key: 'conviction',  label: 'Conviction',  align: 'right' },
 ]
 
 /* ── Refresh button ─────────────────────────────────── */
@@ -70,6 +71,10 @@ export default function PositionsTable({
       if (sortBy === 'ticker') return sortDir === 'desc'
         ? b.ticker.localeCompare(a.ticker)
         : a.ticker.localeCompare(b.ticker)
+      if (sortBy === 'value') {
+        const va = calcPnL(a).value, vb = calcPnL(b).value
+        return sortDir === 'desc' ? vb - va : va - vb
+      }
       // dayChangePct: nulls sort to bottom regardless of direction
       if (sortBy === 'dayChangePct') {
         const va = a.dayChangePct ?? (sortDir === 'desc' ? -Infinity : Infinity)
@@ -102,7 +107,7 @@ export default function PositionsTable({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
@@ -167,6 +172,16 @@ export default function PositionsTable({
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: dayColor }}>
                       {dayPct != null ? fPct(dayPct) : '—'}
                     </span>
+                  </td>
+
+                  {/* Market Value */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: 'var(--txt)' }}>
+                      {fUSD(pos.currentPrice * pos.qty)}
+                    </div>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--txt-muted)' }}>
+                      {pos.qty} sh
+                    </div>
                   </td>
 
                   {/* P&L */}

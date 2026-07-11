@@ -83,9 +83,9 @@ export const workerAPI = {
   /** Company news (8h KV cache). */
   news: (ticker) => workerGet(`/api/news/${ticker}`),
 
-  /** Weekly score snapshots from D1 Cron (used for Score History tab). */
-  getHistory: (ticker, limit = 52) =>
-    workerGet(`/api/snapshots/${ticker}?limit=${limit}`),
+  /** Analysis history from D1 — deduplicated to one per day, ordered ASC. */
+  getHistory: (ticker, limit = 90) =>
+    workerGet(`/api/history/${ticker}?limit=${limit}`),
 
   /** Full fundamentals: Finnhub (growth, quality, strength, valuation, consensus)
    *  + FMP (ROIC, PEG, beat history). Cached 90 days in KV. */

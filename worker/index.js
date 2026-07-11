@@ -662,6 +662,19 @@ async function handleSaveAnalysis(ticker, request, db) {
     + (bd.valuation?.nullFields ?? 0) + (bd.technical?.nullFields ?? 0)
 
   try {
+    // Dedup: skip if same score+grade already saved today (prevents noise from repeated opens)
+    const today = now.toISOString().split('T')[0]
+    const existing = await db.prepare(
+      `SELECT final_score, grade FROM analyses WHERE ticker = ? AND analysis_date = ? ORDER BY timestamp_ms DESC LIMIT 1`
+    ).bind(ticker.toUpperCase(), today).first().catch(() => null)
+
+    if (existing) {
+      const scoreDiff = Math.abs((existing.final_score ?? 0) - (r.finalScore ?? 0))
+      if (scoreDiff < 1 && existing.grade === r.grade) {
+        return json({ saved: false, reason: 'no_change', ticker: ticker.toUpperCase(), date: today })
+      }
+    }
+
     await db.prepare(`
       INSERT INTO analyses (
         ticker, analysis_date, timestamp_ms,
@@ -705,15 +718,24 @@ async function handleGetHistory(ticker, db, limit = 90) {
   if (!db) return json({ error: 'D1 database not configured in Worker' }, 503)
 
   try {
+    // One row per day: latest analysis for that day (MAX timestamp_ms)
     const rows = await db.prepare(`
-      SELECT id, ticker, analysis_date, final_score, grade, confidence,
-             growth_score, quality_score, strength_score, valuation_score, technical_score,
-             active_gate, price, target_mean, upside_pct, rsi, rs_weighted, model_version
-      FROM analyses WHERE ticker = ?
-      ORDER BY timestamp_ms DESC LIMIT ?
-    `).bind(ticker.toUpperCase(), limit).all()
+      SELECT a.analysis_date, a.final_score, a.grade, a.confidence,
+             a.growth_score, a.quality_score, a.strength_score, a.valuation_score, a.technical_score,
+             a.active_gate, a.price, a.target_mean, a.upside_pct, a.rsi, a.rs_weighted, a.model_version
+      FROM analyses a
+      INNER JOIN (
+        SELECT analysis_date, MAX(timestamp_ms) AS max_ts
+        FROM analyses WHERE ticker = ?
+        GROUP BY analysis_date
+      ) latest ON a.analysis_date = latest.analysis_date AND a.timestamp_ms = latest.max_ts
+      WHERE a.ticker = ?
+      ORDER BY a.analysis_date ASC
+      LIMIT ?
+    `).bind(ticker.toUpperCase(), ticker.toUpperCase(), limit).all()
 
-    return json({ ticker: ticker.toUpperCase(), history: rows.results ?? [], count: rows.results?.length ?? 0 })
+    // Return as 'snapshots' so the frontend works without changes
+    return json({ ticker: ticker.toUpperCase(), snapshots: rows.results ?? [], count: rows.results?.length ?? 0 })
   } catch (err) {
     return json({ error: 'Database read failed: ' + err.message }, 500)
   }

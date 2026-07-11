@@ -111,7 +111,16 @@ function AppInner() {
   }, [convictionResults])
 
   /* ── Conviction scores for watchlist — use localStorage if available ── */
-  const liveWatchlist = useMemo(() => loadWatchlist() ?? WATCHLIST, [positionSeed])
+  const liveWatchlist = useMemo(() => {
+    const items = loadWatchlist() ?? WATCHLIST
+    return items.map(item => ({
+      ...item,
+      currentPrice: prices[item.ticker]?.price      ?? item.currentPrice,
+      dayChangePct: prices[item.ticker]?.changePct  ?? item.dayChangePct ?? null,
+      dayChange:    prices[item.ticker]?.change      ?? null,
+      isLive:       !!prices[item.ticker],
+    }))
+  }, [positionSeed, prices])
   const { results: watchlistResults } = useAllConvictions(liveWatchlist, prices)
 
   useEffect(() => {

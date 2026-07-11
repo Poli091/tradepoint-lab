@@ -1,25 +1,25 @@
 /**
  * MODULE: HOOKS / useMarketData.js
- * Fetches real-time prices from the Cloudflare Worker (which caches in KV).
+ * Fetches real-time prices from the Cloudflare Worker.
+ *
+ * Now includes watchlist tickers — reads them from localStorage on each fetch
+ * so the watchlist always shows live prices without extra props.
  *
  * Architecture:
  *   1. Check localStorage (client cache, 5 min TTL) — instant
- *   2. If miss → call Worker → Worker checks KV → if miss → calls Finnhub
- *   3. Store result in localStorage for future renders
- *   4. Auto-refreshes every 5 minutes
- *
- * Falls back to static mock prices if Worker is not configured.
- * Processes in batches of 5 to respect Finnhub rate limits.
+ *   2. If miss → Worker → KV → Finnhub
+ *   3. Auto-refreshes every 5 minutes
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
 import { cache }                    from '../utils/cache.js'
 import { POSITIONS }                from '../data/positions.js'
+import { loadWatchlist }            from '../utils/watchlistStorage.js'
 
-const REFRESH_INTERVAL = 5 * 60 * 1000   // 5 min auto-refresh
-const BATCH_SIZE       = 5               // max parallel Finnhub calls per batch
-const BATCH_DELAY      = 200             // ms between batches
+const REFRESH_INTERVAL = 5 * 60 * 1000
+const BATCH_SIZE       = 5
+const BATCH_DELAY      = 200
 
 async function batchFetch(tickers) {
   const results = {}
@@ -52,20 +52,26 @@ export function useMarketData() {
   const timerRef = useRef(null)
 
   const fetchPrices = useCallback(async () => {
-    if (!getWorkerUrl()) return   // Worker not configured — use mock data
+    if (!getWorkerUrl()) return
 
     setLoading(true)
     setError(null)
 
     try {
+      // Merge portfolio tickers + watchlist tickers (deduplicated)
+      const posTickers       = POSITIONS.map(p => p.ticker)
+      const watchlistItems   = loadWatchlist() ?? []
+      const watchlistTickers = watchlistItems.map(w => w.ticker)
+      const allTickers       = [...new Set([...posTickers, ...watchlistTickers])]
+
       const newPrices = {}
       const toFetch   = []
 
       // Layer 1: localStorage cache
-      for (const pos of POSITIONS) {
-        const cached = cache.getPrice(pos.ticker)
-        if (cached) newPrices[pos.ticker] = cached
-        else        toFetch.push(pos.ticker)
+      for (const ticker of allTickers) {
+        const cached = cache.getPrice(ticker)
+        if (cached) newPrices[ticker] = cached
+        else        toFetch.push(ticker)
       }
 
       // Layer 2: Worker (→ KV → Finnhub)
@@ -87,17 +93,12 @@ export function useMarketData() {
     }
   }, [])
 
-  // Initial fetch + auto-refresh
   useEffect(() => {
     fetchPrices()
     timerRef.current = setInterval(fetchPrices, REFRESH_INTERVAL)
     return () => clearInterval(timerRef.current)
   }, [fetchPrices])
 
-  /**
-   * POSITIONS merged with live prices.
-   * Falls back to static currentPrice if live data not yet available.
-   */
   const livePositions = useMemo(() =>
     POSITIONS.map(pos => {
       const live = prices[pos.ticker]
