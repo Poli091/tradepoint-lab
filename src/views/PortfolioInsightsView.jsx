@@ -268,7 +268,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
               if (!tickers?.length) return null
               return (
                 <div key={g} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  <div style={{ width:6, height:6, borderRadius:'50%', background:cfgrade.color, flexShrink:0 }} />
+                  <div style={{ width:6, height:6, borderRadius:'50%', background:cfg.color, flexShrink:0 }} />
                   <span style={{ fontSize:10, color:'var(--txt-muted)' }}>
                     {cfg.short}: {tickers.join(', ')}
                   </span>

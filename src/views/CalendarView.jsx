@@ -77,9 +77,9 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
               }}>
                 <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--txt-muted)' }}>in</div>
                 <div style={{ fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 700, lineHeight: 1, color: 'var(--txt)' }}>
-                  {event.daysLeft}
+                  {event.days}
                 </div>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--txt-muted)' }}>days</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--txt-muted)' }}>{t.calendarDaysAway}</div>
               </div>
 
               {/* Info */}
@@ -90,7 +90,7 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
                   </span>
                   <Badge label={TYPE_LABELS[event.type]} type={event.type} />
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--txt-muted)' }}>
-                    {event.date}, 2026
+                    {event.date}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--txt-sec)', lineHeight: 1.5 }}>
