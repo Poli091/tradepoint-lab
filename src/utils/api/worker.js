@@ -35,7 +35,6 @@ function buildHeaders() {
   const k = getApiKeys()
   const h = {}
   if (k.finnhub)      h['X-Finnhub-Key']    = k.finnhub
-  if (k.fmp)          h['X-FMP-Key']         = k.fmp
   if (k.alpacaKey)    h['X-Alpaca-Key']      = k.alpacaKey
   if (k.alpacaSecret) h['X-Alpaca-Secret']   = k.alpacaSecret
   if (k.groq)         h['X-Groq-Key']        = k.groq
