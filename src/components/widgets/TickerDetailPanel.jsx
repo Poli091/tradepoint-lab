@@ -171,6 +171,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [addPosSaved,  setAddPosSaved]  = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [insiderData,    setInsiderData]    = useState(null)
+  const [insiderLoading, setInsiderLoading] = useState(false)
+  const [insiderError,   setInsiderError]   = useState(null)
 
   const alignment_ = useMemo(() => {
     if (!result || !altResult) return null
@@ -228,6 +231,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   useEffect(() => {
     if (activeTab === 'ai' && !aiData && !aiLoading && result) {
       generateAI()
+    }
+    if (activeTab === 'insider' && !insiderData && !insiderLoading && ticker) {
+      setInsiderLoading(true)
+      setInsiderError(null)
+      workerAPI.insiderActivity(ticker)
+        .then(r => setInsiderData(r?.data ?? null))
+        .catch(e => setInsiderError(e.message))
+        .finally(() => setInsiderLoading(false))
     }
   }, [activeTab, result]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -443,6 +454,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             { id:'fundamentals', label:'Fundamentals' },
             { id:'ai',           label:'AI Analysis'  },
             { id:'market',       label:'Market Intel' },
+            { id:'insider',      label:'Insider'      },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               flex:1, padding:'10px 0', fontSize:11, fontWeight:600,
@@ -1314,6 +1326,139 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </>
           )}
 
+
+            {activeTab === 'insider' && (
+              <div style={{ paddingTop: 4 }}>
+                {insiderLoading && (
+                  <div style={{ textAlign:'center', padding:'40px 0', color:'var(--txt-muted)', fontSize:12 }}>
+                    <div style={{ fontSize:20, marginBottom:8 }}>⟳</div>
+                    Fetching SEC EDGAR filings…
+                  </div>
+                )}
+                {insiderError && (
+                  <div style={{ padding:'12px', background:'var(--red-dim)', borderRadius:'var(--radius)', fontSize:11, color:'var(--red)' }}>
+                    ⚠ {insiderError}
+                  </div>
+                )}
+                {!insiderLoading && !insiderError && !insiderData && (
+                  <div style={{ textAlign:'center', padding:'40px 0', color:'var(--txt-muted)', fontSize:12 }}>
+                    No insider data loaded yet.
+                  </div>
+                )}
+                {insiderData && (() => {
+                  const d = insiderData
+                  const fmtM = v => v == null ? '—'
+                    : v >= 1e6 ? `$${(v/1e6).toFixed(1)}M`
+                    : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K`
+                    : `$${v.toFixed(0)}`
+                  const classColor = {
+                    'Material Insider Buying': 'var(--green)',
+                    'Constructive':            'var(--green)',
+                    'Neutral':                 'var(--txt-muted)',
+                    'Elevated Selling':        'var(--red)',
+                  }[d.classification] ?? 'var(--txt-muted)'
+                  const classBg = {
+                    'Material Insider Buying': 'rgba(34,197,94,0.12)',
+                    'Constructive':            'rgba(34,197,94,0.12)',
+                    'Neutral':                 'var(--surface-up)',
+                    'Elevated Selling':        'rgba(239,68,68,0.12)',
+                  }[d.classification] ?? 'var(--surface-up)'
+                  const txLabel = { P:'Buy', S:'Sell', F:'Tax whd.', M:'Option', G:'Gift', D:'Disp.' }
+                  return (
+                    <>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+                        <div>
+                          <div style={{ fontSize:12, fontWeight:700, color:'var(--txt)', marginBottom:2 }}>Insider Activity</div>
+                          <div style={{ fontSize:10, color:'var(--txt-muted)' }}>Last 90 days · SEC Form 4</div>
+                        </div>
+                        <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:12,
+                          background: classBg, color: classColor, border:`1px solid ${classColor}44` }}>
+                          {d.classification}
+                        </span>
+                      </div>
+                      {d.noActivity ? (
+                        <div style={{ textAlign:'center', padding:'24px 0', color:'var(--txt-muted)', fontSize:11 }}>
+                          No open-market purchases or discretionary sales in the last 90 days.
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:14 }}>
+                            {[
+                              { label:'Purchases', value:fmtM(d.purchasesTotal), color:'var(--green)', count:d.purchasesCount },
+                              { label:'Sales',     value:fmtM(d.salesTotal),     color:'var(--red)',   count:d.salesCount    },
+                              { label:'Net', value:fmtM(Math.abs(d.netTotal)),
+                                color:d.netTotal>=0?'var(--green)':'var(--red)', prefix:d.netTotal>=0?'+':'-' },
+                            ].map(({ label, value, color, count, prefix }) => (
+                              <div key={label} style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'8px 10px' }}>
+                                <div style={{ fontSize:9, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{label}</div>
+                                <div style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color }}>{prefix||''}{value}</div>
+                                {count!=null && <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2 }}>{count} tx</div>}
+                              </div>
+                            ))}
+                          </div>
+                          {d.keyEvent && (
+                            <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius)', padding:'10px 12px', marginBottom:12 }}>
+                              <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Most Material Event</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:'var(--txt)', marginBottom:2 }}>
+                                {d.keyEvent.title} {d.keyEvent.action === 'sold' ? 'sold' : 'bought'}{' '}
+                                {d.keyEvent.pctOfHoldings ? `${d.keyEvent.pctOfHoldings}% of direct holdings` : fmtM(d.keyEvent.value)}
+                              </div>
+                              <div style={{ display:'flex', gap:12, fontSize:10, color:'var(--txt-muted)', flexWrap:'wrap' }}>
+                                <span>{d.keyEvent.name}</span>
+                                <span>{d.keyEvent.date}</span>
+                                <span style={{ fontFamily:'var(--mono)' }}>{fmtM(d.keyEvent.value)}</span>
+                              </div>
+                              <div style={{ marginTop:5, fontSize:10 }}>
+                                <span style={{ color:'var(--txt-muted)' }}>10b5-1 plan: </span>
+                                <span style={{ color:d.keyEvent.is10b51?'var(--amber)':'var(--txt-sec)', fontWeight:600 }}>
+                                  {d.keyEvent.is10b51 ? 'Yes — pre-scheduled' : 'No'}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {d.someSales10b51 && (
+                            <div style={{ fontSize:10, color:'var(--amber)', padding:'6px 10px', background:'rgba(251,191,36,0.08)', borderRadius:'var(--radius)', marginBottom:12, lineHeight:1.5 }}>
+                              {d.allSales10b51
+                                ? '⚡ All sales are under pre-established 10b5-1 plans — typically not discretionary signals.'
+                                : '⚡ Some sales are under 10b5-1 plans. Review individual transactions for context.'}
+                            </div>
+                          )}
+                          {d.recentTransactions?.length > 0 && (
+                            <div>
+                              <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Recent Transactions</div>
+                              {d.recentTransactions.map((tx, i) => (
+                                <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+                                  padding:'6px 0', borderBottom:'1px solid var(--border)', gap:8 }}>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:11, fontWeight:600, color:'var(--txt)', marginBottom:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                      {tx.name}
+                                    </div>
+                                    <div style={{ fontSize:9, color:'var(--txt-muted)' }}>{tx.title} · {tx.date}</div>
+                                  </div>
+                                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                                    <div style={{ fontFamily:'var(--mono)', fontSize:11, fontWeight:700,
+                                      color:tx.code==='P'?'var(--green)':tx.code==='S'?'var(--red)':'var(--txt-muted)' }}>
+                                      {tx.code==='P'?'▲':tx.code==='S'?'▼':'·'} {txLabel[tx.code]||tx.code} {fmtM(tx.value)}
+                                    </div>
+                                    <div style={{ fontSize:9, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+                                      {tx.shares?.toLocaleString()} sh{tx.is10b51?' · 10b5-1':''}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div style={{ marginTop:14, fontSize:9, color:'var(--txt-muted)', lineHeight:1.5 }}>
+                        Source: SEC EDGAR Form 4. Only open-market buys (P) and discretionary sales (S) counted.
+                        Tax withholding (F), option exercises (M), gifts (G) and entity transfers (D) excluded.
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
           <div style={{ height:24 }} />
         </div>
       </div>

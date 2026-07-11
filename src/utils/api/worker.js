@@ -117,6 +117,10 @@ export const workerAPI = {
   earnings: () =>
     workerGet('/api/earnings'),
 
+  /** SEC EDGAR Form 4 insider activity — last 90 days. Cached 6h in KV, persisted in D1. */
+  insiderActivity: (ticker) =>
+    workerGet(`/api/insider/${ticker}`),
+
   /**
    * Data Freshness info for a ticker — returns KV metadata for each
    * data type (fundamentals, price, ohlcv, news, moat, bear, catalysts).

@@ -13,6 +13,7 @@ import { computeConviction } from './conviction.js'
 const TTL = {
   PRICE:        5  * 60,
   OHLCV_LONG:   7  * 24 * 60 * 60,   // 7 days — long-range bars rarely change
+  INSIDER:       6  * 60 * 60,         // 6 hours — insider filings updated intraday
   OHLCV:        24 * 60 * 60,
   ANALYST:      24 * 60 * 60,
   NEWS:         8  * 60 * 60,
@@ -1236,6 +1237,249 @@ async function handleGroqDebug(ticker, type, keys, kv) {
   })
 }
 
+
+/* ════════════════════════════════════════════════════════════
+   MODULE: INSIDER ACTIVITY — SEC EDGAR Form 4 parser
+   Data flow:
+     1. KV cache (6h TTL) — instant return if hit
+     2. D1  — permanent store, check for already-parsed filings
+     3. SEC EDGAR submissions JSON → filter Form 4 filings last 90d
+     4. Fetch + parse XML for new filings only (rate-limit: 120ms gap)
+     5. INSERT OR IGNORE → D1 | refresh KV summary
+════════════════════════════════════════════════════════════ */
+
+/* ── XML helpers (no DOM in Workers) ─────────────────────── */
+function xmlVal(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>[\\s\\S]*?<value>([^<]*)</value>`))
+  if (m) return m[1].trim()
+  const d = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`))
+  return d ? d[1].trim() : null
+}
+function xmlBlocks(xml, tag) {
+  const out = [], re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'g')
+  let m; while ((m = re.exec(xml))) out.push(m[1])
+  return out
+}
+
+/* ── CIK lookup (cached per ticker in KV, 30d TTL) ─────── */
+async function getTickerCIK(ticker, kv) {
+  const cached = await kv.get(`cik:${ticker}`)
+  if (cached) return cached
+  const data = await fetchJSON('https://www.sec.gov/files/company_tickers.json', {
+    headers: { 'User-Agent': 'TradePoint Lab opensource@tradepoint.dev' }
+  }).catch(() => null)
+  if (!data) return null
+  const entry = Object.values(data).find(e => e.ticker === ticker)
+  if (!entry) return null
+  const cik = String(entry.cik_str)
+  await kv.put(`cik:${ticker}`, cik, { expirationTtl: 30 * 24 * 60 * 60 })
+  return cik
+}
+
+/* ── Parse a single Form 4 XML string ───────────────────── */
+function parseForm4XML(xml, accessionNo, filedDate) {
+  const ownerName    = xmlVal(xml, 'rptOwnerName') || 'Unknown'
+  const isOfficer    = xmlVal(xml, 'isOfficer')  === '1'
+  const isDirector   = xmlVal(xml, 'isDirector') === '1'
+  const officerTitle = xmlVal(xml, 'officerTitle')
+  const title = officerTitle || (isDirector ? 'Director' : isOfficer ? 'Officer' : 'Insider')
+
+  // Collect footnotes for 10b5-1 detection
+  const fnMap = {}
+  const fnRe = /<footnote id="([^"]+)"[^>]*>([^<]*)<\/footnote>/g
+  let fnM; while ((fnM = fnRe.exec(xml))) fnMap[fnM[1]] = fnM[2]
+  const global10b51 = /10b5-?1|rule\s+10b5/i.test(xml)
+
+  const results = []
+  for (const block of xmlBlocks(xml, 'nonDerivativeTransaction')) {
+    const code       = xmlVal(block, 'transactionCode')
+    const txDate     = xmlVal(block, 'transactionDate')
+    const shares     = parseFloat(xmlVal(block, 'transactionShares')            || '0')
+    const price      = parseFloat(xmlVal(block, 'transactionPricePerShare')     || '0')
+    const adCode     = xmlVal(block, 'transactionAcquiredDisposedCode')
+    const sharesAfter= parseFloat(xmlVal(block, 'sharesOwnedFollowingTransaction') || '0')
+    if (!code || !shares) continue
+
+    const fnIds = [...block.matchAll(/footnoteId[^>]*id="([^"]+)"/g)].map(m => m[1])
+    const is10b51 = global10b51 || fnIds.some(id => /10b5/i.test(fnMap[id] || ''))
+
+    results.push({
+      accession_no: accessionNo, filed_date: filedDate,
+      person_name: ownerName, person_title: title,
+      is_officer: isOfficer ? 1 : 0, is_director: isDirector ? 1 : 0,
+      transaction_date: txDate || filedDate,
+      transaction_code: code, shares, price_per_share: price,
+      value_usd: shares * price, shares_after: sharesAfter,
+      acquired_disposed: adCode || (code === 'P' ? 'A' : 'D'),
+      is_10b5_1: is10b51 ? 1 : 0,
+    })
+  }
+  return results
+}
+
+/* ── Summarise transactions into the UI payload ─────────── */
+function computeInsiderSummary(transactions) {
+  // Only count open-market buys (P) and discretionary sells (S)
+  const meaningful = transactions.filter(tx => tx.transaction_code === 'P' || tx.transaction_code === 'S')
+  const purchases  = meaningful.filter(tx => tx.transaction_code === 'P')
+  const sales      = meaningful.filter(tx => tx.transaction_code === 'S')
+
+  const purchasesTotal = purchases.reduce((s, tx) => s + (tx.value_usd || 0), 0)
+  const salesTotal     = sales.reduce((s, tx) => s + (tx.value_usd || 0), 0)
+  const netTotal       = purchasesTotal - salesTotal
+
+  const allSales10b51  = sales.length > 0 && sales.every(tx => tx.is_10b5_1)
+  const someSales10b51 = sales.some(tx => tx.is_10b5_1)
+
+  // Deterministic classification
+  let classification
+  if (purchasesTotal > 1_000_000 && salesTotal < purchasesTotal)     classification = 'Material Insider Buying'
+  else if (purchases.length > 0 && sales.length === 0)               classification = 'Constructive'
+  else if (allSales10b51)                                             classification = 'Neutral'
+  else if (salesTotal > 5_000_000 && !allSales10b51)                 classification = 'Elevated Selling'
+  else if (netTotal < -1_000_000  && !allSales10b51)                 classification = 'Elevated Selling'
+  else                                                                classification = 'Neutral'
+
+  // Key event: person who sold the highest % of their holdings
+  let keyEvent = null, maxPct = 0
+  for (const tx of sales) {
+    if (tx.shares > 0 && tx.shares_after >= 0) {
+      const pct = (tx.shares / (tx.shares + tx.shares_after)) * 100
+      if (pct > maxPct) { maxPct = pct; keyEvent = { ...tx, pctSold: pct } }
+    }
+  }
+  // Fallback: largest buy if no sales
+  if (!keyEvent && purchases.length > 0) {
+    keyEvent = purchases.reduce((best, tx) => (tx.value_usd > (best?.value_usd || 0) ? tx : best), null)
+  }
+
+  const recentTx = [...meaningful]
+    .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
+    .slice(0, 10)
+
+  return {
+    period: '90d', purchasesTotal, salesTotal, netTotal,
+    purchasesCount: purchases.length, salesCount: sales.length,
+    allSales10b51, someSales10b51, classification,
+    keyEvent: keyEvent ? {
+      name:   keyEvent.person_name,
+      title:  keyEvent.person_title,
+      action: keyEvent.transaction_code === 'S' ? 'sold' : 'bought',
+      pctOfHoldings: keyEvent.pctSold != null ? parseFloat(keyEvent.pctSold.toFixed(1)) : null,
+      value:  keyEvent.value_usd,
+      shares: keyEvent.shares,
+      date:   keyEvent.transaction_date || keyEvent.filed_date,
+      is10b51: keyEvent.is_10b5_1 === 1,
+    } : null,
+    recentTransactions: recentTx.map(tx => ({
+      name:    tx.person_name,  title:   tx.person_title,
+      code:    tx.transaction_code,
+      shares:  tx.shares,       price:   tx.price_per_share,
+      value:   tx.value_usd,    date:    tx.transaction_date || tx.filed_date,
+      is10b51: tx.is_10b5_1 === 1,
+    })),
+    noActivity: meaningful.length === 0,
+  }
+}
+
+/* ── Main handler ────────────────────────────────────────── */
+async function handleInsiderActivity(ticker, kv, db) {
+  const t = ticker.toUpperCase()
+  const kvKey = `insider:${t}`
+
+  // 1. KV cache
+  const { value, metadata } = await kvGet(kv, kvKey)
+  if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
+
+  // 2. Resolve CIK
+  const cik = await getTickerCIK(t, kv)
+  if (!cik) return json({ error: `CIK not found for ${t} — ticker may not be listed on SEC EDGAR` }, 404)
+
+  const padded = cik.padStart(10, '0')
+  const since90 = new Date(Date.now() - 90 * 86_400_000).toISOString().split('T')[0]
+
+  // 3. Get recent Form 4 filings from SEC
+  const subs = await fetchJSON(`https://data.sec.gov/submissions/CIK${padded}.json`, {
+    headers: { 'User-Agent': 'TradePoint Lab opensource@tradepoint.dev' }
+  }).catch(() => null)
+
+  if (!subs?.filings?.recent) return json({ error: 'Could not reach SEC EDGAR submissions' }, 502)
+
+  const { form: forms, filingDate: dates, accessionNumber: accNos, primaryDocument: docs } = subs.filings.recent
+  const form4Filings = []
+  for (let i = 0; i < forms.length; i++) {
+    if (forms[i] === '4' && dates[i] >= since90) {
+      form4Filings.push({ date: dates[i], accNo: accNos[i], doc: docs[i] })
+    }
+  }
+
+  // 4. Find which accession numbers we already have in D1
+  let knownAccNos = new Set()
+  if (db && form4Filings.length > 0) {
+    try {
+      const rows = await db.prepare(
+        `SELECT DISTINCT accession_no FROM insider_transactions WHERE ticker = ? AND filed_date >= ?`
+      ).bind(t, since90).all()
+      knownAccNos = new Set((rows.results ?? []).map(r => r.accession_no))
+    } catch(e) { console.error('[D1 insider read]', e.message) }
+  }
+
+  // 5. Fetch + parse only new filings
+  const newFilings = form4Filings.filter(f => !knownAccNos.has(f.accNo.replace(/-/g, '')))
+  const allNewTx = []
+
+  for (const filing of newFilings) {
+    await delay(120)   // ~8 req/sec — respect SEC 10 req/s limit
+    const accNoDashes = filing.accNo.replace(/-/g, '')
+    const xmlUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDashes}/${filing.doc}`
+    const xml = await fetch(xmlUrl, {
+      headers: { 'User-Agent': 'TradePoint Lab opensource@tradepoint.dev' }
+    }).then(r => r.ok ? r.text() : null).catch(() => null)
+
+    if (!xml) continue
+    const txs = parseForm4XML(xml, accNoDashes, filing.date)
+    allNewTx.push(...txs)
+  }
+
+  // 6. Save new transactions to D1
+  if (db && allNewTx.length > 0) {
+    try {
+      const stmt = db.prepare(`
+        INSERT OR IGNORE INTO insider_transactions
+          (ticker, cik, accession_no, filed_date, person_name, person_title,
+           is_officer, is_director, transaction_date, transaction_code,
+           shares, price_per_share, value_usd, shares_after, acquired_disposed, is_10b5_1)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      await db.batch(allNewTx.map(tx => stmt.bind(
+        t, cik, tx.accession_no, tx.filed_date, tx.person_name, tx.person_title,
+        tx.is_officer, tx.is_director, tx.transaction_date, tx.transaction_code,
+        tx.shares, tx.price_per_share, tx.value_usd, tx.shares_after,
+        tx.acquired_disposed, tx.is_10b5_1
+      )))
+    } catch(e) { console.error('[D1 insider save]', e.message) }
+  }
+
+  // 7. Load all 90d transactions from D1 for summary
+  let allTx = []
+  if (db) {
+    try {
+      const rows = await db.prepare(
+        `SELECT * FROM insider_transactions WHERE ticker = ? AND filed_date >= ? ORDER BY filed_date DESC`
+      ).bind(t, since90).all()
+      allTx = rows.results ?? []
+    } catch(e) { console.error('[D1 insider load]', e.message) }
+  }
+  // Fallback: use just-parsed transactions if D1 unavailable
+  if (!allTx.length) allTx = allNewTx
+
+  // 8. Compute summary + cache
+  const summary = computeInsiderSummary(allTx)
+  const meta2 = buildMeta(t, 'insider', TTL.INSIDER, false)
+  await kvSet(kv, kvKey, summary, TTL.INSIDER, meta2)
+  return json({ data: summary, meta: meta2 })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -1296,6 +1540,8 @@ export default {
           return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
+        case 'insider':
+          return await handleInsiderActivity(param1, kv, db)
         case 'history':
           if (!param1) return await handleGetAllHistory(db)
           return await handleGetHistory(param1, db)
