@@ -1533,26 +1533,40 @@ function computeInsiderSummary(transactions, debug = {}) {
 async function fetchForm4Xml(cik, accNoDashes, primaryDoc, secHdr) {
   const base = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDashes}`
 
-  // Try 1: primary document (may be HTML or XML)
+  // Valid Form 4 XML contains these root-level tags
+  const isForm4 = txt =>
+    txt?.includes('<nonDerivativeTransaction') ||
+    txt?.includes('<derivativeTransaction')    ||
+    txt?.includes('<ownershipDocument')
+
+  // Try 1: primaryDocument as-is
   if (primaryDoc) {
     const txt = await fetch(`${base}/${primaryDoc}`, { headers: secHdr })
       .then(r => r.ok ? r.text() : null).catch(() => null)
-    if (txt && (txt.includes('<nonDerivativeTransaction') || txt.includes('<derivativeTransaction'))) {
-      return txt   // genuine Form 4 XML
+    if (isForm4(txt)) return txt
+
+    // Try 2: strip XSL/style prefix if present
+    // SEC often stores as "xslF345X06/tm2618092-2_4seq1.xml" but the
+    // actual parseable XML lives at "tm2618092-2_4seq1.xml" (root of accession)
+    const slashIdx = primaryDoc.lastIndexOf('/')
+    if (slashIdx > 0) {
+      const basename = primaryDoc.slice(slashIdx + 1)
+      await delay(100)
+      const txt2 = await fetch(`${base}/${basename}`, { headers: secHdr })
+        .then(r => r.ok ? r.text() : null).catch(() => null)
+      if (isForm4(txt2)) return txt2
     }
-    // Not XML — fall through to index lookup
   }
 
-  // Try 2: filing index JSON → find the .xml document
+  // Try 3: filing index JSON → find the .xml document
   await delay(120)
-  const idxUrl = `${base}/${accNoDashes}-index.json`
-  const idx = await fetch(idxUrl, { headers: secHdr })
+  const idx = await fetch(`${base}/${accNoDashes}-index.json`, { headers: secHdr })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
   const xmlEntry = (idx?.directory?.item ?? []).find(item =>
     item.name?.endsWith('.xml') &&
-    !item.name?.startsWith('R') &&   // skip XBRL viewer fragments
-    (item.type === '4' || /form4|ownership/i.test(item.name ?? ''))
+    !item.name?.startsWith('R') &&                          // skip XBRL viewer fragments
+    (item.type === '4' || /4seq|form4|ownership/i.test(item.name ?? ''))
   )
   if (!xmlEntry) return null
 
