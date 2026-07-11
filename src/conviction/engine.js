@@ -69,7 +69,8 @@ export function runConviction({ fundamentals, ohlcv = [], spyOhlcv = [], prices 
   const grade = getGrade(finalScore)
 
   // ── 9. Wall Street consensus ─────────────────────────────
-  const livePrice  = prices[fundamentals.ticker]?.price
+  // Use live price from feed, fallback to Finnhub quote price from fundamentals
+  const livePrice  = prices[fundamentals.ticker]?.price ?? fundamentals.currentPrice ?? null
   const wallStreet = {
     targetMean:   fundamentals.targetMean   ?? null,
     targetHigh:   fundamentals.targetHigh   ?? null,
