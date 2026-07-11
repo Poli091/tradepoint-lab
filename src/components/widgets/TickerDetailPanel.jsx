@@ -30,6 +30,7 @@ import { cache }          from '../../utils/cache.js'
 import { loadWatchlist, saveWatchlist } from '../../utils/watchlistStorage.js'
 import { loadOverrides, saveOverrides } from '../../utils/positionsStorage.js'
 import { getGradeColor }   from '../../conviction/grade/index.js'
+import { UNIVERSE }        from '../../data/tickerUniverse.js'
 
 // Grade rank for alignment calculation — module-level to avoid duplicate naming post-minification
 const GRADE_RANK_MAP = {'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0}
@@ -141,7 +142,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const { isMobile } = useBreakpoint()
   const { result, loading, error, recompute } = useConviction(ticker, prices)
 
-  const pos       = POSITIONS.find(p => p.ticker === ticker)
+  const pos          = POSITIONS.find(p => p.ticker === ticker)
+  const universeInfo = UNIVERSE.find(u => u.ticker === ticker)
+  const isETF        = universeInfo?.type === 'ETF'
   const f         = result?.fundamentalsData ?? null
   const freshness = cache.infoFund(ticker)
 
@@ -198,6 +201,19 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   }, [result, altResult])
 
   // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
+  // ── Reset ALL tab-specific state when ticker changes ──────────
+  // Without this, insiderData/marketIntel from ticker A persist when switching to ticker B.
+  useEffect(() => {
+    setActiveTab('score')
+    setAiData(null);    setAiLoading(false);   setAiError(null)
+    setNews(null);      setShowAllHeadlines(false)
+    setMarketIntel(null); setMiLoading(false)
+    setScoreHistory(null); setHistoryLoading(false)
+    setInsiderData(null);  setInsiderLoading(false); setInsiderError(null)
+    setShowInsiderDbg(false)
+    setAddedToWl(false); setShowAddPos(false); setAddPosSaved(false)
+  }, [ticker])
+
   const generateAI = async () => {
     setAiLoading(true); setAiError(null)
     try {
@@ -259,15 +275,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load Market Intelligence when market tab opens
-  useEffect(() => {
-    if (activeTab === 'market' && !marketIntel && !miLoading && ticker) {
-      setMiLoading(true)
-      workerAPI.marketIntelligence(ticker)
-        .then(r => setMarketIntel(r?.data ?? null))
-        .catch(() => setMarketIntel(null))
-        .finally(() => setMiLoading(false))
-    }
-  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
+// eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load news when fundamentals tab opens
   useEffect(() => {
@@ -495,6 +503,15 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <>
               {activeTab === 'score' && (
                 <>
+              {/* ── ETF notice ── */}
+              {isETF && (
+                <div style={{ background:'rgba(251,191,36,0.1)', border:'1px solid rgba(251,191,36,0.3)',
+                  borderRadius:'var(--radius)', padding:'8px 12px', marginBottom:12, fontSize:11,
+                  color:'var(--amber)', lineHeight:1.5 }}>
+                  <strong>ETF</strong> — {universeInfo?.name}. Conviction score has limited accuracy:
+                  no EPS, revenue, or balance sheet data. Technical and relative strength dimensions apply.
+                </div>
+              )}
 {/* ══ SECTION 1: CONVICTION SCORE ══ */}
               <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
                 {/* Score + Grade + Confidence */}
@@ -1040,6 +1057,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {activeTab === 'fundamentals' && (
                 <>
 {/* ══ SECTIONS 4-6: FUNDAMENTALS DETAIL ══ */}
+            {isETF && activeTab === 'fundamentals' && (
+              <div style={{ padding:'16px', background:'rgba(251,191,36,0.08)', borderRadius:'var(--radius)',
+                margin:'12px 0', fontSize:11, color:'var(--amber)', lineHeight:1.6 }}>
+                <strong>ETF — {universeInfo?.name}</strong><br />
+                ETFs do not have individual company fundamentals (no EPS, P/E, revenue, or margins).
+                Use the chart and technical indicators for price analysis.
+              </div>
+            )}
               {f && (
                 <>
                   <SectionHeader icon={TrendingUp} label="Growth" />
