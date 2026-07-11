@@ -491,6 +491,48 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     ))}
                   </div>
                 )}
+                {/* Add-to-portfolio mini form */}
+                {showAddPos && !addPosSaved && (
+                  <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:600,
+                    minWidth:220, background:'var(--surface)', border:'1px solid var(--border)',
+                    borderRadius:'var(--radius-lg)', boxShadow:'0 8px 24px rgba(0,0,0,0.35)',
+                    padding:'12px 14px' }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:'var(--txt)', marginBottom:10 }}>
+                      Add {ticker} to {addPosAcct}
+                    </div>
+                    {[
+                      { label:'Qty (shares)', value: addPosQty,   setter: setAddPosQty  },
+                      { label:'Avg price ($)', value: addPosPrice, setter: setAddPosPrice },
+                    ].map(({ label, value, setter }) => (
+                      <div key={label} style={{ marginBottom:8 }}>
+                        <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:3,
+                          textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                        <input
+                          value={value}
+                          onChange={e => setter(e.target.value)}
+                          type="number" min="0" step="any"
+                          style={{ width:'100%', padding:'5px 8px', borderRadius:6,
+                            border:'1px solid var(--border)', background:'var(--surface-up)',
+                            color:'var(--txt)', fontFamily:'var(--mono)', fontSize:12,
+                            boxSizing:'border-box', outline:'none' }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                      <button onClick={handleAddPosition}
+                        style={{ flex:1, padding:'6px', borderRadius:6, background:'var(--accent)',
+                          color:'#fff', border:'none', cursor:'pointer', fontSize:11, fontWeight:700 }}>
+                        Confirm
+                      </button>
+                      <button onClick={() => { setShowAddPos(false); setAddPosQty(''); setAddPosPrice('') }}
+                        style={{ padding:'6px 10px', borderRadius:6, background:'transparent',
+                          border:'1px solid var(--border)', cursor:'pointer', fontSize:11, color:'var(--txt-muted)' }}>
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {(addedToWl || addPosSaved) && (
                   <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:600,
                     background:'var(--green)', color:'#fff', padding:'5px 10px',
