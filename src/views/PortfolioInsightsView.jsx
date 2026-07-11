@@ -73,8 +73,8 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
     for (const p of positions) {
       const cv = convictionResults[p.ticker]
       const gradeStr  = cv?.grade ?? getGrade(p.conviction ?? 0).label
-      gradeCounts[g]    = (gradeCounts[g] ?? 0) + 1
-      gradePositions[g] = [...(gradePositions[g] ?? []), p.ticker]
+      gradeCounts[gradeStr]    = (gradeCounts[gradeStr] ?? 0) + 1
+      gradePositions[gradeStr] = [...(gradePositions[gradeStr] ?? []), p.ticker]
     }
 
     /* ── Sector concentration ── */
@@ -214,7 +214,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
   )
 
   const gradeBarData = Object.entries(GRADE_CONFIG)
-    .map(([g, cfg]) => ({ name: cfg.short, count: stats.gradeCounts[g] ?? 0, color: cfgrade.color, full: g }))
+    .map(([g, cfg]) => ({ name: cfg.short, count: stats.gradeCounts[g] ?? 0, color: cfg.color, full: g }))
     .filter(d => d.count > 0)
 
   return (
