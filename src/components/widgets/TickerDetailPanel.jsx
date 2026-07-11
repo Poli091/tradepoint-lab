@@ -1448,8 +1448,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                                 {d.keyEvent.pctOfHoldings != null
                                   ? `${d.keyEvent.pctOfHoldings}% of direct holdings`
                                   : fmtM(d.keyEvent.value)}
-                                {d.keyEvent.exerciseAndSell && (
+                                {d.keyEvent.exerciseAndSell === 'confirmed' && (
                                   <span style={{ fontSize:9, color:'var(--amber)', marginLeft:6 }}>exercise-and-sell</span>
+                                )}
+                                {d.keyEvent.exerciseAndSell === 'possible' && (
+                                  <span style={{ fontSize:9, color:'var(--amber)', marginLeft:6 }}>possible exercise-and-sell — verify filing</span>
                                 )}
                               </div>
                               <div style={{ display:'flex', gap:12, fontSize:10, color:'var(--txt-muted)', flexWrap:'wrap' }}>

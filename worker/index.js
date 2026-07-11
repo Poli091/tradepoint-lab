@@ -1322,6 +1322,7 @@ function parseForm4XML(xml, accessionNo, filedDate) {
   const global10b51 = /10b5-?1|rule\s+10b5/i.test(xml)
 
   const results = []
+  let txIdx = 0
   for (const block of xmlBlocks(xml, 'nonDerivativeTransaction')) {
     const code       = xmlVal(block, 'transactionCode')
     const txDate     = xmlVal(block, 'transactionDate')
@@ -1339,11 +1340,15 @@ function parseForm4XML(xml, accessionNo, filedDate) {
       person_name: ownerName, person_cik: personCik, person_title: title,
       is_officer: isOfficer ? 1 : 0, is_director: isDirector ? 1 : 0,
       transaction_date: txDate || filedDate,
-      transaction_code: code, shares, price_per_share: price,
+      transaction_code: code,
+      transaction_table: 'non_derivative',   // only non-derivative parsed in v1
+      transaction_index: txIdx,              // 0-based position in XML table
+      shares, price_per_share: price,
       value_usd: shares * price, shares_after: sharesAfter,
       acquired_disposed: adCode || (code === 'P' ? 'A' : 'D'),
       is_10b5_1: is10b51 ? 1 : 0,
     })
+    txIdx++
   }
   return results
 }
@@ -1393,29 +1398,31 @@ function computeInsiderSummary(transactions, debug = {}) {
   const allSales10b51  = sales.length > 0 && sales.every(tx => tx.is_10b5_1)
   const someSales10b51 = sales.some(tx => tx.is_10b5_1)
 
-  // Precise exercise-and-sell detection:
-  // Requires same filing (same accession_no) OR same owner within 3 calendar days.
-  // Does NOT flag M+S that are weeks apart — those may be independent events.
+  // Three-state exercise-and-sell detection:
+  //   'confirmed' — same filing + same owner (strongest, mitigates classification)
+  //   'possible'  — same owner within 3 days (inference, adds note but doesn't mitigate)
+  //   'none'      — no M+S relationship found
   const allExercises = transactions.filter(tx => tx.transaction_code === 'M')
-  let hasExerciseAndSell = false
+  let exerciseAndSell = 'none'
   outer: for (const ex of allExercises) {
     for (const sale of sales) {
-      // Case A: same filing — definitively exercise-and-sell
-      if (ex.accession_no && ex.accession_no === sale.accession_no) {
-        hasExerciseAndSell = true; break outer
-      }
-      // Case B: same owner (by CIK preferred, name fallback) within 3 days
-      const sameOwner = (ex.person_cik && ex.person_cik === sale.person_cik) ||
+      const sameOwner = (ex.person_cik && sale.person_cik && ex.person_cik === sale.person_cik) ||
                         (ex.person_name && ex.person_name === sale.person_name)
+      // Confirmed: same filing AND same owner
+      if (ex.accession_no && ex.accession_no === sale.accession_no && sameOwner) {
+        exerciseAndSell = 'confirmed'; break outer
+      }
+      // Possible: same owner within 3 days (weaker inference)
       if (sameOwner) {
         const exDate   = new Date(ex.transaction_date   || ex.filed_date)
         const saleDate = new Date(sale.transaction_date || sale.filed_date)
         if (Math.abs(exDate - saleDate) / 86_400_000 <= 3) {
-          hasExerciseAndSell = true; break outer
+          exerciseAndSell = 'possible'   // keep scanning — 'confirmed' still possible
         }
       }
     }
   }
+  const hasExerciseAndSell = exerciseAndSell === 'confirmed'   // only 'confirmed' mitigates
 
   // Max % of holdings sold by any single insider (0 if shares_after unavailable)
   const maxSalePctHoldings = sales.reduce((max, tx) => {
@@ -1434,12 +1441,12 @@ function computeInsiderSummary(transactions, debug = {}) {
     classification = 'Neutral'
   } else if (
     salesTotal >= ELEVATED_SELLING_THRESHOLD_USD &&
-    !allSales10b51 && !hasExerciseAndSell
+    !allSales10b51 && exerciseAndSell !== 'confirmed'
   ) {
-    classification = 'Elevated Selling'
+    classification = 'Elevated Selling'  // 'possible' doesn't mitigate classification
   } else if (
     netTotal <= -ELEVATED_SELLING_NET_THRESHOLD_USD &&
-    !allSales10b51 && !hasExerciseAndSell &&
+    !allSales10b51 && exerciseAndSell !== 'confirmed' &&
     maxSalePctHoldings >= ELEVATED_SELLING_MIN_HOLDINGS_PCT
   ) {
     classification = 'Elevated Selling'
@@ -1476,7 +1483,7 @@ function computeInsiderSummary(transactions, debug = {}) {
       shares:  keyEvent.shares,
       date:    keyEvent.transaction_date || keyEvent.filed_date,
       is10b51: keyEvent.is_10b5_1 === 1,
-      exerciseAndSell: hasExerciseAndSell,
+      exerciseAndSell: exerciseAndSell,  // 'confirmed' | 'possible' | 'none'
     } : null,
     recentTransactions: [...discretionary]
       .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
@@ -1496,7 +1503,8 @@ function computeInsiderSummary(transactions, debug = {}) {
     hasCompensation:     compensation.length > 0,
     totalRawTx:          transactions.length,
     classifierVersion:   INSIDER_CLASSIFIER_VERSION,
-    hasExerciseAndSell:  hasExerciseAndSell,
+    hasExerciseAndSell:  exerciseAndSell !== 'none',
+    exerciseAndSellState: exerciseAndSell,
     // Debug info — visible in the UI to diagnose parsing issues
     _debug: {
       filingsFound:    debug.filingsFound    ?? 0,
@@ -1575,12 +1583,14 @@ async function handleInsiderActivity(ticker, kv, db) {
         INSERT OR IGNORE INTO insider_transactions
           (ticker, cik, accession_no, filed_date, person_name, person_cik, person_title,
            is_officer, is_director, transaction_date, transaction_code,
+           transaction_table, transaction_index,
            shares, price_per_share, value_usd, shares_after, acquired_disposed, is_10b5_1)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       await db.batch(allNewTx.map(tx => stmt.bind(
         t, cik, tx.accession_no, tx.filed_date, tx.person_name, tx.person_cik, tx.person_title,
         tx.is_officer, tx.is_director, tx.transaction_date, tx.transaction_code,
+        tx.transaction_table, tx.transaction_index,
         tx.shares, tx.price_per_share, tx.value_usd, tx.shares_after,
         tx.acquired_disposed, tx.is_10b5_1
       )))
