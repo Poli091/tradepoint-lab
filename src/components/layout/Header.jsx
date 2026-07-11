@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect }          from 'react'
+import { useLang }                       from '../../context/LanguageContext.jsx'
 import { useBreakpoint }                from '../../hooks/useBreakpoint.js'
 import { fUSD, fPct, fSignedUSD }       from '../../utils/format.js'
 
@@ -42,22 +43,22 @@ function useMarketStatus() {
       const hhmm   = et.getHours() * 100 + et.getMinutes()
 
       if (dow === 0 || dow === 6) {
-        setStatus({ open:false, label:'Market closed', color:'var(--txt-muted)', reason:'weekend' })
+        setStatus({ open:false, label:'closed', color:'var(--txt-muted)', reason:'weekend' })
         return
       }
       if (ALL_HOLIDAYS.has(ymd)) {
-        setStatus({ open:false, label:'Market closed', color:'var(--txt-muted)', reason:'holiday' })
+        setStatus({ open:false, label:'closed', color:'var(--txt-muted)', reason:'holiday' })
         return
       }
       if (hhmm < 930) {
-        setStatus({ open:false, label:'Pre-market', color:'var(--amber)', reason:'pre' })
+        setStatus({ open:false, label:'pre', color:'var(--amber)', reason:'pre' })
         return
       }
       if (hhmm >= 1600) {
-        setStatus({ open:false, label:'After hours', color:'var(--amber)', reason:'after' })
+        setStatus({ open:false, label:'after', color:'var(--amber)', reason:'after' })
         return
       }
-      setStatus({ open:true, label:'Market open', color:'var(--green)', reason:'open' })
+      setStatus({ open:true, label:'open', color:'var(--green)', reason:'open' })
     }
 
     check()
@@ -84,6 +85,7 @@ function getDayChange(positions) {
 
 export default function Header({ account, setAccount, visiblePositions, portfolioStats, liveBadge, convictionAvg }) {
   const { isMobile } = useBreakpoint()
+  const { t } = useLang()
   const dayChange = getDayChange(visiblePositions)
   const dayPct    = portfolioStats.totalValue > 0 ? (dayChange / portfolioStats.totalValue) * 100 : 0
   const isUp      = dayChange >= 0
@@ -181,7 +183,12 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
               display:'inline-block',
               boxShadow: mkt.open ? `0 0 6px ${mkt.color}` : 'none'
             }} />
-            <span style={{ fontSize:12, color:'var(--txt-sec)', fontWeight:500 }}>{mkt.label}</span>
+            <span style={{ fontSize:12, color:'var(--txt-sec)', fontWeight:500 }}>
+              {mkt.reason === 'open' ? t.marketOpen
+               : mkt.reason === 'pre' ? t.marketPremarket
+               : mkt.reason === 'after' ? t.marketAfterHours
+               : t.marketClosed}
+            </span>
           </div>
           <div style={{
             background:'var(--surface-up)', borderRadius:6, padding:'4px 10px',

@@ -62,11 +62,11 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
     { id: 'dashboard',   label: t.navDashboard,      Icon: LayoutDashboard },
     { id: 'positions',   label: t.navPositions,      Icon: Briefcase       },
     { id: 'watchlist',   label: t.navWatchlist,      Icon: Eye             },
-    { id: 'scan',        label: 'Scanner',            Icon: Search          },
-    { id: 'compare',     label: 'Compare',             Icon: GitCompare, desktopOnly: true },
+    { id: 'scan',        label: t.navScanner,          Icon: Search          },
+    { id: 'compare',     label: t.navCompare,           Icon: GitCompare, desktopOnly: true },
     { id: 'calendar',    label: t.navCalendar,        Icon: CalendarDays    },
-    { id: 'insights',    label: 'Portfolio Insights', Icon: PieChart,   desktopOnly: true },
-  { id: 'diagnostics', label: 'Model Diagnostics',  Icon: BarChart3,  desktopOnly: true },
+    { id: 'insights',    label: t.navInsights,         Icon: PieChart,   desktopOnly: true },
+  { id: 'diagnostics', label: t.navDiag,             Icon: BarChart3,  desktopOnly: true },
   ]
   const MOBILE_NAV = NAV_ITEMS.filter(n => !n.desktopOnly)
 
@@ -118,7 +118,7 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
       <div style={{ flex: 1 }} />
 
       {/* Settings */}
-      <IconBtn label={t.navSettings ?? 'Settings'} Icon={Settings} onClick={onOpenSettings} />
+      <IconBtn label={t.navSettings} Icon={Settings} onClick={onOpenSettings} />
 
       {/* Theme toggle */}
       <IconBtn

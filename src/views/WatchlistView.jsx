@@ -13,6 +13,7 @@ import { fUSD, fPct }  from '../utils/format.js'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import WatchlistEditor from '../components/widgets/WatchlistEditor.jsx'
 import { loadWatchlist } from '../utils/watchlistStorage.js'
+import { useLang } from '../context/LanguageContext.jsx'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 import { workerAPI } from '../utils/api/worker.js'
 import { runConviction } from '../conviction/index.js'
@@ -21,6 +22,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
   const [items,       setItems]       = useState(() => loadWatchlist() ?? WATCHLIST)
   const [editorOpen,  setEditorOpen]  = useState(false)
   const [activeTicker, setActiveTicker] = useState(null)
+  const { t } = useLang()
   const [scanning,     setScanning]     = useState(false)
   const [scanProgress, setScanProgress] = useState({ done:0, total:0 })
   const sparklines = useMemo(() => genSparklines(items, 21), [items])
@@ -53,7 +55,7 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <h1 style={{ fontSize:18, fontWeight:700, color:'var(--txt)', margin:0 }}>Watchlist</h1>
+        <h1 style={{ fontSize:18, fontWeight:700, color:'var(--txt)', margin:0 }}>{t.watchlistTitle}</h1>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={handleScanWatchlist} disabled={scanning} style={{
             padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
@@ -61,12 +63,12 @@ export default function WatchlistView({ convictionResults = {}, prices = {} }) {
             cursor: scanning ? 'wait' : 'pointer', fontSize:12, fontWeight:600,
             color: scanning ? 'var(--accent)' : 'var(--txt-muted)', whiteSpace:'nowrap',
           }}>
-            {scanning ? `Scanning ${scanProgress.done}/${scanProgress.total}…` : '⚡ Scan watchlist'}
+            {scanning ? `${t.watchlistScanning} ${scanProgress.done}/${scanProgress.total}…` : t.watchlistScan}
           </button>
           <button onClick={() => setEditorOpen(true)} style={{
             padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)',
             background:'transparent', cursor:'pointer', fontSize:12,
-            color:'var(--accent)', fontWeight:600 }}>⚙ Manage</button>
+            color:'var(--accent)', fontWeight:600 }}>{t.watchlistManage}</button>
         </div>
       </div>
 

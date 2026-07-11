@@ -10,6 +10,7 @@ import EarningsEditor from '../components/widgets/EarningsEditor.jsx'
 import { EARNINGS } from '../data/earnings.js'
 import { POSITIONS } from '../data/positions.js'
 import { loadEarnings } from '../utils/earningsStorage.js'
+import { useLang } from '../context/LanguageContext.jsx'
 
 const TYPE_LABELS = {
   catalyst: 'Catalyst',
@@ -19,6 +20,7 @@ const TYPE_LABELS = {
 }
 
 export default function CalendarView({ convictionResults = {}, prices = {} }) {
+  const { t } = useLang()
   const [events,     setEvents]     = useState(() => loadEarnings() ?? EARNINGS)
   const [editorOpen, setEditorOpen] = useState(false)
 

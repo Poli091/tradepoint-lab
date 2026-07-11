@@ -85,6 +85,44 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
     setWorkerTesting(false)
   }
 
+  // ── Import portfolio from CSV ───────────────────────────
+  const handleImportPortfolio = e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportError(''); setImportOk('')
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const lines = ev.target.result.split('\n').filter(Boolean)
+        const header = lines[0].toLowerCase()
+        if (!header.includes('ticker')) { setImportError('CSV must have a "ticker" column'); return }
+        const cols = header.split(',')
+        const tickerIdx = cols.indexOf('ticker')
+        const qtyIdx    = cols.indexOf('qty')
+        const priceIdx  = cols.indexOf('avgprice')
+        const acctIdx   = cols.indexOf('account')
+        const imported = lines.slice(1).map(l => {
+          const p = l.split(',')
+          return {
+            ticker:   p[tickerIdx]?.trim().toUpperCase(),
+            qty:      qtyIdx >= 0    ? parseFloat(p[qtyIdx]) || 0 : 0,
+            avgPrice: priceIdx >= 0  ? parseFloat(p[priceIdx]) || 0 : 0,
+            account:  acctIdx >= 0   ? p[acctIdx]?.trim() : 'combined',
+          }
+        }).filter(i => i.ticker && i.ticker.length <= 6)
+        if (!imported.length) { setImportError('No valid tickers found'); return }
+        const existing = loadOverrides() ?? []
+        const existingTickers = new Set(existing.map(p => p.ticker))
+        const merged = [...existing, ...imported.filter(i => !existingTickers.has(i.ticker))]
+        saveOverrides(merged)
+        setImportOk(`Added ${merged.length - existing.length} positions`)
+        setTimeout(() => setImportOk(''), 3000)
+      } catch { setImportError('Failed to parse CSV') }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   // ── Export watchlist as CSV ──────────────────────────────
   const handleExportWatchlist = () => {
     const items = loadWatchlist() ?? []
@@ -204,7 +242,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── PROFILE ── */}
           <div>
-            <SectionLabel icon={User} label="Profile" />
+            <SectionLabel icon={User} label={t.sectionProfile} />
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
               padding:'10px 14px', background:'var(--surface-up)', borderRadius:'var(--radius-lg)' }}>
               <div>
@@ -227,13 +265,13 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── CONNECTION ── */}
           <div>
-            <SectionLabel icon={Link} label="Worker Connection" />
+            <SectionLabel icon={Link} label={t.sectionConnection} />
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
               <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:12 }}>
                 {workerTesting && <span style={{ color:'var(--amber)' }}>↻ Connecting…</span>}
-                {!workerTesting && workerStatus === true  && <><CheckCircle size={13} color="var(--green)" /><span style={{ color:'var(--green)' }}>Worker connected</span></>}
-                {!workerTesting && workerStatus === false && <><XCircle size={13} color="var(--red)" /><span style={{ color:'var(--red)' }}>Connection failed</span></>}
-                {!workerTesting && workerStatus === null  && <span style={{ color:'var(--txt-muted)' }}>Checking…</span>}
+                {!workerTesting && workerStatus === true  && <><CheckCircle size={13} color="var(--green)" /><span style={{ color:'var(--green)' }}>{t.workerConnected}</span></>}
+                {!workerTesting && workerStatus === false && <><XCircle size={13} color="var(--red)" /><span style={{ color:'var(--red)' }}>{t.workerFailed}</span></>}
+                {!workerTesting && workerStatus === null  && <span style={{ color:'var(--txt-muted)' }}>{t.workerChecking}</span>}
               </div>
               <button onClick={() => setShowUrl(s => !s)} style={{ fontSize:10, color:'var(--txt-muted)',
                 background:'transparent', border:'none', cursor:'pointer' }}>
@@ -263,7 +301,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── APPEARANCE ── */}
           <div>
-            <SectionLabel icon={Moon} label="Appearance" />
+            <SectionLabel icon={Moon} label={t.sectionAppearance} />
             <div style={{ display:'flex', gap:8 }}>
               {[['dark', <><Moon size={12} /> Dark</>, 'dark'],['light', <><Sun size={12} /> Light</>, 'light']].map(([val, label]) => (
                 <button key={val} onClick={() => theme !== val && toggleTheme()}
@@ -278,7 +316,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── LANGUAGE ── */}
           <div>
-            <SectionLabel icon={Globe} label="Language" />
+            <SectionLabel icon={Globe} label={t.sectionLanguage} />
             <div style={{ display:'flex', gap:8 }}>
               {['en', 'es'].map(code => (
                 <button key={code} onClick={() => switchLang(code)}
@@ -286,7 +324,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
                     border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
                     background: lang === code ? 'var(--accent)' : 'var(--surface-up)',
                     color: lang === code ? '#fff' : 'var(--txt-sec)' }}>
-                  {code === 'en' ? 'English' : 'Español'}
+                  {code === 'en' ? t.langEnglish : t.langSpanish}
                 </button>
               ))}
             </div>
@@ -294,9 +332,16 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── DATA ── */}
           <div>
-            <SectionLabel icon={Download} label="Data" />
+            <SectionLabel icon={Download} label={t.sectionData} />
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-              {btn(<><Download size={12} /> Export Watchlist CSV</>, handleExportWatchlist, { accent: true })}
+              <label style={{ padding:'8px 14px', borderRadius:'var(--radius)',
+                border:'1px solid var(--border)', cursor:'pointer', fontSize:12, fontWeight:600,
+                color:'var(--accent)', display:'flex', alignItems:'center', gap:6 }}>
+                <Upload size={12} /> Import Portfolio CSV
+                <input type="file" accept=".csv" onChange={handleImportPortfolio}
+                  style={{ display:'none' }} />
+              </label>
+              {btn(<><Download size={12} /> Export Portfolio CSV</>, handleExportPortfolio, { accent: true })}
               <label style={{ padding:'8px 14px', borderRadius:'var(--radius)',
                 border:'1px solid var(--border)', cursor:'pointer', fontSize:12, fontWeight:600,
                 color:'var(--accent)', display:'flex', alignItems:'center', gap:6 }}>
@@ -304,7 +349,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
                 <input type="file" accept=".csv" onChange={handleImportWatchlist}
                   style={{ display:'none' }} />
               </label>
-              {btn(<><Download size={12} /> Export Portfolio CSV</>, handleExportPortfolio, { accent: true })}
+              {btn(<><Download size={12} /> Export Watchlist CSV</>, handleExportWatchlist, { accent: true })}
             </div>
             {importError && <div style={{ fontSize:10, color:'var(--red)', marginTop:6 }}>{importError}</div>}
             {importOk    && <div style={{ fontSize:10, color:'var(--green)', marginTop:6 }}>{importOk}</div>}
@@ -312,7 +357,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── ABOUT ── */}
           <div>
-            <SectionLabel icon={Info} label="About" />
+            <SectionLabel icon={Info} label={t.sectionAbout} />
             <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.8,
               padding:'10px 12px', background:'var(--surface-up)', borderRadius:'var(--radius-lg)' }}>
               <div><b style={{ color:'var(--txt)' }}>TradePoint Lab</b> · Conviction Engine v1.0</div>
@@ -323,7 +368,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
 
           {/* ── DANGER ZONE ── */}
           <div>
-            <SectionLabel icon={Trash2} label="Danger Zone" />
+            <SectionLabel icon={Trash2} label={t.sectionDanger} />
             <div style={{ padding:'12px', border:'1px solid var(--red-dim)',
               borderRadius:'var(--radius-lg)', background:'rgba(239,68,68,0.03)' }}>
               <div style={{ fontSize:11, color:'var(--txt-muted)', marginBottom:10 }}>
@@ -336,7 +381,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
                 color:'var(--red)', cursor:'pointer', fontSize:12, fontWeight:600,
                 display:'flex', alignItems:'center', gap:6 }}>
                 <Trash2 size={12} />
-                {clearConfirm ? 'Confirm — delete everything' : 'Delete profile & all data'}
+                {clearConfirm ? t.btnDeleteConfirm : t.btnDeleteProfile}
               </button>
             </div>
           </div>
