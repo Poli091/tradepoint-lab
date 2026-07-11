@@ -1376,9 +1376,33 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           {d.classification}
                         </span>
                       </div>
+                      {/* Debug strip — always shown so user can see what was fetched */}
+                      {d._debug && (
+                        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+                          {[
+                            { k:'Filings found',  v: d._debug.filingsFound },
+                            { k:'New parsed',     v: d._debug.newParsed },
+                            { k:'Total tx found', v: d._debug.rawTxCount },
+                            ...Object.entries(d._debug.codeCounts || {}).map(([c,n]) => ({ k:`Code ${c}`, v:n })),
+                          ].map(({ k, v }) => (
+                            <div key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                              background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
+                              {k}: <span style={{ color:'var(--txt-sec)', fontWeight:600 }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {d.noActivity ? (
-                        <div style={{ textAlign:'center', padding:'24px 0', color:'var(--txt-muted)', fontSize:11 }}>
-                          No open-market purchases or discretionary sales in the last 90 days.
+                        <div style={{ padding:'12px', background:'var(--surface-up)', borderRadius:'var(--radius)', marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:'var(--txt-muted)', marginBottom: d.hasCompensation ? 8 : 0 }}>
+                            No open-market purchases or discretionary sales in the last 90 days.
+                          </div>
+                          {d.hasCompensation && (
+                            <div style={{ fontSize:10, color:'var(--amber)' }}>
+                              ↓ Compensation activity found below (RSU vestings, tax withholding, option exercises).
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -1450,9 +1474,34 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           )}
                         </>
                       )}
+                      {/* Compensation activity — RSU vestings, option exercises, tax withholding */}
+                      {d.compensationActivity?.length > 0 && (
+                        <div style={{ marginTop: d.noActivity ? 0 : 16 }}>
+                          <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>
+                            Compensation Activity (not counted in classification)
+                          </div>
+                          {d.compensationActivity.map((tx, i) => (
+                            <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+                              padding:'5px 0', borderBottom:'1px solid var(--border)', gap:8 }}>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:10, fontWeight:600, color:'var(--txt)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tx.name}</div>
+                                <div style={{ fontSize:9, color:'var(--txt-muted)' }}>{tx.title} · {tx.date}</div>
+                              </div>
+                              <div style={{ textAlign:'right', flexShrink:0 }}>
+                                <div style={{ fontSize:10, color:'var(--txt-sec)', fontWeight:600 }}>{tx.label}</div>
+                                <div style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)' }}>
+                                  {tx.shares?.toLocaleString()} sh
+                                  {tx.value > 0 ? ` · ${tx.value >= 1e6 ? '$' + (tx.value/1e6).toFixed(1) + 'M' : '$' + (tx.value/1e3).toFixed(0) + 'K'}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div style={{ marginTop:14, fontSize:9, color:'var(--txt-muted)', lineHeight:1.5 }}>
                         Source: SEC EDGAR Form 4. Only open-market buys (P) and discretionary sales (S) counted.
-                        Tax withholding (F), option exercises (M), gifts (G) and entity transfers (D) excluded.
+                        Tax withholding (F), option exercises (M), gifts (G) and entity transfers (D) excluded from classification.
                       </div>
                     </>
                   )

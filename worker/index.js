@@ -1249,15 +1249,45 @@ async function handleGroqDebug(ticker, type, keys, kv) {
 ════════════════════════════════════════════════════════════ */
 
 /* ── XML helpers (no DOM in Workers) ─────────────────────── */
+/* Simple string-based XML field extractor — avoids regex escape issues in Workers */
 function xmlVal(xml, tag) {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>[\\s\\S]*?<value>([^<]*)</value>`))
-  if (m) return m[1].trim()
-  const d = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`))
-  return d ? d[1].trim() : null
+  // Try <tag>...<value>X</value>... pattern first (nested Form 4 structure)
+  const openTag = '<' + tag
+  const closeVal = '</value>'
+  const openVal = '<value>'
+  const closeTag = '</' + tag + '>'
+  const start = xml.indexOf(openTag)
+  if (start === -1) return null
+  const end = xml.indexOf(closeTag, start)
+  const block = end === -1 ? xml.slice(start) : xml.slice(start, end + closeTag.length)
+  const vi = block.indexOf(openVal)
+  if (vi !== -1) {
+    const ve = block.indexOf(closeVal, vi)
+    if (ve !== -1) return block.slice(vi + openVal.length, ve).trim()
+  }
+  // Fallback: direct <tag>value</tag>
+  const di = block.indexOf('>')
+  const de = block.indexOf(closeTag)
+  if (di !== -1 && de !== -1 && de > di + 1) {
+    const v = block.slice(di + 1, de).trim()
+    if (!v.startsWith('<')) return v
+  }
+  return null
 }
 function xmlBlocks(xml, tag) {
-  const out = [], re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'g')
-  let m; while ((m = re.exec(xml))) out.push(m[1])
+  const out = []
+  const open = '<' + tag, close = '</' + tag + '>'
+  let pos = 0
+  while (true) {
+    const s = xml.indexOf(open, pos)
+    if (s === -1) break
+    const bodyStart = xml.indexOf('>', s)
+    if (bodyStart === -1) break
+    const e = xml.indexOf(close, bodyStart)
+    if (e === -1) break
+    out.push(xml.slice(bodyStart + 1, e))
+    pos = e + close.length
+  }
   return out
 }
 
@@ -1318,11 +1348,18 @@ function parseForm4XML(xml, accessionNo, filedDate) {
 }
 
 /* ── Summarise transactions into the UI payload ─────────── */
-function computeInsiderSummary(transactions) {
-  // Only count open-market buys (P) and discretionary sells (S)
-  const meaningful = transactions.filter(tx => tx.transaction_code === 'P' || tx.transaction_code === 'S')
-  const purchases  = meaningful.filter(tx => tx.transaction_code === 'P')
-  const sales      = meaningful.filter(tx => tx.transaction_code === 'S')
+function computeInsiderSummary(transactions, debug = {}) {
+  // Discretionary: open-market buys (P) and sells (S)
+  const discretionary = transactions.filter(tx => tx.transaction_code === 'P' || tx.transaction_code === 'S')
+  const purchases     = discretionary.filter(tx => tx.transaction_code === 'P')
+  const sales         = discretionary.filter(tx => tx.transaction_code === 'S')
+
+  // Compensation: RSU vesting (M), tax withholding (F), option exercise (X)
+  const COMP_CODES = ['F', 'M', 'X', 'C']
+  const compensation = transactions
+    .filter(tx => COMP_CODES.includes(tx.transaction_code))
+    .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
+    .slice(0, 5)
 
   const purchasesTotal = purchases.reduce((s, tx) => s + (tx.value_usd || 0), 0)
   const salesTotal     = sales.reduce((s, tx) => s + (tx.value_usd || 0), 0)
@@ -1331,7 +1368,6 @@ function computeInsiderSummary(transactions) {
   const allSales10b51  = sales.length > 0 && sales.every(tx => tx.is_10b5_1)
   const someSales10b51 = sales.some(tx => tx.is_10b5_1)
 
-  // Deterministic classification
   let classification
   if (purchasesTotal > 1_000_000 && salesTotal < purchasesTotal)     classification = 'Material Insider Buying'
   else if (purchases.length > 0 && sales.length === 0)               classification = 'Constructive'
@@ -1348,37 +1384,52 @@ function computeInsiderSummary(transactions) {
       if (pct > maxPct) { maxPct = pct; keyEvent = { ...tx, pctSold: pct } }
     }
   }
-  // Fallback: largest buy if no sales
   if (!keyEvent && purchases.length > 0) {
     keyEvent = purchases.reduce((best, tx) => (tx.value_usd > (best?.value_usd || 0) ? tx : best), null)
   }
 
-  const recentTx = [...meaningful]
-    .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
-    .slice(0, 10)
+  const COMP_LABEL = { F:'Tax withholding', M:'RSU/Option vest', X:'Option exercise', C:'Conversion' }
 
   return {
     period: '90d', purchasesTotal, salesTotal, netTotal,
     purchasesCount: purchases.length, salesCount: sales.length,
     allSales10b51, someSales10b51, classification,
     keyEvent: keyEvent ? {
-      name:   keyEvent.person_name,
-      title:  keyEvent.person_title,
-      action: keyEvent.transaction_code === 'S' ? 'sold' : 'bought',
+      name:    keyEvent.person_name,
+      title:   keyEvent.person_title,
+      action:  keyEvent.transaction_code === 'S' ? 'sold' : 'bought',
       pctOfHoldings: keyEvent.pctSold != null ? parseFloat(keyEvent.pctSold.toFixed(1)) : null,
-      value:  keyEvent.value_usd,
-      shares: keyEvent.shares,
-      date:   keyEvent.transaction_date || keyEvent.filed_date,
+      value:   keyEvent.value_usd,
+      shares:  keyEvent.shares,
+      date:    keyEvent.transaction_date || keyEvent.filed_date,
       is10b51: keyEvent.is_10b5_1 === 1,
     } : null,
-    recentTransactions: recentTx.map(tx => ({
-      name:    tx.person_name,  title:   tx.person_title,
-      code:    tx.transaction_code,
-      shares:  tx.shares,       price:   tx.price_per_share,
-      value:   tx.value_usd,    date:    tx.transaction_date || tx.filed_date,
-      is10b51: tx.is_10b5_1 === 1,
+    recentTransactions: [...discretionary]
+      .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
+      .slice(0, 10)
+      .map(tx => ({
+        name: tx.person_name, title: tx.person_title, code: tx.transaction_code,
+        shares: tx.shares, price: tx.price_per_share, value: tx.value_usd,
+        date: tx.transaction_date || tx.filed_date, is10b51: tx.is_10b5_1 === 1,
+      })),
+    compensationActivity: compensation.map(tx => ({
+      name: tx.person_name, title: tx.person_title,
+      label: COMP_LABEL[tx.transaction_code] || tx.transaction_code,
+      shares: tx.shares, value: tx.value_usd,
+      date: tx.transaction_date || tx.filed_date,
     })),
-    noActivity: meaningful.length === 0,
+    noActivity:          discretionary.length === 0,
+    hasCompensation:     compensation.length > 0,
+    totalRawTx:          transactions.length,
+    // Debug info — visible in the UI to diagnose parsing issues
+    _debug: {
+      filingsFound:    debug.filingsFound    ?? 0,
+      newParsed:       debug.newParsed       ?? 0,
+      rawTxCount:      transactions.length,
+      codeCounts:      transactions.reduce((acc, tx) => {
+        acc[tx.transaction_code] = (acc[tx.transaction_code] || 0) + 1; return acc
+      }, {}),
+    },
   }
 }
 
@@ -1474,7 +1525,7 @@ async function handleInsiderActivity(ticker, kv, db) {
   if (!allTx.length) allTx = allNewTx
 
   // 8. Compute summary + cache
-  const summary = computeInsiderSummary(allTx)
+  const summary = computeInsiderSummary(allTx, { filingsFound: form4Filings.length, newParsed: newFilings.length })
   const meta2 = buildMeta(t, 'insider', TTL.INSIDER, false)
   await kvSet(kv, kvKey, summary, TTL.INSIDER, meta2)
   return json({ data: summary, meta: meta2 })
