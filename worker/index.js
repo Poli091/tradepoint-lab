@@ -86,6 +86,17 @@ async function kvSet(kv, key, data, ttlSec, metadata) {
   await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSec, metadata })
 }
 
+/** Returns today's date in America/New_York as "YYYY-MM-DD".
+ *  US-market app convention: analysis dates align with ET trading sessions.
+ *  Cloudflare Workers support Intl.DateTimeFormat natively.
+ */
+function etDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)  // en-CA locale returns "YYYY-MM-DD"
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 3 — API HELPERS (each call handles its own error)
 ════════════════════════════════════════════════════════════ */
@@ -657,7 +668,7 @@ async function handleSaveAnalysis(ticker, request, db) {
 
   const r          = body
   const now        = new Date()
-  const today      = now.toISOString().split('T')[0]
+  const today      = etDate(now)   // Eastern Time — aligns with US market sessions
   const bd         = r.breakdown ?? {}
   const nullFields = (bd.growth?.nullFields ?? 0) + (bd.quality?.nullFields ?? 0)
     + (bd.valuation?.nullFields ?? 0) + (bd.technical?.nullFields ?? 0)
@@ -1108,8 +1119,8 @@ async function handleWeeklySnapshot(env) {
   const db = env.TRADEPOINT_DB
   if (!db) { console.error('[Cron] D1 not configured'); return }
 
-  const today = new Date().toISOString().split('T')[0]
-  console.log(`[Cron] Starting weekly snapshot — ${today}`)
+  const today = etDate()   // Eastern Time
+  console.log(`[Cron] Starting weekly snapshot — ${today} ET`)
 
   // ── Compute market regime from SPY EMA200 ───────────────────────────
   let currentRegime = 'unknown'
