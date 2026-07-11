@@ -98,6 +98,7 @@ export default function ScanView() {
   const [inputValue,   setInputValue]   = useState('')
   const [activeTicker, setActiveTicker] = useState(null)
   const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
+  const [gradeFilter,  setGradeFilter]  = useState('ALL')
   const inputRef = useRef(null)
 
   const handleScan = (ticker) => {
@@ -174,14 +175,48 @@ export default function ScanView() {
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', padding:'0 14px 14px' }}>
 
-          {/* Recent scans */}
-          {scanHistory.length > 0 && (
+          {/* Grade filter + Recent scans */}
+          {/* Grade filter pills */}
+          {scanHistory.some(h => h.grade) && (
+            <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:8, marginTop:4 }}>
+              {[
+                { id:'ALL',         label:'All',       color:'var(--txt-muted)' },
+                { id:'HOLD',        label:'HOLD+',     color:'var(--grade-hold)' },
+                { id:'BUY',         label:'BUY',       color:'var(--grade-buy)' },
+                { id:'STRONG BUY',  label:'STRONG BUY',color:'var(--grade-strong-buy)' },
+              ].map(f => (
+                <button key={f.id} onClick={() => setGradeFilter(f.id)} style={{
+                  padding:'2px 8px', borderRadius:99, fontSize:9, fontWeight:700, cursor:'pointer',
+                  border:`1px solid ${gradeFilter===f.id ? f.color : 'var(--border)'}`,
+                  background: gradeFilter===f.id ? `${f.color}20` : 'transparent',
+                  color: gradeFilter===f.id ? f.color : 'var(--txt-muted)',
+                }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {scanHistory.length > 0 && (() => {
+            const GRADE_RANK = { 'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0 }
+            const filtered = scanHistory.filter(h => {
+              if (gradeFilter === 'ALL') return true
+              if (!h.grade) return false
+              if (gradeFilter === 'HOLD') return GRADE_RANK[h.grade] >= GRADE_RANK['HOLD']
+              return h.grade === gradeFilter
+            })
+            if (filtered.length === 0) return (
+              <div style={{ fontSize:10, color:'var(--txt-muted)', padding:'8px 0' }}>
+                No {gradeFilter} results yet.
+              </div>
+            )
+            return (
             <>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, marginTop:4 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <Clock size={11} color="var(--txt-muted)" />
                   <span style={{ fontSize:10, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
-                    Recent scans
+                    Recent scans {filtered.length < scanHistory.length ? `(${filtered.length}/${scanHistory.length})` : ''}
                   </span>
                 </div>
                 <button onClick={() => { setScanHistory([]); saveScanHistory([]) }}
@@ -192,7 +227,7 @@ export default function ScanView() {
                   <Trash2 size={10} /> Clear
                 </button>
               </div>
-              {scanHistory.map(h => (
+              {filtered.map(h => (
                 <div key={h.ticker} style={{ display:'flex', alignItems:'center', gap:4 }}>
                   <div style={{ flex:1 }}>
                     <ScanBadge ticker={h.ticker} score={h.score} grade={h.grade}
@@ -217,7 +252,8 @@ export default function ScanView() {
                 </div>
               ))}
             </>
-          )}
+            )
+          })()}
 
           {/* Sector quick-access */}
           <div style={{ marginTop:16 }}>

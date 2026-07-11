@@ -484,6 +484,19 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         {/* Body */}
         <div style={{ padding:'14px 16px', flex:1, overflowY:'auto' }}>
 
+          {/* ETF banner — always visible for ETF tickers, regardless of conviction state */}
+          {isETF && (
+            <div style={{ background:'rgba(251,191,36,0.1)', border:'1px solid rgba(251,191,36,0.3)',
+              borderRadius:'var(--radius)', padding:'8px 12px', marginBottom:12, fontSize:11,
+              color:'var(--amber)', lineHeight:1.5 }}>
+              <strong>ETF</strong> · {universeInfo?.name} · {universeInfo?.industry}
+              <span style={{ display:'block', marginTop:3, fontWeight:400, opacity:0.8 }}>
+                No EPS, revenue, or balance sheet data — conviction score reflects only technical dimensions.
+              </span>
+            </div>
+          )}
+
+
           {loading && !result && (
             <div style={{ textAlign:'center', padding:'40px 0', color:'var(--txt-muted)', fontSize:13 }}>
               <div style={{ fontSize:24, marginBottom:12 }}>↻</div>
@@ -503,15 +516,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <>
               {activeTab === 'score' && (
                 <>
-              {/* ── ETF notice ── */}
-              {isETF && (
-                <div style={{ background:'rgba(251,191,36,0.1)', border:'1px solid rgba(251,191,36,0.3)',
-                  borderRadius:'var(--radius)', padding:'8px 12px', marginBottom:12, fontSize:11,
-                  color:'var(--amber)', lineHeight:1.5 }}>
-                  <strong>ETF</strong> — {universeInfo?.name}. Conviction score has limited accuracy:
-                  no EPS, revenue, or balance sheet data. Technical and relative strength dimensions apply.
-                </div>
-              )}
 {/* ══ SECTION 1: CONVICTION SCORE ══ */}
               <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
                 {/* Score + Grade + Confidence */}
