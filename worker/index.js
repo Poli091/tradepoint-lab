@@ -900,7 +900,13 @@ Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only prov
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
       nearDowngrade, topSector, concLevel, concRule, top3Pct,
       upcomingEarnings, deltas },
-    generatedAt:Date.now(), week, modelVersion }
+    generatedAt:Date.now(), week, modelVersion,
+    _meta: {
+      prompt_version: 'pr-v1.0',
+      llm_model:      'llama-3.1-70b-versatile',
+      fallback_used:  !!parsed._fallback,
+    },
+  }
 
   const meta2 = buildMeta('portfolio','portfolio-review',604800,false)
   await kvSet(kv, cacheKey, data, 604800, meta2)
