@@ -1518,11 +1518,49 @@ function computeInsiderSummary(transactions, debug = {}) {
       codeCounts:      transactions.reduce((acc, tx) => {
         acc[tx.transaction_code] = (acc[tx.transaction_code] || 0) + 1; return acc
       }, {}),
+      docsSample:      debug.docsSample ?? [],
     },
   }
 }
 
 /* ── Main handler ────────────────────────────────────────── */
+
+/* ── Fetch Form 4 XML with fallback to filing index ─────────
+   primaryDocument is often the HTML-rendered version.
+   If it doesn't contain Form 4 XML tags, we fetch the EDGAR
+   filing index JSON and locate the actual .xml document.
+─────────────────────────────────────────────────────────── */
+async function fetchForm4Xml(cik, accNoDashes, primaryDoc, secHdr) {
+  const base = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDashes}`
+
+  // Try 1: primary document (may be HTML or XML)
+  if (primaryDoc) {
+    const txt = await fetch(`${base}/${primaryDoc}`, { headers: secHdr })
+      .then(r => r.ok ? r.text() : null).catch(() => null)
+    if (txt && (txt.includes('<nonDerivativeTransaction') || txt.includes('<derivativeTransaction'))) {
+      return txt   // genuine Form 4 XML
+    }
+    // Not XML — fall through to index lookup
+  }
+
+  // Try 2: filing index JSON → find the .xml document
+  await delay(120)
+  const idxUrl = `${base}/${accNoDashes}-index.json`
+  const idx = await fetch(idxUrl, { headers: secHdr })
+    .then(r => r.ok ? r.json() : null).catch(() => null)
+
+  const xmlEntry = (idx?.directory?.item ?? []).find(item =>
+    item.name?.endsWith('.xml') &&
+    !item.name?.startsWith('R') &&   // skip XBRL viewer fragments
+    (item.type === '4' || /form4|ownership/i.test(item.name ?? ''))
+  )
+  if (!xmlEntry) return null
+
+  await delay(120)
+  return fetch(`${base}/${xmlEntry.name}`, { headers: secHdr })
+    .then(r => r.ok ? r.text() : null).catch(() => null)
+}
+
 async function handleInsiderActivity(ticker, kv, db) {
   const t = ticker.toUpperCase()
   const kvKey = `insider:${t}`
@@ -1568,13 +1606,14 @@ async function handleInsiderActivity(ticker, kv, db) {
   const newFilings = form4Filings.filter(f => !knownAccNos.has(f.accNo.replace(/-/g, '')))
   const allNewTx = []
 
+  const secHdr = { 'User-Agent': 'TradePoint Lab opensource@tradepoint.dev' }
+  let docsChecked = []
+
   for (const filing of newFilings) {
-    await delay(120)   // ~8 req/sec — respect SEC 10 req/s limit
+    await delay(120)
     const accNoDashes = filing.accNo.replace(/-/g, '')
-    const xmlUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDashes}/${filing.doc}`
-    const xml = await fetch(xmlUrl, {
-      headers: { 'User-Agent': 'TradePoint Lab opensource@tradepoint.dev' }
-    }).then(r => r.ok ? r.text() : null).catch(() => null)
+    const xml = await fetchForm4Xml(cik, accNoDashes, filing.doc, secHdr)
+    docsChecked.push(filing.doc || '(null)')
 
     if (!xml) continue
     const txs = parseForm4XML(xml, accNoDashes, filing.date)
@@ -1616,7 +1655,7 @@ async function handleInsiderActivity(ticker, kv, db) {
   if (!allTx.length) allTx = allNewTx
 
   // 8. Compute summary + cache
-  const summary = computeInsiderSummary(allTx, { filingsFound: form4Filings.length, newParsed: newFilings.length })
+  const summary = computeInsiderSummary(allTx, { filingsFound: form4Filings.length, newParsed: newFilings.length, docsSample: docsChecked.slice(0,3) })
   const meta2 = buildMeta(t, 'insider', TTL.INSIDER, false)
   await kvSet(kv, kvKey, summary, TTL.INSIDER, meta2)
   return json({ data: summary, meta: meta2 })

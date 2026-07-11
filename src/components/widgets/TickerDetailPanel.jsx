@@ -1399,6 +1399,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                                 { k:'Total tx',      v: d._debug.rawTxCount },
                                 ...Object.entries(d._debug.codeCounts || {}).map(([c,n]) => ({ k:`Code ${c}`, v:n })),
                                 { k:'Classifier',    v: d.classifierVersion || 'insider-v1.0' },
+                                ...(d._debug.docsSample?.length ? [{ k:'Docs', v: d._debug.docsSample.join(' | ') }] : []),
                               ].map(({ k, v }) => (
                                 <span key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
                                   background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
