@@ -67,37 +67,60 @@ function getDayChange(positions) {
 
 /* ── Ticker Search ────────────────────────────────────────── */
 function TickerSearch({ onSelect }) {
-  const [query,    setQuery]    = useState('')
-  const [open,     setOpen]     = useState(false)
-  const [focused,  setFocused]  = useState(false)
-  const wrapRef  = useRef(null)
-  const inputRef = useRef(null)
+  const [query,      setQuery]      = useState('')
+  const [open,       setOpen]       = useState(false)
+  const [focused,    setFocused]    = useState(false)
+  const [fhResults,  setFhResults]  = useState([])
+  const [fhLoading,  setFhLoading]  = useState(false)
+  const wrapRef   = useRef(null)
+  const inputRef  = useRef(null)
+  const fhTimer   = useRef(null)
 
-  // Autocomplete: ticker-first priority, then company name
-  const results = useMemo(() => {
+  // Layer 1: local UNIVERSE (instant)
+  const localResults = useMemo(() => {
     const q = query.trim().toUpperCase()
     if (!q) return []
     return UNIVERSE
-      .filter(t =>
-        t.ticker.includes(q) ||
-        t.name.toUpperCase().includes(q)
-      )
+      .filter(t => t.ticker.includes(q) || t.name.toUpperCase().includes(q))
       .sort((a, b) => {
-        const aTickStart = a.ticker.startsWith(q), bTickStart = b.ticker.startsWith(q)
         const aExact = a.ticker === q, bExact = b.ticker === q
-        if (aExact !== bExact)     return aExact ? -1 : 1
-        if (aTickStart !== bTickStart) return aTickStart ? -1 : 1
+        if (aExact !== bExact) return aExact ? -1 : 1
+        const aStart = a.ticker.startsWith(q), bStart = b.ticker.startsWith(q)
+        if (aStart !== bStart) return aStart ? -1 : 1
         return a.ticker.localeCompare(b.ticker)
       })
-      .slice(0, 8)
+      .slice(0, 6)
   }, [query])
+
+  // Layer 2: Finnhub search (debounced fallback for tickers not in UNIVERSE)
+  useEffect(() => {
+    clearTimeout(fhTimer.current)
+    const q = query.trim()
+    if (!q || localResults.length >= 5 || !getWorkerUrl()) { setFhResults([]); return }
+    fhTimer.current = setTimeout(async () => {
+      setFhLoading(true)
+      try {
+        const r = await workerAPI.searchSymbols(q)
+        const localTickers = new Set(localResults.map(l => l.ticker))
+        const extra = (r?.results ?? [])
+          .filter(x => !localTickers.has(x.ticker))
+          .slice(0, 4)
+        setFhResults(extra)
+      } catch { setFhResults([]) }
+      finally { setFhLoading(false) }
+    }, 450)
+    return () => clearTimeout(fhTimer.current)
+  }, [query, localResults.length])
+
+  const allResults = [
+    ...localResults,
+    ...fhResults.map(r => ({ ...r, sector: r.type ?? 'Search', industry: r.exchange ?? '' })),
+  ].slice(0, 8)
 
   // Close on outside click
   useEffect(() => {
     const handler = e => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setOpen(false)
-      }
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -107,12 +130,13 @@ function TickerSearch({ onSelect }) {
     onSelect(ticker)
     setQuery('')
     setOpen(false)
+    setFhResults([])
     inputRef.current?.blur()
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Escape') { setOpen(false); setQuery(''); inputRef.current?.blur() }
-    if (e.key === 'Enter' && results.length > 0) handleSelect(results[0].ticker)
+    if (e.key === 'Escape') { setOpen(false); setQuery(''); setFhResults([]); inputRef.current?.blur() }
+    if (e.key === 'Enter' && allResults.length > 0) handleSelect(allResults[0].ticker)
   }
 
   return (
@@ -153,7 +177,7 @@ function TickerSearch({ onSelect }) {
       </div>
 
       {/* Dropdown */}
-      {open && results.length > 0 && (
+      {open && (allResults.length > 0 || fhLoading) && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0,
           width: 280, zIndex: 500,
@@ -167,7 +191,12 @@ function TickerSearch({ onSelect }) {
             textTransform: 'uppercase', letterSpacing: '0.07em' }}>
             Analyze without adding to watchlist
           </div>
-          {results.map((item, i) => (
+          {fhLoading && localResults.length === 0 && (
+            <div style={{ padding:'8px 12px', fontSize:10, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+              Searching Finnhub…
+            </div>
+          )}
+          {allResults.map((item, i) => (
             <button
               key={item.ticker}
               onMouseDown={e => { e.preventDefault(); handleSelect(item.ticker) }}
@@ -175,7 +204,7 @@ function TickerSearch({ onSelect }) {
                 width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                 padding: '8px 12px', border: 'none', background: 'transparent',
                 cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-                borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none',
+                borderBottom: i < allResults.length - 1 ? '1px solid var(--border)' : 'none',
               }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-up)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -196,13 +225,14 @@ function TickerSearch({ onSelect }) {
                   {item.industry ?? item.sector}
                 </div>
               </div>
-              {/* ETF badge */}
-              {item.sectorEtf && (
-                <span style={{ fontSize: 9, color: 'var(--txt-muted)', fontFamily: 'var(--mono)',
-                  flexShrink: 0 }}>
-                  {item.sectorEtf}
-                </span>
-              )}
+              {/* Type / country badge */}
+              <span style={{ fontSize: 8, fontFamily: 'var(--mono)', flexShrink: 0, padding:'1px 5px',
+                borderRadius: 3, fontWeight: 700,
+                background: item.type === 'ETF' ? 'rgba(251,191,36,0.15)' : item.country === 'AR' ? 'rgba(99,102,241,0.15)' : 'var(--surface-up)',
+                color:       item.type === 'ETF' ? '#FCD34D'              : item.country === 'AR' ? '#818CF8'               : 'var(--txt-muted)',
+              }}>
+                {item.type === 'ETF' ? 'ETF' : item.country === 'AR' ? 'ARG' : item.sectorEtf || item.type || ''}
+              </span>
             </button>
           ))}
         </div>

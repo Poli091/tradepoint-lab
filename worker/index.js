@@ -1722,6 +1722,45 @@ async function handleInsiderActivity(ticker, kv, db) {
   return json({ data: summary, meta: meta2 })
 }
 
+
+/* ── Symbol search via Finnhub — cached 24h in KV ───────────
+   Used as fallback when the local UNIVERSE doesn't have the ticker.
+   Supports US stocks, ETFs, and international ADRs listed on US exchanges.
+─────────────────────────────────────────────────────────── */
+async function handleSymbolSearch(query, keys, kv) {
+  const q = (query || '').trim().toUpperCase()
+  if (!q || q.length < 1) return json({ results: [] })
+
+  const kvKey = `search:${q}`
+  const { value } = await kvGet(kv, kvKey)
+  if (value) return json({ results: value, fromCache: true })
+
+  if (!keys.finnhub) return json({ results: [], error: 'Finnhub key not configured' })
+
+  const data = await fetchJSON(
+    `https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${keys.finnhub}`
+  ).catch(() => null)
+
+  const results = (data?.result ?? [])
+    .filter(r => {
+      // Include US-listed stocks, ETFs (ETP), and common stock types
+      const ok = r.type === 'Common Stock' || r.type === 'ETP' || r.type === 'ADR'
+      // Exclude weird suffixes (warrants, rights, preferred)
+      const clean = !r.symbol?.includes('.') || r.symbol?.endsWith('.A') || r.symbol?.endsWith('.B')
+      return ok && clean && r.symbol && r.description
+    })
+    .map(r => ({
+      ticker:   r.displaySymbol || r.symbol,
+      name:     r.description,
+      type:     r.type,
+      exchange: r.mic ?? null,
+    }))
+    .slice(0, 10)
+
+  await kv.put(kvKey, JSON.stringify(results), { expirationTtl: 24 * 60 * 60 })
+  return json({ results })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -1782,6 +1821,8 @@ export default {
           return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
+        case 'search':
+          return await handleSymbolSearch(param1, keys, kv)
         case 'insider':
           return await handleInsiderActivity(param1, kv, db)
         case 'history':

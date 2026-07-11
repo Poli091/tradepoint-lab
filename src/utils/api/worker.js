@@ -121,6 +121,10 @@ export const workerAPI = {
   insiderActivity: (ticker) =>
     workerGet(`/api/insider/${ticker}`),
 
+  /** Finnhub symbol search — US stocks, ETFs, international ADRs. Cached 24h. */
+  searchSymbols: (query) =>
+    workerGet(`/api/search/${encodeURIComponent(query.trim().toUpperCase())}`),
+
   /**
    * Data Freshness info for a ticker — returns KV metadata for each
    * data type (fundamentals, price, ohlcv, news, moat, bear, catalysts).

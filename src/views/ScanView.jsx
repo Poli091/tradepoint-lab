@@ -55,6 +55,14 @@ const SECTOR_GROUPS = [
   { label: 'Software — Ent.', color: '#C4B5FD',       tickers: ['ORCL','INTU','WDAY','SAP','HUBS','BILL','MDB','ESTC','CFLT','TYL'] },
   { label: 'Consumer Tech',   color: '#6EE7B7',       tickers: ['AAPL','SHOP','UBER','SE','BABA','GRAB','MELI','DASH','ABNB','LYFT'] },
   { label: 'Banks — Large',   color: '#93C5FD',       tickers: ['JPM','BAC','WFC','C','USB','TFC','RF','FITB','CFG','KEY'] },
+  // ── ETFs ─────────────────────────────────────────────────
+  { label: 'Index ETFs',      color: '#F59E0B',       tickers: ['SPY','QQQ','IWM','DIA','VTI','VOO'] },
+  { label: 'Sector ETFs',     color: '#FBBF24',       tickers: ['XLK','XLF','XLE','XLV','XLI','XLC','XLRE','XLU','XLY','XLP'] },
+  { label: 'Thematic ETFs',   color: '#FCD34D',       tickers: ['ARKK','ARKW','SOXX','EEM','GLD','TLT'] },
+  // ── Argentine ADRs ───────────────────────────────────────
+  { label: 'Argentina — Energy',  color: '#34D399',   tickers: ['YPF','VIST','PAM','TGS','CEPU'] },
+  { label: 'Argentina — Banks',   color: '#60A5FA',   tickers: ['GGAL','BMA','BBAR','SUPV'] },
+  { label: 'Argentina — Other',   color: '#A78BFA',   tickers: ['GLOB','MELI','DESP','LOMA','BIOX','CAAP','IRS'] },
 ]
 
 /* ── Single scan result badge ─────────────────────────────── */
