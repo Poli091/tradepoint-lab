@@ -1537,7 +1537,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       <div style={{ marginTop:14, fontSize:9, color:'var(--txt-muted)', lineHeight:1.5 }}>
                         Source: SEC EDGAR Form 4 filings (data.sec.gov). Classification uses only open-market
                         purchases (P) and sales (S). Compensation-related codes (F, M, X, A, D, G) are
-                        excluded from totals but displayed separately when reported. Classifier: {d.classifierVersion}.
+                        excluded from totals but displayed separately when reported. Classifier: {d.classifierVersion || 'insider-v1.0'}.
                       </div>
                     </>
                   )

@@ -48,6 +48,7 @@ function AppInner() {
     theme, toggleTheme,
     view, setView,
     account, setAccount,
+    privacyMode, togglePrivacy,
     ticker, setTicker,
     range, setRange,
     sortBy, sortDir, handleSort,
@@ -195,6 +196,7 @@ function AppInner() {
           portfolioStats={portfolioStats}
           liveBadge={<LiveBadge loading={pricesLoading} lastUpdated={lastUpdated} error={pricesError} />}
           convictionAvg={convictionAvg}
+          privacyMode={privacyMode} togglePrivacy={togglePrivacy}
         />
         <main className="app-content">{renderView()}</main>
       </div>

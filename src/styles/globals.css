@@ -216,3 +216,13 @@ a      { color: var(--accent); text-decoration: none; }
   --grade-sell-dim:        rgba(234, 88,  12,  0.10);
   --grade-strong-sell-dim: rgba(220, 38,  38,  0.10);
 }
+
+/* ── Privacy mode — blurs sensitive financial values ──────── */
+html.privacy-mode .pv {
+  filter: blur(6px);
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+html.privacy-mode .pv:hover {
+  filter: blur(2px);
+}

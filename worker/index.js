@@ -609,10 +609,15 @@ async function handleCacheInfo(ticker, kv) {
 
 async function handleCacheClear(ticker, kv) {
   const t = ticker.toUpperCase()
-  const keys2 = [`fund:${t}`, `price:${t}`, `news:${t}`, `moat:${t}`, `bear:${t}`, `catalysts:${t}`,
-    ...['1W','1M','3M','6M','1Y'].map(r => `ohlcv:${t}:${r}`)]
+  const keys2 = [
+    `fund:${t}`, `price:${t}`, `news:${t}`,
+    `moat:${t}`, `bear:${t}`, `catalysts:${t}`,
+    `market_intel:${t}`,   // market intelligence
+    `insider:${t}`,        // SEC EDGAR insider activity
+    ...['1D','1W','1M','3M','6M','YTD','1Y','2Y','5Y','ALL'].map(r => `ohlcv:${t}:${r}`),
+  ]
   await Promise.all(keys2.map(k => kv.delete(k)))
-  return json({ ticker: t, cleared: keys2, ok: true })
+  return json({ ticker: t, cleared: keys2.length, ok: true })
 }
 
 

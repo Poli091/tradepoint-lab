@@ -171,10 +171,10 @@ export default function PositionsTable({
 
                   {/* P&L */}
                   <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: isGain ? 'var(--green)' : 'var(--red)' }}>
+                    <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fSignedUSD(gain)}
                     </div>
-                    <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: isGain ? 'var(--green)' : 'var(--red)' }}>
+                    <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 10, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fPct(gainPct)}
                     </div>
                   </td>

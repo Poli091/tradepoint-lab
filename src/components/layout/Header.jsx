@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect }          from 'react'
+import { Eye, EyeOff }                   from 'lucide-react'
 import { useLang }                       from '../../context/LanguageContext.jsx'
 import { useBreakpoint }                from '../../hooks/useBreakpoint.js'
 import { fUSD, fPct, fSignedUSD }       from '../../utils/format.js'
@@ -84,7 +85,7 @@ function getDayChange(positions) {
   }, 0)
 }
 
-export default function Header({ account, setAccount, visiblePositions, portfolioStats, liveBadge, convictionAvg }) {
+export default function Header({ account, setAccount, visiblePositions, portfolioStats, liveBadge, convictionAvg, privacyMode, togglePrivacy }) {
   const { isMobile } = useBreakpoint()
   const { t } = useLang()
   const dayChange = getDayChange(visiblePositions)
@@ -134,13 +135,13 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
           fontFamily:'var(--mono)', fontSize: isMobile ? 17 : 20,
           fontWeight:700, color:'var(--txt)', lineHeight:1, letterSpacing:'-0.03em',
         }}>
-          {fUSD(portfolioStats.totalValue)}
+          <span className="pv">{fUSD(portfolioStats.totalValue)}</span>
         </div>
         <div style={{
           fontFamily:'var(--mono)', fontSize:11, fontWeight:600,
           color: isUp ? 'var(--green)' : 'var(--red)', marginTop:2,
         }}>
-          {isUp ? '+' : '-'}{fUSD(Math.abs(dayChange))} ({isUp ? '+' : '-'}{fPct(Math.abs(dayPct))}) today
+          <span className="pv">{isUp ? '+' : '-'}{fUSD(Math.abs(dayChange))} ({isUp ? '+' : '-'}{fPct(Math.abs(dayPct))}) today</span>
         </div>
       </div>
 
@@ -154,7 +155,7 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
           color: portfolioStats.totalGain >= 0 ? 'var(--green)' : 'var(--red)',
           whiteSpace:'nowrap',
         }}>
-          {fSignedUSD(portfolioStats.totalGain)} all-time
+          <span className="pv">{fSignedUSD(portfolioStats.totalGain)} all-time</span>
         </div>
         {convictionAvg && (
           <div style={{ fontSize:10, fontFamily:'var(--mono)',
@@ -167,6 +168,22 @@ export default function Header({ account, setAccount, visiblePositions, portfoli
         </>
       )}
 
+
+      {/* Privacy toggle */}
+      <button
+        onClick={togglePrivacy}
+        title={privacyMode ? 'Show values' : 'Hide values'}
+        style={{
+          background: privacyMode ? 'var(--accent-dim)' : 'var(--surface-up)',
+          border: `1px solid ${privacyMode ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: 6, cursor: 'pointer', padding: '4px 7px',
+          display: 'flex', alignItems: 'center',
+          color: privacyMode ? 'var(--accent)' : 'var(--txt-muted)',
+          flexShrink: 0,
+          transition: 'all 0.15s',
+        }}>
+        {privacyMode ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
 
       <div style={{ flex:1 }} />
 

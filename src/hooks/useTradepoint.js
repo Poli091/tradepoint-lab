@@ -5,7 +5,7 @@
  * using live prices from useMarketData — not here.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { getUserId } from '../auth/webauthn.js'
 
 export function useTradepoint() {
@@ -58,6 +58,8 @@ export function useTradepoint() {
   return {
     // Theme
     theme, toggleTheme,
+    // Privacy
+    privacyMode, togglePrivacy,
     // Navigation
     view, setView,
     // Account

@@ -3,7 +3,7 @@
  * Top-level metric card — used in the dashboard header row.
  */
 
-export default function StatCard({ label, value, sub, subColor, icon: Icon }) {
+export default function StatCard({ label, value, sub, subColor, icon: Icon, privacy = false }) {
   return (
     <div style={{
       background: 'var(--surface)',
@@ -25,14 +25,16 @@ export default function StatCard({ label, value, sub, subColor, icon: Icon }) {
       </div>
 
       {/* Main value */}
-      <div style={{
-        fontFamily: 'var(--mono)',
-        fontSize: 22,
-        fontWeight: 700,
-        color: 'var(--txt)',
-        lineHeight: 1,
-        letterSpacing: '-0.03em',
-      }}>
+      <div
+        className={privacy ? 'pv' : undefined}
+        style={{
+          fontFamily: 'var(--mono)',
+          fontSize: 22,
+          fontWeight: 700,
+          color: 'var(--txt)',
+          lineHeight: 1,
+          letterSpacing: '-0.03em',
+        }}>
         {value}
       </div>
 

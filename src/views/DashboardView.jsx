@@ -190,7 +190,8 @@ export default function DashboardView({
         <StatCard icon={Wallet} label="Portfolio value"
           value={fUSD(totalValue)}
           sub={`${totalGain >= 0 ? '+' : ''}${fUSD(totalGain)} all-time`}
-          subColor={totalGain >= 0 ? 'var(--green)' : 'var(--red)'} />
+          subColor={totalGain >= 0 ? 'var(--green)' : 'var(--red)'}
+          privacy />
 
         <StatCard icon={TrendingUp} label="Day P&L"
           value={dayPnL ? fSignedUSD(dayPnL.dollar) : '—'}
@@ -199,7 +200,8 @@ export default function DashboardView({
             : 'No live data'}
           subColor={dayPnL
             ? dayPnL.dollar >= 0 ? 'var(--green)' : 'var(--red)'
-            : 'var(--txt-muted)'} />
+            : 'var(--txt-muted)'}
+          privacy />
 
         <StatCard icon={TrendingUp} label="Total return"
           value={fPct(gainPct)}
