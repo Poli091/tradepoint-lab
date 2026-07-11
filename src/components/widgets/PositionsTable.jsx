@@ -1,7 +1,8 @@
 /**
  * MODULE: WIDGETS / PositionsTable.jsx
  * Sortable positions table with real conviction rings + grade labels.
- * FUND column removed — not informative for end users.
+ *
+ * Columns: Symbol · Price · Day % · P&L · Upside ↑ · Conviction
  */
 
 import { useState, useMemo }    from 'react'
@@ -13,11 +14,12 @@ import { getFundamentalsInfo, clearFundamentals } from '../../utils/api/index.js
 import { getGradeColor } from '../../conviction/grade/index.js'
 
 const SORT_COLS = [
-  { key: 'ticker',     label: 'Symbol',     align: 'left'  },
-  { key: 'price',      label: 'Price',      align: 'right' },
-  { key: 'gain',       label: 'P&L',        align: 'right' },
-  { key: 'upside',     label: 'Upside ↑',   align: 'right' },
-  { key: 'conviction', label: 'Conviction', align: 'right' },
+  { key: 'ticker',      label: 'Symbol',     align: 'left'  },
+  { key: 'price',       label: 'Price',      align: 'right' },
+  { key: 'dayChangePct',label: 'Day %',      align: 'right' },
+  { key: 'gain',        label: 'P&L',        align: 'right' },
+  { key: 'upside',      label: 'Upside ↑',   align: 'right' },
+  { key: 'conviction',  label: 'Conviction', align: 'right' },
 ]
 
 /* ── Refresh button ─────────────────────────────────── */
@@ -61,13 +63,19 @@ export default function PositionsTable({
 
   const sorted = useMemo(() => {
     return [...positions].sort((a, b) => {
-      if (sortBy === 'gain')   {
+      if (sortBy === 'gain') {
         const va = calcPnL(a).gainPct, vb = calcPnL(b).gainPct
         return sortDir === 'desc' ? vb - va : va - vb
       }
       if (sortBy === 'ticker') return sortDir === 'desc'
         ? b.ticker.localeCompare(a.ticker)
         : a.ticker.localeCompare(b.ticker)
+      // dayChangePct: nulls sort to bottom regardless of direction
+      if (sortBy === 'dayChangePct') {
+        const va = a.dayChangePct ?? (sortDir === 'desc' ? -Infinity : Infinity)
+        const vb = b.dayChangePct ?? (sortDir === 'desc' ? -Infinity : Infinity)
+        return sortDir === 'desc' ? vb - va : va - vb
+      }
       const va = a[sortBy] ?? 0, vb = b[sortBy] ?? 0
       return sortDir === 'desc' ? vb - va : va - vb
     })
@@ -94,7 +102,7 @@ export default function PositionsTable({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
@@ -120,6 +128,8 @@ export default function PositionsTable({
               const { gain, gainPct, isGain } = calcPnL(pos)
               const cv         = convictionResults[pos.ticker]
               const isSelected = selectedTicker === pos.ticker
+              const dayPct     = pos.dayChangePct
+              const dayColor   = dayPct == null ? 'var(--txt-muted)' : dayPct >= 0 ? 'var(--green)' : 'var(--red)'
 
               return (
                 <tr key={pos.ticker}
@@ -150,6 +160,13 @@ export default function PositionsTable({
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--txt-muted)' }}>
                       avg {fUSD(pos.avgPrice)}
                     </div>
+                  </td>
+
+                  {/* Day % */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: dayColor }}>
+                      {dayPct != null ? fPct(dayPct) : '—'}
+                    </span>
                   </td>
 
                   {/* P&L */}
