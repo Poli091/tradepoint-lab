@@ -113,6 +113,21 @@ export function useMarketData() {
     [prices]
   )
 
+  /** Fetch price for a single arbitrary ticker immediately (e.g. from global search) */
+  const fetchSingle = useCallback(async (ticker) => {
+    if (!ticker || !getWorkerUrl()) return
+    const t = ticker.toUpperCase()
+    const cached = cache.getPrice(t)
+    if (cached) { setPrices(prev => ({ ...prev, [t]: cached })); return }
+    try {
+      const result = await workerAPI.price(t)
+      if (result?.data) {
+        cache.setPrice(t, result.data)
+        setPrices(prev => ({ ...prev, [t]: result.data }))
+      }
+    } catch (e) { console.warn('[fetchSingle]', t, e.message) }
+  }, [])
+
   return {
     prices,
     livePositions,
@@ -120,5 +135,6 @@ export function useMarketData() {
     error,
     lastUpdated,
     refresh: fetchPrices,
+    fetchSingle,
   }
 }

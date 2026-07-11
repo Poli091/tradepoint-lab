@@ -22,6 +22,7 @@ import ScanView                   from './views/ScanView.jsx'
 import { useTradepoint }          from './hooks/useTradepoint.js'
 import { loadOverrides }          from './utils/positionsStorage.js'
 import { loadWatchlist }          from './utils/watchlistStorage.js'
+import TickerDetailPanel from './components/widgets/TickerDetailPanel.jsx'
 import PositionEditor             from './components/widgets/PositionEditor.jsx'
 import { useAllConvictions }     from './hooks/useAllConvictions.js'
 import { WATCHLIST }             from './data/watchlist.js'
@@ -58,10 +59,11 @@ function AppInner() {
     limitPrice, setLimitPrice,
   } = useTradepoint()
 
-  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated } = useMarketData()
+  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
 
   // State declarations must come BEFORE useMemos that reference them
   const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [searchTicker,  setSearchTicker]  = useState(null)
   const [editorOpen,    setEditorOpen]    = useState(false)
   const [positionSeed,  setPositionSeed]  = useState(0)
 
@@ -206,10 +208,19 @@ function AppInner() {
           liveBadge={<LiveBadge loading={pricesLoading} lastUpdated={lastUpdated} error={pricesError} />}
           convictionAvg={convictionAvg}
           privacyMode={privacyMode} togglePrivacy={togglePrivacy}
+          onGlobalSearch={(ticker) => { setSearchTicker(ticker); fetchSingle(ticker) }}
         />
         <main className="app-content">{renderView()}</main>
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} toggleTheme={toggleTheme} />
+      {/* Global search panel — opened from Header search, not tied to any view */}
+      {searchTicker && (
+        <TickerDetailPanel
+          ticker={searchTicker}
+          prices={prices}
+          onClose={() => setSearchTicker(null)}
+        />
+      )}
     </div>
   )
 }
