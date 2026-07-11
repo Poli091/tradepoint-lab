@@ -46,6 +46,19 @@ export function useTradepoint() {
   }
 
   // ── Sort handler ─────────────────────────────────────────
+    // ── Privacy mode ─────────────────────────────────────
+  const [privacyMode, setPrivacyMode] = useState(() =>
+    localStorage.getItem('tp_privacy') === '1'
+  )
+  const togglePrivacy = () => setPrivacyMode(v => {
+    const next = !v
+    localStorage.setItem('tp_privacy', next ? '1' : '0')
+    return next
+  })
+  useEffect(() => {
+    document.documentElement.classList.toggle('privacy-mode', privacyMode)
+  }, [privacyMode])
+
   const handleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
     else { setSortBy(col); setSortDir('desc') }
