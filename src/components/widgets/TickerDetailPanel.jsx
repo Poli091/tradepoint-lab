@@ -288,6 +288,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Notify parent (e.g. ScanView) when conviction result is ready
+  // This populates the grade in scan history so the grade filter works
+  useEffect(() => {
+    if (result?.finalScore != null && result?.grade && onResult) {
+      onResult(result.finalScore, result.grade)
+    }
+  }, [result?.finalScore, result?.grade]) // eslint-disable-line
+
   const handleAddToWatchlist = () => {
     const wl = loadWatchlist() ?? []
     if (!wl.find(i => i.ticker === ticker)) {
