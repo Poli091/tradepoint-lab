@@ -335,8 +335,17 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
           padding:'14px 16px', borderBottom:'1px solid var(--border)',
           flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10 }}>
           <div>
-            <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
-            <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{pos?.name}</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
+              {isETF && (
+                <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                  background:'rgba(251,191,36,0.2)', color:'var(--amber)',
+                  border:'1px solid rgba(251,191,36,0.5)', letterSpacing:'0.07em', flexShrink:0 }}>
+                  ETF
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{isETF ? universeInfo?.name : pos?.name}</div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
