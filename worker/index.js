@@ -288,34 +288,51 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
       return json({ error: 'Finnhub key required for long-range chart data (2Y/5Y/ALL)' }, 401)
     }
 
-    const fetchFromSec = lastStored
-      ? Math.floor(new Date(lastStored.bar_date + 'T12:00:00Z').getTime() / 1000) + 86400
-      : Math.floor(new Date(rangeStart).getTime() / 1000)
-    const fetchToSec = Math.floor(Date.now() / 1000)
+    // Multi-segment fetch: Finnhub free tier returns ~1Y per call regardless of date range.
+    // We chain N calls × 1Y each to build the full requested history.
+    // Segments are requested oldest-first so D1 fills in chronological order.
+    const segYears = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
+    const nowMs    = Date.now()
 
-    const raw = await fetchJSON(
-      `https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=${res}&from=${fetchFromSec}&to=${fetchToSec}&token=${keys.finnhub}`
-    ).catch(e => { console.error('[Finnhub candle]', t, e.message); return null })
+    // Only fetch segments we don't already have in D1
+    const oldestStored = storedBars.length > 0 ? storedBars[0].bar_date : null
+    const allNewBars   = []
 
-    if (raw?.s === 'ok' && raw.c?.length > 0) {
-      const newBars = raw.t.map((ts, i) => ({
-        bar_date: new Date(ts * 1000).toISOString().split('T')[0],
-        close: raw.c[i], open: raw.o[i], high: raw.h[i], low: raw.l[i], volume: raw.v[i],
-      }))
+    for (let i = segYears - 1; i >= 0; i--) {
+      const segEnd   = Math.floor((nowMs - i * 365 * 86_400_000) / 1000)
+      const segStart = Math.floor((nowMs - (i + 1) * 365 * 86_400_000) / 1000)
+      const segStartDate = new Date(segStart * 1000).toISOString().split('T')[0]
 
-      // Persist to D1 — INSERT OR IGNORE so re-runs are safe
-      if (db && newBars.length > 0) {
+      // Skip segment if we already have bars for this period in D1
+      if (oldestStored && segStartDate >= oldestStored) continue
+
+      await delay(130)   // ~7 req/s — Finnhub recommends ≤10/s
+      const raw = await fetchJSON(
+        `https://finnhub.io/api/v1/stock/candle?symbol=${t}&resolution=${res}&from=${segStart}&to=${segEnd}&token=${keys.finnhub}`
+      ).catch(e => { console.error('[Finnhub segment]', t, i, e.message); return null })
+
+      if (raw?.s === 'ok' && raw.c?.length > 0) {
+        allNewBars.push(...raw.t.map((ts, j) => ({
+          bar_date: new Date(ts * 1000).toISOString().split('T')[0],
+          close: raw.c[j], open: raw.o[j], high: raw.h[j], low: raw.l[j], volume: raw.v[j],
+        })))
+      }
+    }
+
+    if (allNewBars.length > 0) {
+      // Persist all new bars to D1
+      if (db) {
         try {
           const stmt = db.prepare(
             'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
           )
-          await db.batch(newBars.map(b => stmt.bind(t, b.bar_date, res, b.open, b.high, b.low, b.close, b.volume)))
+          await db.batch(allNewBars.map(b => stmt.bind(t, b.bar_date, res, b.open, b.high, b.low, b.close, b.volume)))
         } catch (e) { console.error('[D1 OHLCV save]', e.message) }
       }
 
-      // Merge + sort (avoid duplicates via Set on bar_date)
+      // Merge + deduplicate + sort
       const seen = new Set(storedBars.map(b => b.bar_date))
-      for (const b of newBars) { if (!seen.has(b.bar_date)) { allBars.push(b); seen.add(b.bar_date) } }
+      for (const b of allNewBars) { if (!seen.has(b.bar_date)) { allBars.push(b); seen.add(b.bar_date) } }
       allBars.sort((a, b) => a.bar_date.localeCompare(b.bar_date))
     }
   }

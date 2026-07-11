@@ -439,6 +439,59 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 </button>
               ))}
             </div>
+
+            {/* Quick Add — dropdown for Watchlist / Portfolio */}
+            {ticker && (() => {
+              const [qaOpen, setQaOpen] = React.useState(false)
+              return (
+                <div style={{ position:'relative', marginRight:4 }}>
+                  <button
+                    onClick={() => { setQaOpen(v => !v); setShowAddPos(false) }}
+                    title="Add to watchlist or portfolio"
+                    style={{ width:32, height:32, borderRadius:'var(--radius)',
+                      border:`1px solid ${qaOpen?'var(--accent)':'var(--border)'}`,
+                      background: qaOpen?'var(--accent-dim)':'transparent',
+                      color: qaOpen?'var(--accent)':'var(--txt-muted)',
+                      cursor:'pointer', fontSize:18, fontWeight:300,
+                      display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    +
+                  </button>
+                  {qaOpen && !showAddPos && !addedToWl && !addPosSaved && (
+                    <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:600,
+                      minWidth:190, background:'var(--surface)', border:'1px solid var(--border)',
+                      borderRadius:'var(--radius-lg)', boxShadow:'0 8px 24px rgba(0,0,0,0.35)', overflow:'hidden' }}>
+                      <button
+                        onClick={() => { handleAddToWatchlist(); setQaOpen(false) }}
+                        style={{ width:'100%', padding:'9px 14px', border:'none', background:'transparent',
+                          cursor:'pointer', textAlign:'left', fontSize:12, color:'var(--txt)',
+                          borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}
+                        onMouseEnter={e=>e.currentTarget.style.background='var(--surface-up)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                        <span>👁</span> Add to Watchlist
+                      </button>
+                      {['Brokerage','Roth IRA'].map(acct => (
+                        <button key={acct}
+                          onClick={() => { setAddPosAcct(acct); setShowAddPos(true); setQaOpen(false) }}
+                          style={{ width:'100%', padding:'9px 14px', border:'none', background:'transparent',
+                            cursor:'pointer', textAlign:'left', fontSize:12, color:'var(--txt)',
+                            borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}
+                          onMouseEnter={e=>e.currentTarget.style.background='var(--surface-up)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          <span>📈</span> Add to {acct}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {(addedToWl || addPosSaved) && qaOpen === false && (
+                    <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:600,
+                      background:'var(--green)', color:'#fff', padding:'5px 10px',
+                      borderRadius:6, fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>
+                      ✓ Saved!
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             <button onClick={recompute} disabled={loading}
               style={{ width:32, height:32, borderRadius:'var(--radius)', border:'1px solid var(--border)',
                 background:'transparent', cursor:loading?'wait':'pointer',

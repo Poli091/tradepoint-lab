@@ -550,8 +550,6 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
             }}>{r}</button>
           ))}
         </div>
-        {/* Quick add */}
-        <QuickAdd ticker={ticker} />
         {/* Expand / Collapse */}
         <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Collapse' : 'Expand chart'}
           style={{
