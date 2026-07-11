@@ -992,10 +992,35 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   )}
 
                   <SectionHeader icon={Clock} label="Data Freshness" />
-                  <FreshnessRow label="Fundamentals (90d TTL)" freshness={freshness} />
-                  <div style={{ marginTop:10, fontSize:11, color:'var(--txt-muted)', lineHeight:1.6 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                    <FreshnessRow label="Fundamentals (90d TTL)" freshness={freshness} />
+                    <button onClick={recompute} title="Force-refresh fundamentals"
+                      style={{ padding:'3px 10px', borderRadius:'var(--radius)', fontSize:10,
+                        border:'1px solid var(--border)', background:'transparent',
+                        cursor:'pointer', color:'var(--txt-muted)', flexShrink:0 }}>
+                      ↻ Refresh
+                    </button>
+                  </div>
+                  {freshness && freshness.daysLeft < 14 && (
+                    <div style={{ fontSize:10, color:'var(--amber)', padding:'4px 8px',
+                      background:'var(--amber-dim)', borderRadius:'var(--radius)', marginBottom:6 }}>
+                      ⚠ Cache expires soon — consider refreshing before earnings
+                    </div>
+                  )}
+                  {result.wallStreet?.nextEarnings && (() => {
+                    const daysToEarnings = Math.round((new Date(result.wallStreet.nextEarnings) - Date.now()) / 86400000)
+                    if (daysToEarnings > 0 && daysToEarnings <= 21) {
+                      return (
+                        <div style={{ fontSize:10, color:'var(--accent)', padding:'4px 8px',
+                          background:'var(--accent-dim)', borderRadius:'var(--radius)', marginBottom:6 }}>
+                          📅 Earnings in {daysToEarnings}d — refresh fundamentals after the report for updated data
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+                  <div style={{ marginTop:6, fontSize:11, color:'var(--txt-muted)', lineHeight:1.6 }}>
                     Sources: Finnhub (growth · quality · strength · valuation · consensus · earnings · RS)
-                    + FMP (Consensus Wall St. target)
                     + Alpaca (OHLCV → EMA · RSI · Relative Strength)
                   </div>
                                     {/* News moved to Market Intel tab */}

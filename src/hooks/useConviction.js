@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
 import { runConviction }           from '../conviction/index.js'
+import { cache }                   from '../utils/cache.js'
 
 export function useConviction(ticker, prices = {}) {
   const [result,  setResult]  = useState(null)
@@ -38,6 +39,7 @@ export function useConviction(ticker, prices = {}) {
       ])
 
       if (!fundResult?.data) throw new Error('No fundamentals data for ' + ticker)
+      cache.setFund(ticker, fundResult.data)  // update local freshness tracker
 
       const conviction = runConviction({
         fundamentals: fundResult.data,
