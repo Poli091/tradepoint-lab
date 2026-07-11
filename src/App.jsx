@@ -197,7 +197,7 @@ function AppInner() {
         />
         <main className="app-content">{renderView()}</main>
       </div>
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} toggleTheme={toggleTheme} />
     </div>
   )
 }

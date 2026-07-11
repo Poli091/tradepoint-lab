@@ -27,7 +27,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': [
     'Content-Type',
-    'X-Finnhub-Key', 'X-FMP-Key',
+    'X-Finnhub-Key',
     'X-Alpaca-Key',  'X-Alpaca-Secret', 'X-Groq-Key',
   ].join(', '),
 }
@@ -53,7 +53,7 @@ function getKeys(request, env) {
   const h = k => request.headers.get(k) || ''
   return {
     finnhub:      env.FINNHUB_KEY      || h('X-Finnhub-Key'),
-    fmp:          env.FMP_KEY          || h('X-FMP-Key'),
+    fmp:          null, // FMP removed
     alpacaKey:    env.ALPACA_KEY       || h('X-Alpaca-Key'),
     alpacaSecret: env.ALPACA_SECRET    || h('X-Alpaca-Secret'),
     groq:         env.GROQ_KEY         || h('X-Groq-Key'),
@@ -127,7 +127,6 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   const fhRecs    = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
 
   // FMP price target consensus (free plan — /stable/ endpoint)
-  const fmpTarget = await fmpStableGet(`/price-target-consensus?symbol=${t}`, keys.fmp)
 
   // Finnhub earnings history — actual vs estimated per quarter (free plan)
   await delay(150)
@@ -189,10 +188,10 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     relStrength4W:     m['priceRelativeToS&P5004Week']   ?? null,
     // ── Analyst consensus — Finnhub preferred, FMP /stable/ as fallback ──
     // FMP returns array [{targetConsensus, targetHigh...}], Finnhub returns object
-    targetMean:        fhTarget?.targetMean    ?? fmpTarget?.[0]?.targetConsensus ?? null,
-    targetHigh:        fhTarget?.targetHigh    ?? fmpTarget?.[0]?.targetHigh      ?? null,
-    targetLow:         fhTarget?.targetLow     ?? fmpTarget?.[0]?.targetLow       ?? null,
-    targetMedian:      fhTarget?.targetMedian  ?? fmpTarget?.[0]?.targetMedian    ?? null,
+    targetMean:        fhTarget?.targetMean ?? null,
+    targetHigh:        fhTarget?.targetHigh    ??
+    targetLow:         fhTarget?.targetLow     ??
+    targetMedian:      fhTarget?.targetMedian  ??
     strongBuy:         rec.strongBuy                     ?? 0,
     buy:               rec.buy                          ?? 0,
     hold:              rec.hold                         ?? 0,
@@ -203,8 +202,8 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     // Debug — tells the client which sources responded
     _sources: {
       finnhubMetric:   !!fhMetrics,
-      finnhubTarget:   !!(fhTarget?.targetMean || fmpTarget?.[0]?.targetConsensus),
-      fmpPriceTarget:  !!fmpTarget?.targetConsensus,
+      finnhubTarget:   !!(fhTarget?.targetMean ||
+      fmpPriceTarget:  !!
       finnhubRecs:     !!fhRecs,
       finnhubEarnings: earns.length > 0,
     },
