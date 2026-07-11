@@ -33,7 +33,7 @@ export async function autoAddEarnings(ticker) {
     }
 
     saveEarnings([...current, newEvent])
-    console.log(`[autoAddEarnings] Added ${ticker} earnings on ${entry.date}`)
+    console.warn(`[autoAddEarnings] Added ${ticker} earnings on ${entry.date}`)
   } catch (e) {
     // Silent — never block the main save operation
     console.warn('[autoAddEarnings]', ticker, e.message)
