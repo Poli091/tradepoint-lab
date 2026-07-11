@@ -17,7 +17,8 @@ import { workerAPI } from '../utils/api/worker.js'
 import { UNIVERSE } from '../data/tickerUniverse.js'
 
 /* ── Helpers ──────────────────────────────────────────────── */
-const trendColor = (score) => {
+const trendColor = (score, insufficient = false) => {
+  if (insufficient)   return '#374151'
   if (score == null) return 'var(--surface-up)'
   if (score >  8)   return '#16A34A'   // strong uptrend
   if (score >  3)   return '#22C55E'   // mild uptrend
@@ -26,7 +27,8 @@ const trendColor = (score) => {
   if (score > -7)   return '#F97316'   // mild downtrend
   return '#EF4444'                     // strong downtrend
 }
-const trendLabel = (score) => {
+const trendLabel = (score, insufficient = false) => {
+  if (insufficient) return 'Insufficient coverage'
   if (score == null) return 'No data'
   if (score >  8)   return 'Strong Uptrend'
   if (score >  3)   return 'Uptrend'
@@ -35,13 +37,25 @@ const trendLabel = (score) => {
   if (score > -7)   return 'Mild Downtrend'
   return 'Downtrend'
 }
-const sign = (v) => v == null ? 'N/A' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
+const sign   = (v) => v == null ? 'N/A' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
+const median = (arr) => {
+  if (!arr.length) return null
+  const s = [...arr].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m]
+}
+const medianAge = (tickers) => {
+  const ages = tickers
+    .filter(t => t.date)
+    .map(t => (Date.now() - new Date(t.date + 'T12:00:00Z').getTime()) / 86_400_000)
+  return ages.length ? median(ages) : null
+}
 const pct  = (v) => v == null ? '—' : `${(v * 100).toFixed(0)}%`
 
 /* ── Custom Treemap Cell ──────────────────────────────────── */
-function Cell({ x, y, width, height, name, trendScore, tickerCount, breadthEMA200 }) {
+function Cell({ x, y, width, height, name, trendScore, tickerCount, breadthEMA200, insufficient }) {
   if (!width || !height || width < 4 || height < 4) return null
-  const color = trendColor(trendScore)
+  const color = trendColor(trendScore, insufficient)
   const showName  = width > 70 && height > 32
   const showScore = width > 70 && height > 52
   const textColor = (trendScore != null && trendScore < -3) ? '#fff' : '#fff'
@@ -69,7 +83,7 @@ function Cell({ x, y, width, height, name, trendScore, tickerCount, breadthEMA20
 }
 
 /* ── Ticker sidebar ───────────────────────────────────────── */
-function IndustryPanel({ industry, tickers, onSelect, onClose }) {
+function IndustryPanel({ industry, tickers, onSelect, onClose, medianAgeVal, oldestAgeVal }) {
   const sorted = [...tickers].sort((a, b) => (b.trendScore ?? -999) - (a.trendScore ?? -999))
   return (
     <div style={{ width: 280, flexShrink:0, borderLeft:'1px solid var(--border)',
@@ -81,6 +95,11 @@ function IndustryPanel({ industry, tickers, onSelect, onClose }) {
           <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>
             {tickers.length} companies · sorted by RS
           </div>
+          {medianAgeVal != null && (
+            <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:1 }}>
+              Data freshness: median {Math.round(medianAgeVal)}d · oldest {Math.round(oldestAgeVal)}d
+            </div>
+          )}
         </div>
         <button onClick={onClose} style={{ background:'transparent', border:'none',
           cursor:'pointer', color:'var(--txt-muted)', fontSize:16 }}>✕</button>
@@ -156,40 +175,65 @@ export default function SectorTrendsView({ onSelectTicker }) {
     const tickerMap = {}
     for (const t of raw) tickerMap[t.ticker] = t
 
-    // Group UNIVERSE by industry
+    // Group UNIVERSE by industry (exclude ETFs and Argentine ADRs)
+    const MAX_STALE_DAYS = 14
     const groups = {}
     for (const u of UNIVERSE) {
-      if (u.type === 'ETF') continue  // exclude ETFs from sector view
+      if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
       const ind = u.industry || u.sector || 'Other'
       if (!groups[ind]) groups[ind] = { name: ind, sector: u.sector, tickers: [] }
       const analysis = tickerMap[u.ticker]
+      const ageInDays = analysis?.date
+        ? (Date.now() - new Date(analysis.date + 'T12:00:00Z').getTime()) / 86_400_000
+        : null
       groups[ind].tickers.push({
-        ticker: u.ticker, name: u.name,
+        ticker: u.ticker, name: u.name, ageInDays,
         ...(analysis ?? { trendScore: null, rs1M: null, rs3M: null, rs6M: null, grade: null, upside: null }),
       })
     }
 
     return Object.values(groups).map(g => {
-      const withData = g.tickers.filter(t => t.trendScore != null)
-      const avg = (arr, key) => arr.length ? arr.reduce((s, t) => s + (t[key] ?? 0), 0) / arr.length : null
-      const trendScore   = withData.length > 0 ? avg(withData, 'trendScore') : null
-      const rs1M         = withData.length > 0 ? avg(withData, 'rs1M') : null
-      const rs3M         = withData.length > 0 ? avg(withData, 'rs3M') : null
-      const rs6M         = withData.length > 0 ? avg(withData, 'rs6M') : null
-      const breadthEMA200 = withData.filter(t => t.aboveEMA200 === true).length / (withData.length || 1)
-      const breadthEMA50  = withData.filter(t => t.aboveEMA50  === true).length / (withData.length || 1)
+      // Exclude stale analyses from trend computation
+      const fresh    = g.tickers.filter(t => t.ageInDays != null && t.ageInDays <= MAX_STALE_DAYS)
+      const withData = fresh.filter(t => t.trendScore != null)
+
+      // Coverage metrics
+      const coverage     = g.tickers.length > 0 ? withData.length / g.tickers.length : 0
+      const insufficient = coverage < 0.40 || withData.length < 3
+
+      // Use MEDIAN to resist outliers (one big winner shouldn't dominate)
+      const trendScore   = withData.length > 0 ? median(withData.map(t => t.trendScore)) : null
+      const rs1M         = withData.length > 0 ? median(withData.filter(t=>t.rs1M!=null).map(t=>t.rs1M)) : null
+      const rs3M         = withData.length > 0 ? median(withData.filter(t=>t.rs3M!=null).map(t=>t.rs3M)) : null
+      const rs6M         = withData.length > 0 ? median(withData.filter(t=>t.rs6M!=null).map(t=>t.rs6M)) : null
+
+      // Breadth (positive RS, EMA position)
+      const positiveRS   = withData.filter(t => (t.trendScore ?? 0) > 0).length
+      const breadthEMA200 = withData.filter(t => t.aboveEMA200 === true).length
+      const breadthEMA50  = withData.filter(t => t.aboveEMA50  === true).length
+
+      // Freshness
+      const mAge    = medianAge(g.tickers)
+      const oldestAge = g.tickers.reduce((max, t) => t.ageInDays != null ? Math.max(max, t.ageInDays) : max, 0)
 
       return {
         name: g.name, sector: g.sector,
         tickers: g.tickers,
         tickerCount: g.tickers.length,
         dataCount: withData.length,
+        freshCount: fresh.length,
+        coverage, insufficient,
         trendScore, rs1M, rs3M, rs6M,
-        breadthEMA200, breadthEMA50,
+        positiveRS, breadthEMA200, breadthEMA50,
+        medianAge: mAge, oldestAge,
         value: sizeMode === 'equal' ? 1 : g.tickers.length,
       }
     }).filter(g => g.tickerCount >= 2)
-      .sort((a, b) => (b.trendScore ?? -999) - (a.trendScore ?? -999))
+      .sort((a, b) => {
+        // Insufficient → bottom; then sort by trendScore
+        if (a.insufficient !== b.insufficient) return a.insufficient ? 1 : -1
+        return (b.trendScore ?? -999) - (a.trendScore ?? -999)
+      })
   }, [raw, sizeMode])
 
   const selectedIndustry = industries.find(i => i.name === selected)
@@ -204,12 +248,17 @@ export default function SectorTrendsView({ onSelectTicker }) {
           <div style={{ fontSize:11, color:'var(--txt-muted)', marginTop:1 }}>
             Industry momentum · RS multi-horizon · Breadth EMA50/EMA200
           </div>
+          <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2, fontStyle:'italic' }}>
+            TradePoint Universe only — trends reflect companies currently included.
+          </div>
         </div>
         <div style={{ marginLeft:'auto', display:'flex', gap:8, alignItems:'center' }}>
           {/* Size selector */}
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ fontSize:10, color:'var(--txt-muted)' }}>Block size:</span>
           <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
             border:'1px solid var(--border)', overflow:'hidden' }}>
-            {[['count','By Count'],['equal','Equal Weight']].map(([v,l]) => (
+            {[['count','Number of stocks'],['equal','Equal size']].map(([v,l]) => (
               <button key={v} onClick={() => setSizeMode(v)} style={{
                 padding:'4px 10px', border:'none', cursor:'pointer', fontSize:10, fontWeight:600,
                 background: sizeMode===v ? 'var(--accent)' : 'transparent',
@@ -217,7 +266,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
                 {l}
               </button>
             ))}
-          </div>
+          </div></div>
           {/* Legend */}
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
             {[['#16A34A','Strong ↑'],[' #22C55E','↑'],['#FBBF24','Neutral'],['#F97316','↓'],['#EF4444','Strong ↓']].map(([c,l]) => (
@@ -267,7 +316,8 @@ export default function SectorTrendsView({ onSelectTicker }) {
                 content={({ x, y, width, height, name, trendScore, tickerCount, breadthEMA200 }) => (
                   <Cell x={x} y={y} width={width} height={height}
                     name={name} trendScore={trendScore}
-                    tickerCount={tickerCount} breadthEMA200={breadthEMA200} />
+                    tickerCount={tickerCount} breadthEMA200={breadthEMA200}
+                    insufficient={insufficient} />
                 )}
               />
             </ResponsiveContainer>
@@ -279,6 +329,8 @@ export default function SectorTrendsView({ onSelectTicker }) {
           <IndustryPanel
             industry={selected}
             tickers={selectedIndustry.tickers}
+            medianAgeVal={selectedIndustry?.medianAge}
+            oldestAgeVal={selectedIndustry?.oldestAge}
             onClose={() => setSelected(null)}
             onSelect={(ticker) => {
               setSelected(null)
@@ -313,11 +365,19 @@ export default function SectorTrendsView({ onSelectTicker }) {
                     {ind.dataCount}/{ind.tickerCount} analyzed
                   </div>
                 </div>
-                <span style={{ fontSize:10, fontFamily:'var(--mono)', fontWeight:700, flexShrink:0,
-                  color: ind.trendScore == null ? 'var(--txt-muted)'
-                       : ind.trendScore > 0 ? 'var(--green)' : 'var(--red)' }}>
-                  {sign(ind.trendScore)}
-                </span>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <div style={{ fontSize:10, fontFamily:'var(--mono)', fontWeight:700,
+                    color: ind.insufficient ? 'var(--txt-muted)'
+                         : ind.trendScore == null ? 'var(--txt-muted)'
+                         : ind.trendScore > 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {ind.insufficient ? 'low cov.' : sign(ind.trendScore)}
+                  </div>
+                  {!ind.insufficient && ind.positiveRS != null && (
+                    <div style={{ fontSize:8, color:'var(--txt-muted)', fontFamily:'var(--mono)' }}>
+                      {ind.positiveRS}/{ind.dataCount} ↑RS
+                    </div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
