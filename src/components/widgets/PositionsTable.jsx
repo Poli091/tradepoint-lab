@@ -61,6 +61,7 @@ export default function PositionsTable({
   selectedTicker, onSelectTicker,
   convictionResults = {},
   convictionLoading = false,
+  prices = {},
 }) {
   const [refreshTick, setRefreshTick] = useState(0)
 
