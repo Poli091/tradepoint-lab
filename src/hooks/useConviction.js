@@ -61,7 +61,7 @@ export function useConviction(ticker, prices = {}) {
         prices,
       })
 
-      setResult(conviction)
+      setResult({ ...conviction, _ticker: ticker })
 
       // Auto-save to D1 — silent failure, never blocks the UI
       workerAPI.saveAnalysis(ticker, conviction).catch(() => {})
