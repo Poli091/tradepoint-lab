@@ -7,6 +7,7 @@ import { useState, useEffect }          from 'react'
 import { useLang }                       from '../../context/LanguageContext.jsx'
 import { useBreakpoint }                from '../../hooks/useBreakpoint.js'
 import { fUSD, fPct, fSignedUSD }       from '../../utils/format.js'
+import { DAY_CHANGES }                   from '../../utils/finance.js'
 
 /* ── NYSE Market Status ─────────────────────────────────────
    Checks ET time + day of week + federal holidays.
