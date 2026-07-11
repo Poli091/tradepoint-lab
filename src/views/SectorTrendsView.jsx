@@ -42,19 +42,32 @@ const TREND_COLOR = (s, insufficient=false) => {
   return '#EF4444'
 }
 
-/* Deterministic rotation classification */
+/* Deterministic rotation classification — industry-rotation-v1.0
+   Rules applied as a strict cascade (first match wins):
+   Reversals take priority over short-term neutrality.
+   model: industry-rotation-v1.0 */
+const ROTATION_MODEL = 'industry-rotation-v1.0'
 const classifyRotation = (rs1M, rs3M, rs6M) => {
   if (rs1M == null || rs3M == null || rs6M == null)
-    return { label: 'No data', color:'var(--txt-muted)', emoji:'—' }
-  const acc = rs1M - rs6M   // total acceleration
-  const mom = rs1M - rs3M   // recent momentum change
+    return { label:'No data', color:'var(--txt-muted)', emoji:'—' }
 
-  if (rs1M > 2  && rs3M > 0  && rs1M > rs3M) return { label:'Strengthening',  color:'#22C55E', emoji:'↗' }
-  if (rs1M > 2  && rs6M < -2 && rs3M > rs6M) return { label:'Reversing Up',   color:'#86EFAC', emoji:'⤴' }
-  if (rs1M < -2 && rs3M < 0  && rs1M < rs3M) return { label:'Weakening',      color:'#EF4444', emoji:'↘' }
-  if (rs1M < -2 && rs6M > 2  && rs3M < rs6M) return { label:'Reversing Down', color:'#F97316', emoji:'⤵' }
-  if (Math.abs(rs1M) < 2)                     return { label:'Stable',         color:'var(--txt-muted)', emoji:'→' }
-  return { label:'Mixed', color:'#FBBF24', emoji:'↔' }
+  // Priority 1: trend reversals (6M→1M directional flip)
+  if (rs6M < -2 && rs1M > 0)
+    return { label:'Reversing Up',   color:'#86EFAC', emoji:'⤴' }   // was weak, turning strong
+  if (rs6M > 2  && rs1M < 0)
+    return { label:'Reversing Down', color:'#F97316', emoji:'⤵' }   // was strong, turning weak
+
+  // Priority 2: short-term neutrality
+  if (Math.abs(rs1M) < 2)
+    return { label:'Stable',         color:'var(--txt-muted)', emoji:'→' }
+
+  // Priority 3: directional momentum (consistent with short-term signal)
+  if (rs1M > rs3M && rs1M > 0)
+    return { label:'Strengthening',  color:'#22C55E', emoji:'↗' }
+  if (rs1M < rs3M && rs1M < 0)
+    return { label:'Weakening',      color:'#EF4444', emoji:'↘' }
+
+  return { label:'Stable', color:'var(--txt-muted)', emoji:'→' }     // fallback
 }
 
 /* Industry → tickers mapping from UNIVERSE */
@@ -376,7 +389,7 @@ function BalanceView({ industries }) {
         {/* Diversification Opportunities */}
         <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'14px', flex:1 }}>
           <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase',
-            letterSpacing:'0.07em', marginBottom:10 }}>Potential Diversifiers</div>
+            letterSpacing:'0.07em', marginBottom:10 }}>Potential Balance Areas</div>
           <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:10, lineHeight:1.5 }}>
             Industries not heavily represented in your portfolio, with sufficient data and not in strong downtrend.
             Use ScanView to find specific candidates within each.
@@ -415,8 +428,9 @@ function BalanceView({ industries }) {
           <div style={{ marginTop:12, padding:'8px 10px', background:'rgba(99,102,241,0.08)',
             borderRadius:'var(--radius)', border:'1px solid rgba(99,102,241,0.2)', fontSize:10,
             color:'var(--txt-muted)', lineHeight:1.5 }}>
-            💡 These are <b style={{color:'var(--txt)'}}>structural diversification opportunities</b>,
-            not buy signals. Use ScanView → Conviction to find quality candidates within each industry.
+            💡 These are <b style={{color:'var(--txt)'}}>potential balance areas</b> based on industry exposure and current trend.
+            Does not yet account for historical return correlation — industries listed may still move similarly to your existing positions.
+            Use ScanView → Conviction to evaluate specific candidates.
           </div>
         </div>
       </div>
