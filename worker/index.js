@@ -1347,6 +1347,31 @@ function parseForm4XML(xml, accessionNo, filedDate) {
   return results
 }
 
+/* ── Insider classifier constants — versionable ─────────── */
+const INSIDER_WINDOW_DAYS                 = 90
+const MATERIAL_BUY_THRESHOLD_USD          = 1_000_000
+const ELEVATED_SELLING_THRESHOLD_USD      = 5_000_000
+const ELEVATED_SELLING_NET_THRESHOLD_USD  = 1_000_000
+const ELEVATED_SELLING_MIN_HOLDINGS_PCT   = 5          // % of pre-tx holdings to flag
+const INSIDER_CLASSIFIER_VERSION          = 'insider-v1.0'
+
+/* ── Accurate, neutral code descriptions (SEC official meanings) ─────── */
+const TX_CODE_LABEL = {
+  P: 'Open-market purchase',
+  S: 'Open-market sale',
+  A: 'Grant or award',
+  D: 'Disposition to issuer',
+  F: 'Tax withholding via share surrender',
+  M: 'Exercise or conversion of derivative',
+  G: 'Gift',
+  X: 'In-the-money derivative exercise',
+  C: 'Conversion of derivative',
+  W: 'Inheritance',
+  I: 'Discretionary transaction (plan)',
+  U: 'Tender of shares in an exchange offer',
+}
+const COMP_CODES = ['F', 'M', 'X', 'C', 'A']
+
 /* ── Summarise transactions into the UI payload ─────────── */
 function computeInsiderSummary(transactions, debug = {}) {
   // Discretionary: open-market buys (P) and sells (S)
@@ -1355,7 +1380,6 @@ function computeInsiderSummary(transactions, debug = {}) {
   const sales         = discretionary.filter(tx => tx.transaction_code === 'S')
 
   // Compensation: RSU vesting (M), tax withholding (F), option exercise (X)
-  const COMP_CODES = ['F', 'M', 'X', 'C']
   const compensation = transactions
     .filter(tx => COMP_CODES.includes(tx.transaction_code))
     .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
@@ -1368,13 +1392,38 @@ function computeInsiderSummary(transactions, debug = {}) {
   const allSales10b51  = sales.length > 0 && sales.every(tx => tx.is_10b5_1)
   const someSales10b51 = sales.some(tx => tx.is_10b5_1)
 
+  // Detect exercise-and-sell: M+S in same 90d period — usually compensation, not discretionary
+  const hasExerciseAndSell = compensation.some(c => c.transaction_code === 'M') && sales.length > 0
+
+  // Max % of holdings sold by any single insider (0 if shares_after unavailable)
+  const maxSalePctHoldings = sales.reduce((max, tx) => {
+    if (!tx.shares_after || tx.shares_after <= 0 || !tx.shares) return max
+    return Math.max(max, (tx.shares / (tx.shares + tx.shares_after)) * 100)
+  }, 0)
+
   let classification
-  if (purchasesTotal > 1_000_000 && salesTotal < purchasesTotal)     classification = 'Material Insider Buying'
-  else if (purchases.length > 0 && sales.length === 0)               classification = 'Constructive'
-  else if (allSales10b51)                                             classification = 'Neutral'
-  else if (salesTotal > 5_000_000 && !allSales10b51)                 classification = 'Elevated Selling'
-  else if (netTotal < -1_000_000  && !allSales10b51)                 classification = 'Elevated Selling'
-  else                                                                classification = 'Neutral'
+  if (discretionary.length === 0) {
+    classification = 'Neutral'
+  } else if (purchasesTotal >= MATERIAL_BUY_THRESHOLD_USD && salesTotal < purchasesTotal) {
+    classification = 'Material Insider Buying'
+  } else if (purchases.length > 0 && sales.length === 0) {
+    classification = 'Constructive'
+  } else if (allSales10b51) {
+    classification = 'Neutral'
+  } else if (
+    salesTotal >= ELEVATED_SELLING_THRESHOLD_USD &&
+    !allSales10b51 && !hasExerciseAndSell
+  ) {
+    classification = 'Elevated Selling'
+  } else if (
+    netTotal <= -ELEVATED_SELLING_NET_THRESHOLD_USD &&
+    !allSales10b51 && !hasExerciseAndSell &&
+    maxSalePctHoldings >= ELEVATED_SELLING_MIN_HOLDINGS_PCT
+  ) {
+    classification = 'Elevated Selling'
+  } else {
+    classification = 'Neutral'
+  }
 
   // Key event: person who sold the highest % of their holdings
   let keyEvent = null, maxPct = 0
@@ -1388,7 +1437,7 @@ function computeInsiderSummary(transactions, debug = {}) {
     keyEvent = purchases.reduce((best, tx) => (tx.value_usd > (best?.value_usd || 0) ? tx : best), null)
   }
 
-  const COMP_LABEL = { F:'Tax withholding', M:'RSU/Option vest', X:'Option exercise', C:'Conversion' }
+  // Use module-level TX_CODE_LABEL for all code descriptions
 
   return {
     period: '90d', purchasesTotal, salesTotal, netTotal,
@@ -1398,11 +1447,14 @@ function computeInsiderSummary(transactions, debug = {}) {
       name:    keyEvent.person_name,
       title:   keyEvent.person_title,
       action:  keyEvent.transaction_code === 'S' ? 'sold' : 'bought',
-      pctOfHoldings: keyEvent.pctSold != null ? parseFloat(keyEvent.pctSold.toFixed(1)) : null,
+      // pctOfHoldings: null when shares_after is unavailable — never estimate
+      pctOfHoldings: (keyEvent.pctSold != null && keyEvent.pctSold > 0 && keyEvent.shares_after > 0)
+        ? parseFloat(keyEvent.pctSold.toFixed(1)) : null,
       value:   keyEvent.value_usd,
       shares:  keyEvent.shares,
       date:    keyEvent.transaction_date || keyEvent.filed_date,
       is10b51: keyEvent.is_10b5_1 === 1,
+      exerciseAndSell: hasExerciseAndSell,
     } : null,
     recentTransactions: [...discretionary]
       .sort((a, b) => b.filed_date.localeCompare(a.filed_date))
@@ -1414,13 +1466,15 @@ function computeInsiderSummary(transactions, debug = {}) {
       })),
     compensationActivity: compensation.map(tx => ({
       name: tx.person_name, title: tx.person_title,
-      label: COMP_LABEL[tx.transaction_code] || tx.transaction_code,
+      label: TX_CODE_LABEL[tx.transaction_code] || tx.transaction_code,
       shares: tx.shares, value: tx.value_usd,
       date: tx.transaction_date || tx.filed_date,
     })),
     noActivity:          discretionary.length === 0,
     hasCompensation:     compensation.length > 0,
     totalRawTx:          transactions.length,
+    classifierVersion:   INSIDER_CLASSIFIER_VERSION,
+    hasExerciseAndSell:  hasExerciseAndSell,
     // Debug info — visible in the UI to diagnose parsing issues
     _debug: {
       filingsFound:    debug.filingsFound    ?? 0,

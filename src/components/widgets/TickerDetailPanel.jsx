@@ -1363,7 +1363,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     'Neutral':                 'var(--surface-up)',
                     'Elevated Selling':        'rgba(239,68,68,0.12)',
                   }[d.classification] ?? 'var(--surface-up)'
-                  const txLabel = { P:'Buy', S:'Sell', F:'Tax whd.', M:'Option', G:'Gift', D:'Disp.' }
+                  const txLabel = {
+                    P:'Open-market buy', S:'Open-market sale', A:'Grant/award',
+                    D:'Disposition to issuer', F:'Tax withholding', M:'Derivative exercise/conv.',
+                    G:'Gift', X:'In-the-money exercise', C:'Conversion', W:'Inheritance',
+                  }
                   return (
                     <>
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
@@ -1376,22 +1380,38 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                           {d.classification}
                         </span>
                       </div>
-                      {/* Debug strip — always shown so user can see what was fetched */}
-                      {d._debug && (
-                        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
-                          {[
-                            { k:'Filings found',  v: d._debug.filingsFound },
-                            { k:'New parsed',     v: d._debug.newParsed },
-                            { k:'Total tx found', v: d._debug.rawTxCount },
-                            ...Object.entries(d._debug.codeCounts || {}).map(([c,n]) => ({ k:`Code ${c}`, v:n })),
-                          ].map(({ k, v }) => (
-                            <div key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
-                              background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
-                              {k}: <span style={{ color:'var(--txt-sec)', fontWeight:600 }}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {/* Debug diagnostics — collapsible, hidden by default */}
+                      {d._debug && (() => {
+                        const [showDbg, setShowDbg] = React.useState(false)
+                        const codes = Object.entries(d._debug.codeCounts || {})
+                        return (
+                          <div style={{ marginBottom:10 }}>
+                            <button onClick={() => setShowDbg(v => !v)} style={{
+                              fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                              background:'transparent', border:'none', cursor:'pointer', padding:0,
+                              textDecoration:'underline dotted',
+                            }}>
+                              {showDbg ? '▲' : '▼'} Data diagnostics
+                            </button>
+                            {showDbg && (
+                              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
+                                {[
+                                  { k:'Filings found',   v: d._debug.filingsFound },
+                                  { k:'New parsed',      v: d._debug.newParsed },
+                                  { k:'Total tx',        v: d._debug.rawTxCount },
+                                  ...codes.map(([c,n]) => ({ k:`Code ${c}`, v:n })),
+                                  { k:'Classifier', v: d.classifierVersion },
+                                ].map(({ k, v }) => (
+                                  <span key={k} style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                                    background:'var(--surface-up)', padding:'2px 6px', borderRadius:4 }}>
+                                    {k}: <span style={{ color:'var(--txt-sec)', fontWeight:600 }}>{v}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
 
                       {d.noActivity ? (
                         <div style={{ padding:'12px', background:'var(--surface-up)', borderRadius:'var(--radius)', marginBottom:12 }}>
@@ -1425,18 +1445,30 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                               <div style={{ fontSize:9, fontWeight:700, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Most Material Event</div>
                               <div style={{ fontSize:11, fontWeight:700, color:'var(--txt)', marginBottom:2 }}>
                                 {d.keyEvent.title} {d.keyEvent.action === 'sold' ? 'sold' : 'bought'}{' '}
-                                {d.keyEvent.pctOfHoldings ? `${d.keyEvent.pctOfHoldings}% of direct holdings` : fmtM(d.keyEvent.value)}
+                                {d.keyEvent.pctOfHoldings != null
+                                  ? `${d.keyEvent.pctOfHoldings}% of direct holdings`
+                                  : fmtM(d.keyEvent.value)}
+                                {d.keyEvent.exerciseAndSell && (
+                                  <span style={{ fontSize:9, color:'var(--amber)', marginLeft:6 }}>exercise-and-sell</span>
+                                )}
                               </div>
                               <div style={{ display:'flex', gap:12, fontSize:10, color:'var(--txt-muted)', flexWrap:'wrap' }}>
                                 <span>{d.keyEvent.name}</span>
                                 <span>{d.keyEvent.date}</span>
                                 <span style={{ fontFamily:'var(--mono)' }}>{fmtM(d.keyEvent.value)}</span>
                               </div>
-                              <div style={{ marginTop:5, fontSize:10 }}>
-                                <span style={{ color:'var(--txt-muted)' }}>10b5-1 plan: </span>
-                                <span style={{ color:d.keyEvent.is10b51?'var(--amber)':'var(--txt-sec)', fontWeight:600 }}>
-                                  {d.keyEvent.is10b51 ? 'Yes — pre-scheduled' : 'No'}
+                              <div style={{ display:'flex', gap:12, marginTop:5, fontSize:10, flexWrap:'wrap' }}>
+                                <span>
+                                  <span style={{ color:'var(--txt-muted)' }}>10b5-1: </span>
+                                  <span style={{ color:d.keyEvent.is10b51?'var(--amber)':'var(--txt-sec)', fontWeight:600 }}>
+                                    {d.keyEvent.is10b51 ? 'Yes — pre-scheduled' : 'No'}
+                                  </span>
                                 </span>
+                                {d.keyEvent.pctOfHoldings == null && (
+                                  <span style={{ color:'var(--txt-muted)', fontStyle:'italic' }}>
+                                    % of holdings unavailable
+                                  </span>
+                                )}
                               </div>
                             </div>
                           )}
@@ -1500,8 +1532,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       )}
 
                       <div style={{ marginTop:14, fontSize:9, color:'var(--txt-muted)', lineHeight:1.5 }}>
-                        Source: SEC EDGAR Form 4. Only open-market buys (P) and discretionary sales (S) counted.
-                        Tax withholding (F), option exercises (M), gifts (G) and entity transfers (D) excluded from classification.
+                        Source: SEC EDGAR Form 4 filings (data.sec.gov). Classification uses only open-market
+                        purchases (P) and sales (S). Compensation-related codes (F, M, X, A, D, G) are
+                        excluded from totals but displayed separately when reported. Classifier: {d.classifierVersion}.
                       </div>
                     </>
                   )
