@@ -127,8 +127,8 @@ export function calcForecast(closes, bars = 12) {
     const proj = intercept + slope * x
     return {
       forecast: parseFloat(proj.toFixed(2)),
-      fUpper:   parseFloat((proj + 1.5 * rmse).toFixed(2)),
-      fLower:   parseFloat((proj - 1.5 * rmse).toFixed(2)),
+      fUpper:   parseFloat((proj + 2.2 * rmse).toFixed(2)),
+      fLower:   parseFloat((proj - 2.2 * rmse).toFixed(2)),
     }
   })
 }
