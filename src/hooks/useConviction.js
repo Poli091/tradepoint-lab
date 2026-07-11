@@ -20,11 +20,22 @@ export function useConviction(ticker, prices = {}) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const compute = useCallback(async () => {
+  const compute = useCallback(async (forceRefresh = false) => {
     if (!ticker) return
     if (!getWorkerUrl()) {
       setError('Worker not configured — add URL in Settings')
       return
+    }
+
+    // Check local cache first — skip network call if still fresh
+    if (!forceRefresh) {
+      const cachedFund = cache.getFund(ticker)
+      const cachedOhlcv = cache.getOHLCV(ticker, '1Y')
+      const cachedSpy   = cache.getOHLCV('SPY', '1Y')
+      if (cachedFund && result) {
+        // Already have a result and local cache is fresh — no need to re-run
+        return
+      }
     }
 
     setLoading(true)
@@ -33,13 +44,15 @@ export function useConviction(ticker, prices = {}) {
     try {
       // Fetch all data in parallel where possible
       const [fundResult, ohlcvResult, spyResult] = await Promise.all([
-        workerAPI.fundamentals(ticker),
+        workerAPI.fundamentals(ticker, forceRefresh),
         workerAPI.ohlcv(ticker, '1Y'),
         workerAPI.ohlcv('SPY', '1Y'),
       ])
 
       if (!fundResult?.data) throw new Error('No fundamentals data for ' + ticker)
-      cache.setFund(ticker, fundResult.data)  // update local freshness tracker
+      // Use Worker's fetchedAt so "Xd ago" reflects when KV was actually populated
+      const fetchedAt = fundResult.meta?.fetchedAt ?? Date.now()
+      cache.setFund(ticker, fundResult.data, fetchedAt)
 
       const conviction = runConviction({
         fundamentals: fundResult.data,
@@ -63,5 +76,6 @@ export function useConviction(ticker, prices = {}) {
 
   useEffect(() => { compute() }, [compute])
 
-  return { result, loading, error, recompute: compute }
+  const recompute = () => compute(true)  // force-refresh bypasses local + KV cache
+  return { result, loading, error, recompute }
 }

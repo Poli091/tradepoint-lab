@@ -27,6 +27,22 @@ export const TTL = {
 }
 
 /* ── Core operations ────────────────────────────────────── */
+// Set cache entry using an external timestamp (e.g. from Worker KV metadata)
+export function cacheSetAt(key, data, ttlMs, fetchedAtMs) {
+  try {
+    const at = fetchedAtMs || Date.now()
+    localStorage.setItem(PREFIX + key, JSON.stringify({
+      data,
+      fetchedAt: at,
+      expiresAt: at + ttlMs,
+    }))
+    return true
+  } catch (e) {
+    console.warn('[cache] set failed:', key, e.message)
+    return false
+  }
+}
+
 export function cacheSet(key, data, ttlMs) {
   try {
     localStorage.setItem(PREFIX + key, JSON.stringify({
@@ -96,7 +112,7 @@ export const cache = {
   getNews:      (t)    => cacheGet(`news_${t}`),
   setEarnings:  (d)    => cacheSet(`earnings_cal`,  d, TTL.EARNINGS_CAL),
   getEarnings:  ()     => cacheGet(`earnings_cal`),
-  setFund:      (t, d) => cacheSet(`fund_${t}`,     d, TTL.FUNDAMENTALS),
+  setFund:      (t, d, fetchedAt) => cacheSetAt(`fund_${t}`, d, TTL.FUNDAMENTALS, fetchedAt),
   getFund:      (t)    => cacheGet(`fund_${t}`),
   deleteFund:   (t)    => cacheDelete(`fund_${t}`),
   infoFund:     (t)    => cacheInfo(`fund_${t}`),
