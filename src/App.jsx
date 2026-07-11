@@ -65,7 +65,8 @@ function AppInner() {
   const [positionSeed,  setPositionSeed]  = useState(0)
 
   // Use localStorage overrides if available (bridge before multi-user D1)
-  const basePositions = useMemo(() => loadOverrides() ?? null, [positionSeed])
+  const { authenticated } = useAuth()
+  const basePositions = useMemo(() => loadOverrides() ?? null, [positionSeed, authenticated])
 
   const liveVisiblePositions = useMemo(() => {
     // Use localStorage overrides if available, else hardcoded defaults

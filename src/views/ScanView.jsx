@@ -11,11 +11,25 @@
  * Results are auto-saved to D1 via useConviction.
  */
 
-import { useState, useRef } from 'react'
-import { Search, X, Clock, ChevronRight } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { getUserId } from '../auth/webauthn.js'
+import { Search, X, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 import { SECTORS }        from '../data/tickerUniverse.js'
 import { getGrade }       from '../conviction/grade/index.js'
+
+
+/* ── Persistent scan history ─────────────────────────── */
+function getScanKey() {
+  const uid = getUserId()
+  return uid ? `tp_${uid}_scan_history` : 'tp_scan_history'
+}
+function loadScanHistory() {
+  try { return JSON.parse(localStorage.getItem(getScanKey()) ?? '[]') } catch { return [] }
+}
+function saveScanHistory(items) {
+  try { localStorage.setItem(getScanKey(), JSON.stringify(items)) } catch {}
+}
 
 /* ── Quick-access sector groups ──────────────────────────── */
 const SECTOR_GROUPS = [
@@ -75,7 +89,7 @@ function ScanBadge({ ticker, score, grade, onClick, active }) {
 export default function ScanView() {
   const [inputValue,   setInputValue]   = useState('')
   const [activeTicker, setActiveTicker] = useState(null)
-  const [scanHistory,  setScanHistory]  = useState([])  // [{ ticker, score, grade }]
+  const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
   const inputRef = useRef(null)
 
   const handleScan = (ticker) => {
@@ -86,13 +100,20 @@ export default function ScanView() {
     // Add to history if not already there
     setScanHistory(prev => {
       const existing = prev.find(h => h.ticker === t)
-      if (existing) return [existing, ...prev.filter(h => h.ticker !== t)]
-      return [{ ticker: t, score: null, grade: null }, ...prev].slice(0, 20)
+      const next = existing
+        ? [existing, ...prev.filter(h => h.ticker !== t)]
+        : [{ ticker: t, score: null, grade: null }, ...prev].slice(0, 20)
+      saveScanHistory(next)
+      return next
     })
   }
 
   const updateHistory = (ticker, score, grade) => {
-    setScanHistory(prev => prev.map(h => h.ticker === ticker ? { ...h, score, grade } : h))
+    setScanHistory(prev => {
+      const next = prev.map(h => h.ticker === ticker ? { ...h, score, grade } : h)
+      saveScanHistory(next)
+      return next
+    })
   }
 
   return (
@@ -148,16 +169,44 @@ export default function ScanView() {
           {/* Recent scans */}
           {scanHistory.length > 0 && (
             <>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, marginTop:4 }}>
-                <Clock size={11} color="var(--txt-muted)" />
-                <span style={{ fontSize:10, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
-                  Recent scans
-                </span>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, marginTop:4 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <Clock size={11} color="var(--txt-muted)" />
+                  <span style={{ fontSize:10, fontWeight:600, color:'var(--txt-muted)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
+                    Recent scans
+                  </span>
+                </div>
+                <button onClick={() => { setScanHistory([]); saveScanHistory([]) }}
+                  title="Clear list"
+                  style={{ display:'flex', alignItems:'center', gap:4, fontSize:9,
+                    color:'var(--txt-muted)', background:'transparent', border:'none',
+                    cursor:'pointer', padding:'2px 6px', borderRadius:'var(--radius)' }}>
+                  <Trash2 size={10} /> Clear
+                </button>
               </div>
               {scanHistory.map(h => (
-                <ScanBadge key={h.ticker} ticker={h.ticker} score={h.score} grade={h.grade}
-                  active={activeTicker === h.ticker}
-                  onClick={() => handleScan(h.ticker)} />
+                <div key={h.ticker} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <div style={{ flex:1 }}>
+                    <ScanBadge ticker={h.ticker} score={h.score} grade={h.grade}
+                      active={activeTicker === h.ticker}
+                      onClick={() => handleScan(h.ticker)} />
+                  </div>
+                  <button onClick={e => {
+                    e.stopPropagation()
+                    setScanHistory(prev => {
+                      const next = prev.filter(i => i.ticker !== h.ticker)
+                      saveScanHistory(next)
+                      return next
+                    })
+                    if (activeTicker === h.ticker) setActiveTicker(null)
+                  }}
+                    style={{ flexShrink:0, width:18, height:18, borderRadius:4,
+                      border:'none', background:'transparent', cursor:'pointer',
+                      color:'var(--txt-muted)', display:'flex', alignItems:'center',
+                      justifyContent:'center', opacity:0.6 }}>
+                    <X size={11} />
+                  </button>
+                </div>
               ))}
             </>
           )}

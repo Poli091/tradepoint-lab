@@ -160,6 +160,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [marketIntel, setMarketIntel] = useState(null)
   const [miLoading,   setMiLoading]   = useState(false)
   const [showAllHeadlines, setShowAllHeadlines] = useState(false)
+  const [addedToWl,    setAddedToWl]    = useState(false)
+  const [showAddPos,   setShowAddPos]   = useState(false)
+  const [addPosAcct,   setAddPosAcct]   = useState('Brokerage')
+  const [addPosQty,    setAddPosQty]    = useState('')
+  const [addPosPrice,  setAddPosPrice]  = useState('')
+  const [addPosSaved,  setAddPosSaved]  = useState(false)
   const [scoreHistory, setScoreHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
@@ -252,6 +258,32 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         .catch(() => setNews([]))
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddToWatchlist = () => {
+    const wl = loadWatchlist() ?? []
+    if (!wl.find(i => i.ticker === ticker)) {
+      saveWatchlist([...wl, { ticker, name: ticker }])
+    }
+    setAddedToWl(true)
+    setTimeout(() => setAddedToWl(false), 2000)
+  }
+
+  const handleAddPosition = () => {
+    const qty   = parseFloat(addPosQty)
+    const price = parseFloat(addPosPrice)
+    if (!qty || !price) return
+    const positions = loadOverrides() ?? []
+    if (!positions.find(p => p.ticker === ticker && p.account === addPosAcct)) {
+      saveOverrides([...positions, {
+        ticker, name: ticker, qty, avgPrice: price,
+        currentPrice: price, account: addPosAcct, conviction: 50, upside: 0,
+      }])
+    }
+    setAddPosSaved(true)
+    setShowAddPos(false)
+    setAddPosQty(''); setAddPosPrice('')
+    setTimeout(() => setAddPosSaved(false), 2000)
+  }
 
   return (
     <>

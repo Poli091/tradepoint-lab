@@ -48,7 +48,7 @@ function GradeBar({ counts, total }) {
           const n = counts[g.label] ?? 0
           if (!n) return null
           return <div key={g.label} title={`${g.label}: ${n}`}
-            style={{ width: `${(n/total)*100}%`, background: g.color, minWidth: 4 }} />
+            style={{ width: `${total > 0 ? (n/total)*100 : 0}%`, background: g.color, minWidth: 4 }} />
         })}
       </div>
       {/* Labels */}
