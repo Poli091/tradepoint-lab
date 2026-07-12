@@ -8,7 +8,7 @@ import Badge from '../components/ui/Badge.jsx'
 import ConvictionRing from '../components/ui/ConvictionRing.jsx'
 import EarningsEditor from '../components/widgets/EarningsEditor.jsx'
 import { EARNINGS } from '../data/earnings.js'
-import { POSITIONS } from '../data/positions.js'
+import { loadOverrides } from '../utils/positionsStorage.js'
 import { loadEarnings } from '../utils/earningsStorage.js'
 import { useLang } from '../context/LanguageContext.jsx'
 import { getGradeColor } from '../conviction/grade/index.js'
@@ -23,6 +23,7 @@ const TYPE_LABELS = {
 export default function CalendarView({ convictionResults = {}, prices = {} }) {
   const { t } = useLang()
   const [events,     setEvents]     = useState(() => loadEarnings() ?? EARNINGS)
+  const userPositions = loadOverrides() ?? []
   const [editorOpen, setEditorOpen] = useState(false)
 
   // Compute days until each event
@@ -55,7 +56,7 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
           </div>
         )}
         {withDays.map(event => {
-          const pos = POSITIONS.find(p => p.ticker === event.ticker)
+          const pos = userPositions.find(p => p.ticker === event.ticker)
           const cv  = convictionResults[event.ticker]
 
           return (
@@ -92,6 +93,11 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--txt-muted)' }}>
                     {event.date}
                   </span>
+                  {cv?.nextEarningsDate && cv.nextEarningsDate !== event.date && (
+                    <span style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic' }}>
+                      · Yahoo: {cv.nextEarningsDate} ({cv.earningsDateSource})
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--txt-sec)', lineHeight: 1.5 }}>
                   {event.note}
@@ -101,9 +107,14 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
               {/* Position stats */}
               {pos && (
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
-                    +{pos.upside.toFixed(1)}% analyst upside
-                  </div>
+                  {(() => {
+                    const upside = cv?.wallStreet?.upside ?? pos?.upside
+                    return upside && upside > 0 ? (
+                      <div style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
+                        +{upside.toFixed(1)}% analyst upside
+                      </div>
+                    ) : null
+                  })()}
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <ConvictionRing
                       score={cv?.finalScore ?? pos?.conviction ?? null}
