@@ -1297,15 +1297,25 @@ async function handlePortfolioReview(request, keys, kv, db) {
 
   // Gate details
   const gateRich = gatePositions.map(p => {
-    const gType = p.conviction?.gate === 'gate1' ? 'Gate1(financials-capped-at-35)'
-                : p.conviction?.gate === 'gate2' ? 'Gate2(quality-capped-at-58)'
-                : p.conviction?.gate
-    return `${p.ticker}(${p.conviction?.score} ${p.conviction?.grade} ${gType})`
+    const cv = p.conviction ?? {}
+    let gType, cause = ''
+    if (cv.gate === 'gate1') {
+      gType = 'Gate1(financials-capped-at-35)'
+      cause = cv.components?.growth < 10 ? 'low-growth-score' : 'financial-breakdown'
+    } else if (cv.gate === 'gate2') {
+      gType = 'Gate2(quality-capped-at-58)'
+      const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
+      cause = `quality:${q}/20 strength:${s}/15 — both failed minimum threshold`
+    } else {
+      gType = cv.gate
+    }
+    return `${p.ticker}(${cv.score} ${cv.grade} ${gType} cause:${cause})`
   })
 
   // Portfolio status factors
-  const strongSellWt = positions.filter(p=>p.conviction?.grade==='STRONG SELL').reduce((s,p)=>s+(p.weight||0),0)
-  const sellCount    = positions.filter(p=>['SELL','STRONG SELL'].includes(p.conviction?.grade)).length
+  const sellPositions = positions.filter(p=>['SELL','STRONG SELL'].includes(p.conviction?.grade))
+  const sellCount    = sellPositions.length
+  const sellWeight   = sellPositions.reduce((s,p)=>s+(p.weight||0),0)
   const highSevCount = nearDowngrade.filter(d=>{const next=NEXT_GRADE[d.grade];return GRADE_SEVERITY[`${d.grade}→${next}`]==='High'}).length
 
   const metricsText = `GRADE DISTRIBUTION: ${Object.entries(gradeCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(', ')}
@@ -1320,11 +1330,12 @@ ${gateRich.length>0?gateRich.join(', '):'none'}
 NEAR DOWNGRADE (severity already computed — use it):
 ${nearDowngradeRich.length>0?nearDowngradeRich.join(', '):'none'}
 Note: Low severity (STRONG BUY→BUY) is informational only — do NOT put in Watch Zone.
+Group near-downgrades by severity in footer: High=[list], Medium=[list], Low=[list]
 
 TOP 3 BY WEIGHT: ${top3.map(p=>`${p.ticker} ${(p.weight||0).toFixed(1)}%`).join(', ')} = ${top3Pct.toFixed(1)}% combined
 
 PORTFOLIO STATUS FACTORS (cite these when justifying Cautious/Neutral/Defensive):
-Strong Sell weight: ${strongSellWt.toFixed(1)}% | Sell-rated count: ${sellCount} | Active gates: ${gatePositions.length} | High-severity near-downgrades: ${highSevCount}
+SELL or STRONG SELL: ${sellCount} positions, ${sellWeight.toFixed(1)}% total portfolio weight | Active gates: ${gatePositions.length} | High-severity near-downgrades: ${highSevCount}
 
 UPCOMING EARNINGS (next 21d): ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
 SCORE CHANGES VS SNAPSHOT: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'none'}`
@@ -1373,6 +1384,9 @@ Rules:
 - GATES: name the Gate type (Gate1/Gate2) and its cap rule in the reason field.
 - DIVERSITY: Spotlight and Watch Zone must not repeat the same ticker. Spotlight = most material. Watch Zone = additional positions not in Spotlight.
 - PORTFOLIO STATUS: cite the exact numbers from PORTFOLIO STATUS FACTORS when explaining the posture choice.
+- LANGUAGE: avoid dramatic phrases like "significant decline in its rating". Instead use: "crosses from HOLD to SELL threshold" or "LT score falls below 55".
+- CONCLUSION: end narratives with a specific risk summary, not generic phrases like "careful monitoring". Name the actual risks.
+- GATES: explain the specific condition that triggered each gate (use cause: from the payload), not just the gate name.
 - spotlight max 3. weeklyPriority is not a trade order. Use only provided data. Raw JSON only.`
 
   const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1450,7 +1464,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.0',
+      prompt_version: 'pr-v2.1',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },

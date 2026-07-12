@@ -197,7 +197,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.0', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.1', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
@@ -483,7 +483,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
           <div>
             <div style={{ fontSize:13, fontWeight:700, color:'var(--txt)' }}>Portfolio Weekly Review</div>
             <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>
-              AI narrative + deterministic metrics · Cached 7 days
+              AI narrative + deterministic metrics · Cached for current portfolio state
             </div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
