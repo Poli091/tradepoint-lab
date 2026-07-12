@@ -3,7 +3,8 @@
  * Earnings catalyst calendar with decision types and conviction rings.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { workerAPI } from '../utils/api/worker.js'
 import Badge from '../components/ui/Badge.jsx'
 import ConvictionRing from '../components/ui/ConvictionRing.jsx'
 import EarningsEditor from '../components/widgets/EarningsEditor.jsx'
@@ -22,23 +23,55 @@ const TYPE_LABELS = {
 
 export default function CalendarView({ convictionResults = {}, prices = {} }) {
   const { t } = useLang()
-  const [events,     setEvents]     = useState(() => loadEarnings() ?? EARNINGS)
+  const [events,        setEvents]        = useState(() => loadEarnings() ?? EARNINGS)
+  const [editorOpen,    setEditorOpen]    = useState(false)
+  const [earningsDates, setEarningsDates] = useState({})
   const userPositions = loadOverrides() ?? []
-  const [editorOpen, setEditorOpen] = useState(false)
+
+  // Direct fetch earnings dates — independent of conviction engine
+  // Works from 90d KV cache, no extra writes needed
+  useEffect(() => {
+    if (!userPositions.length) return
+    let done = false
+    ;(async () => {
+      const acc = {}
+      for (const pos of userPositions) {
+        try {
+          const res = await workerAPI.fundamentals(pos.ticker)
+          if (res?.data?.nextEarningsDate) {
+            acc[pos.ticker] = { date: res.data.nextEarningsDate, source: res.data.earningsDateSource ?? 'yahoo' }
+          }
+        } catch { /* skip */ }
+        if (done) return
+      }
+      setEarningsDates(acc)
+    })()
+    return () => { done = true }
+  }, [userPositions.length]) // eslint-disable-line
 
   // Compute days until each event
   const now = new Date()
 
-  // Auto-generate earnings events from conviction results (Yahoo Finance dates)
-  const autoEvents = Object.entries(convictionResults)
-    .filter(([, cv]) => cv?.nextEarningsDate)
-    .map(([ticker, cv]) => ({
-      ticker,
-      date:  cv.nextEarningsDate,
-      type:  'monitor',
-      note:  `Next earnings · Source: ${cv.earningsDateSource ?? 'auto'}`,
-      _auto: true,
-    }))
+  // Auto-generate earnings events from:
+  // 1. conviction results (if available)
+  // 2. direct fundamentals fetch (earningsDates state)
+  const autoEvents = userPositions
+    .map(pos => {
+      const cv = convictionResults[pos.ticker]
+      const dateFromCV     = cv?.nextEarningsDate
+      const dateFromDirect = earningsDates[pos.ticker]?.date
+      const date   = dateFromCV ?? dateFromDirect
+      const source = dateFromCV ? (cv.earningsDateSource ?? 'auto') : (earningsDates[pos.ticker]?.source ?? 'auto')
+      if (!date) return null
+      return {
+        ticker: pos.ticker,
+        date,
+        type:  'monitor',
+        note:  `Next earnings · Source: ${source}`,
+        _auto: true,
+      }
+    })
+    .filter(Boolean)
 
   // Merge: manual events take priority over auto (dedup by ticker)
   const manualTickers = new Set(events.map(e => e.ticker))
