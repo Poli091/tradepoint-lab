@@ -86,8 +86,12 @@ function calcStrength(ltResult, swResult, alignment) {
   const analysts = analystSentiment(fund)
 
   const ltScore = [0,25,50,85,100][ltR]??50
-  const swScore = swR!=null?([0,25,50,85,100][swR]??50):50
-  const swW = swR!=null?0.25:0.15
+  // When swing is null (insufficient OHLCV), use 50 as neutral imputed score.
+  // 50 is NOT an observed score — it avoids false bearish bias from missing data.
+  // swing_score_imputed: true when swResult is null (for future audit trail)
+  const SWING_NEUTRAL = 50   // neutral imputed score — not observed
+  const swScore = swR!=null ? ([0,25,50,85,100][swR]??SWING_NEUTRAL) : SWING_NEUTRAL
+  const swW = swR!=null ? 0.25 : 0.15   // lower weight when swing unavailable
 
   const total = ltScore*0.35 + swScore*swW + (alignment??50)*0.20
               + (analysts?.score??50)*0.15
