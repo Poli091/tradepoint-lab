@@ -393,6 +393,12 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
       const seen = new Set(storedBars.map(b => b.bar_date))
       for (const b of allNewBars) { if (!seen.has(b.bar_date)) { allBars.push(b); seen.add(b.bar_date) } }
       allBars.sort((a, b) => a.bar_date.localeCompare(b.bar_date))
+
+      // Continuity validation — flags boundary gaps and data quality issues
+      const continuity = validateOHLCV(allBars)
+      if (continuity.warnings) {
+        console.warn('[OHLCV continuity]', t, range, JSON.stringify(continuity.warnings.slice(0,3)))
+      }
     }
   }
 
@@ -2350,6 +2356,70 @@ async function yahooTargetPrice(ticker) {
   return r?.target ?? null
 }
 
+
+/* ── OHLCV Segment Continuity Validator ─────────────────────────────────
+   Checks for anomalous gaps between source boundaries and basic data quality.
+   Returns {ok, warnings, validBars} — never discards data, only flags.
+─────────────────────────────────────────────────────────────────────── */
+function validateOHLCV(bars) {
+  const warnings = []
+  const seen = new Set()
+  let prev = null
+
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i]
+
+    // 1. Duplicate bar_date
+    if (seen.has(b.bar_date)) {
+      warnings.push({ type: 'duplicate', bar_date: b.bar_date })
+      continue   // skip exact duplicate
+    }
+    seen.add(b.bar_date)
+
+    // 2. OHLC sanity
+    if (b.low != null && b.high != null && b.low > b.high) {
+      warnings.push({ type: 'invalid_ohlc', bar_date: b.bar_date, low: b.low, high: b.high })
+    }
+
+    // 3. Negative volume
+    if (b.volume != null && b.volume < 0) {
+      warnings.push({ type: 'negative_volume', bar_date: b.bar_date, volume: b.volume })
+    }
+
+    // 4. Source boundary gap check
+    if (prev && prev._source !== b._source && prev.close && b.close) {
+      const gapPct = Math.abs((b.close - prev.close) / prev.close * 100)
+      if (gapPct > 30) {
+        warnings.push({
+          type:         'boundary_gap',
+          status:       'possible_adjustment_mismatch',
+          boundaryDate: b.bar_date,
+          gapPct:       parseFloat(gapPct.toFixed(1)),
+          sources:      [prev._source ?? 'alpaca', b._source ?? 'alpaca'],
+          prevClose:    prev.close,
+          nextClose:    b.close,
+        })
+      }
+    }
+
+    // 5. Internal gap > 7 calendar days (non-holiday weekday gap)
+    if (prev) {
+      const dayGap = (new Date(b.bar_date) - new Date(prev.bar_date)) / 86_400_000
+      if (dayGap > 7) {
+        warnings.push({ type: 'gap', from: prev.bar_date, to: b.bar_date, calendarDays: Math.round(dayGap) })
+      }
+    }
+
+    prev = b
+  }
+
+  return {
+    ok:       warnings.filter(w => w.type === 'boundary_gap' || w.type === 'invalid_ohlc').length === 0,
+    barCount: bars.length,
+    warnings: warnings.length > 0 ? warnings : null,
+  }
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -2430,7 +2500,11 @@ export default {
           return await handleGetHistory(param1, db)
         case 'cache':
           if (param1 === 'info')  return await handleCacheInfo(param2, kv)
-          if (param1 === 'clear') return await handleCacheClear(param2, kv)
+          if (param1 === 'clear') {
+            if (!keys.finnhub && !keys.groq && !keys.alpacaKey)
+              return json({ error: 'API key required to clear cache' }, 401)
+            return await handleCacheClear(param2, kv)
+          }
           return json({ error: `Unknown cache action: ${param1}` }, 400)
         default:
           return json({ error: `Unknown endpoint: ${type}` }, 404)
