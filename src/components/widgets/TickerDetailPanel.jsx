@@ -151,18 +151,18 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [activeTab, setActiveTab] = useState('score')
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
 
-  // Pre-compute alignment value for Decision Engine
-  const altResult = useMemo(() => {
+  // Always compute swing result — used for alignment, and displayed when mode === 'swing'
+  const swingResult = useMemo(() => {
     if (!result) return null
     try {
-      if (mode === 'long-term') {
-        const ohlcv    = result.ohlcv    ?? []
-        const spyOhlcv = result.spyOhlcv ?? []
-        return runSwingConviction(result.fundamentalsData, ohlcv, spyOhlcv)
-      }
-      return null  // in swing mode, long-term is already available as the other hook
+      const ohlcv    = result.ohlcv    ?? []
+      const spyOhlcv = result.spyOhlcv ?? []
+      return runSwingConviction(result.fundamentalsData, ohlcv, spyOhlcv)
     } catch { return null }
-  }, [result, mode])
+  }, [result?.fundamentalsData, result?.ohlcv, result?.spyOhlcv]) // eslint-disable-line
+
+  // Backward compat alias used by alignment and decision engine
+  const altResult = swingResult
   const [aiData,    setAiData]    = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState(null)
@@ -361,7 +361,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
-            {mode === 'long-term' && altResult && result && (() => {
+            {swingResult && result && (() => {
               const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
               const swR = GRADE_RANK_MAP[altResult.grade] ?? 2
               const dist = Math.abs(ltR - swR)
@@ -448,19 +448,22 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               )
             })()}
 
-            {/* Mode toggle */}
-            <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
-              border:'1px solid var(--border)', overflow:'hidden', marginRight:4 }}>
-              {[['long-term','Long-Term'],['swing','Swing']].map(([m,label]) => (
-                <button key={m} onClick={() => { setMode(m); recompute() }} style={{
-                  padding:'4px 10px', border:'none', cursor:'pointer', fontSize:10, fontWeight:700,
-                  background: mode===m ? 'var(--accent)' : 'transparent',
-                  color:      mode===m ? '#fff'           : 'var(--txt-muted)',
-                  transition:'all 0.12s',
-                }}>
-                  {label}
-                </button>
-              ))}
+            {/* Detail analysis toggle — controls which breakdown is shown in score tab */}
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2 }}>
+              <div style={{ fontSize:8, color:'var(--txt-muted)', letterSpacing:'0.04em' }}>DETAIL VIEW</div>
+              <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
+                border:'1px solid var(--border)', overflow:'hidden' }}>
+                {[['long-term','LT Analysis'],['swing','Swing Analysis']].map(([m,label]) => (
+                  <button key={m} onClick={() => setMode(m)} style={{
+                    padding:'4px 10px', border:'none', cursor:'pointer', fontSize:10, fontWeight:700,
+                    background: mode===m ? 'var(--accent)' : 'transparent',
+                    color:      mode===m ? '#fff'           : 'var(--txt-muted)',
+                    transition:'all 0.12s',
+                  }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Quick Add dropdown — state at component top level (Rules of Hooks) */}
@@ -631,7 +634,120 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             <>
               {activeTab === 'score' && (
                 <>
-{/* ══ SECTION 1: CONVICTION SCORE ══ */}
+
+              {/* ══ SWING ANALYSIS DETAIL (when mode === 'swing') ══ */}
+              {mode === 'swing' && swingResult && (
+                <div style={{ background:`${swingResult.gradeColor}11`, border:`1px solid ${swingResult.gradeColor}33`,
+                  borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+                    <div>
+                      <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                        <span style={{ fontFamily:'var(--mono)', fontSize:42, fontWeight:700,
+                          color:swingResult.gradeColor, lineHeight:1, letterSpacing:'-0.04em' }}>
+                          {swingResult.finalScore}
+                        </span>
+                        <span style={{ fontFamily:'var(--mono)', fontSize:14, color:'var(--txt-muted)' }}>/100</span>
+                      </div>
+                      <div style={{ fontFamily:'var(--mono)', fontSize:14, fontWeight:700,
+                        color:swingResult.gradeColor, marginTop:4 }}>
+                        {swingResult.grade} — Swing Timing
+                      </div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', textTransform:'uppercase',
+                        letterSpacing:'0.06em', marginBottom:4 }}>Setup</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:'var(--txt)' }}>
+                        {swingResult.setup}
+                      </div>
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>
+                        {swingResult.setupConfidence}% confidence
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Swing dimension bars */}
+                  {[
+                    { label:'EMA Structure',    s:swingResult.breakdown?.ema?.score,             max:20 },
+                    { label:'Relative Strength',s:swingResult.breakdown?.rs?.score,              max:15 },
+                    { label:'MACD Quality',     s:swingResult.breakdown?.macd?.score,            max:10 },
+                    { label:'Volume (RVOL)',     s:swingResult.breakdown?.rvol?.score,            max:10 },
+                    { label:'ADX / Trend',      s:swingResult.breakdown?.adx?.score,             max:10 },
+                    { label:'ATR Percentile',   s:swingResult.breakdown?.atrQuality?.score,      max:10 },
+                    { label:'Business Momentum',s:swingResult.breakdown?.businessMomentum?.score,max:10 },
+                    { label:'Earnings Catalyst',s:swingResult.breakdown?.earnings?.score,        max:5  },
+                    { label:'Setup Bonus',      s:swingResult.breakdown?.setupBonus?.score,      max:5  },
+                  ].map(d => d.s != null && (
+                    <DimBar key={d.label} label={d.label} score={d.s} max={d.max}
+                      color={swingResult.gradeColor} />
+                  ))}
+
+                  {/* Risk penalty */}
+                  {swingResult.riskPenalty < 0 && (
+                    <div style={{ fontSize:11, color:'var(--red)', fontFamily:'var(--mono)', marginTop:6 }}>
+                      Risk penalty {swingResult.riskPenalty}
+                    </div>
+                  )}
+
+                  {/* Setup reasons */}
+                  {swingResult.setupReasons?.length > 0 && (
+                    <div style={{ marginTop:12, borderTop:'1px solid var(--border)', paddingTop:10 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>
+                        Why {swingResult.setup}
+                      </div>
+                      {swingResult.setupReasons.map((r,i) => (
+                        <div key={i} style={{ fontSize:11, color:'var(--txt)', marginBottom:3 }}>
+                          · {r}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Exhaustion warning */}
+                  {swingResult.exhaustion?.exhausted && (
+                    <div style={{ marginTop:8, padding:'6px 10px', background:'var(--amber-dim)',
+                      border:'1px solid var(--amber)', borderRadius:'var(--radius)', fontSize:11,
+                      color:'var(--amber)' }}>
+                      ⚠ {swingResult.exhaustion.warning}
+                      <div style={{ fontSize:9, opacity:0.8, marginTop:2 }}>
+                        {swingResult.exhaustion.signals?.join(' · ')}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Entry levels */}
+                  {swingResult.levels && (
+                    <div style={{ marginTop:12, borderTop:'1px solid var(--border)', paddingTop:10 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
+                        Indicative Levels ({swingResult.setup})
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                        {[
+                          { label:'Entry',       value:swingResult.levels.entry,      color:'var(--txt)' },
+                          { label:'Stop Loss',   value:swingResult.levels.stopLoss,   color:'var(--red)' },
+                          { label:'Take Profit', value:swingResult.levels.takeProfit, color:'var(--green)' },
+                        ].map(l => (
+                          <div key={l.label} style={{ background:'var(--surface-up)',
+                            borderRadius:'var(--radius)', padding:'8px 10px' }}>
+                            <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:3,
+                              textTransform:'uppercase', letterSpacing:'0.05em' }}>{l.label}</div>
+                            <div style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700,
+                              color:l.color }}>${l.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:6, fontStyle:'italic' }}>
+                        R/R {swingResult.levels.riskReward}:1 · ATR {swingResult.levels.atrPct}% ·
+                        {swingResult.levels.note}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ══ SECTION 1: LT CONVICTION SCORE (shown when mode === 'long-term') ══ */}
+              {mode === 'long-term' && (
               <div style={{ background:result.gradeBg, border:`1px solid ${result.gradeColor}33`, borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
                 {/* Score + Grade + Confidence */}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
@@ -686,6 +802,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   {result.breakdown.valuation.value != null ? ` (${result.breakdown.valuation.value.toFixed(2)})` : ''}
                 </div>
               </div>
+
+              )}
 
               {/* ══ SCORE HISTORY ══ */}
               {(() => {
