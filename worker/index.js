@@ -1291,8 +1291,9 @@ Score changes vs last snapshot: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d
 
   // Fetch macro context — Worker computes regime, Groq only explains
   let macroText = 'MACRO CONTEXT: Not available (FRED_KEY not configured).'
+  let macroResult = null
   try {
-    const macroResult = await handleMacroContext(kv, keys.fred)
+    macroResult = await handleMacroContext(kv, keys.fred)
     const mc = macroResult.data
     if (mc) {
       const { series: s, computed: c } = mc
@@ -1330,11 +1331,16 @@ Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only prov
   const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method:'POST',
     headers:{'Authorization':`Bearer ${keys.groq}`,'Content-Type':'application/json'},
-    body:JSON.stringify({model:'llama-3.1-70b-versatile',
+    body:JSON.stringify({model:'llama-3.3-70b-versatile',
       messages:[{role:'user',content:prompt}],
       temperature:0.2,max_tokens:800,response_format:{type:'json_object'}})
   })
-  const gd = await gr.json()
+  if (!gr.ok) {
+    const errBody = await gr.text().catch(() => gr.status)
+    console.error('[PortfolioReview] Groq HTTP error:', gr.status, errBody.slice(0,200))
+    // Fall through to deterministic fallback
+  }
+  const gd = gr.ok ? await gr.json().catch(() => ({})) : {}
   let parsed = {}
   const rawContent = gd.choices?.[0]?.message?.content ?? '{}'
   try {
