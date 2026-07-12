@@ -345,7 +345,8 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
         const ltClear     = Math.abs(ltDelta) > LT_EDGE_THRESHOLD
         const timingClear = Math.abs(swDelta) > TIMING_EDGE_THRESHOLD
         const ltWinner    = ltEdgeTicker
-        const swWinner    = timingEdgeTicker
+        const swingDataOk = swingValidA && swingValidB
+    const swWinner    = timingEdgeTicker
         const ltLoserColor  = gc(ltWinner === tA ? rB.grade : rA.grade)
         const ltWinnerColor = gc(ltWinner === tA ? rA.grade : rB.grade)
 
@@ -361,7 +362,11 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
         } else if (ltClear && !timingClear) {
           // LT edge, timing comparable
           line1 = <><span style={{color:ltWinnerColor,fontWeight:700}}>{ltWinner}</span> has stronger long-term conviction.</>
-          line2 = <span style={{color:'var(--txt-muted)'}}>Current technical timing is comparable.</span>
+          line2 = <span style={{color:'var(--txt-muted)'}}>
+            {swingDataOk
+              ? 'Current technical timing is comparable between both tickers.'
+              : 'Technical timing unavailable — insufficient OHLCV data for one or both tickers.'}
+          </span>
         } else if (!ltClear && timingClear) {
           // Timing edge, LT comparable
           line1 = <span style={{color:'var(--txt-muted)'}}>Long-term conviction is comparable.</span>

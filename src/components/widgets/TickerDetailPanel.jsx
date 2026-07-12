@@ -199,10 +199,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const decision = useMemo(() => {
     if (!result) return null
     try {
-      return computeDecision(result, altResult, alignment_)
+      // When OHLCV < 50, swing data is insufficient — pass null instead of 0-score result
+      const swingForDecision = (result.ohlcv?.length ?? 0) >= 50 ? altResult : null
+      return computeDecision(result, swingForDecision, alignment_)
     } catch { return null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, altResult])
+  }, [result, altResult, alignment_])
 
   // Always compute swing for alignment display (uses cached OHLCV, no extra API calls)
   // ── Reset ALL tab-specific state when ticker changes ──────────
