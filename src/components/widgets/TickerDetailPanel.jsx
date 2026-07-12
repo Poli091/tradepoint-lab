@@ -1270,9 +1270,14 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       {result.shortInfo?.percentChangePrev != null && (
                         <Row label="Change vs Prior"
                           value={`${result.shortInfo.percentChangePrev >= 0 ? '+' : ''}${result.shortInfo.percentChangePrev.toFixed(1)}%`}
-                          sub="vs previous FINRA settlement"
-                          color={result.shortInfo.percentChangePrev > 10 ? 'var(--amber)'
-                            : result.shortInfo.percentChangePrev < -10 ? 'var(--green)' : undefined} />
+                          sub={result.shortInfo.changeTrend ?? 'vs previous FINRA settlement'}
+                          color={result.shortInfo.percentChangePrev >= 15 ? 'var(--amber)'
+                            : result.shortInfo.percentChangePrev <= -15 ? 'var(--green)' : undefined} />
+                      )}
+                      {result.shortInfo?.shortPctWarning === 'result_exceeds_100pct' && (
+                        <div style={{ fontSize:8, color:'var(--amber)', fontStyle:'italic', marginTop:2 }}>
+                          ⚠ Short % exceeds 100% — possible rehypothecation or data mismatch. Verify float source.
+                        </div>
                       )}
                       {result.instOwnership?.pct != null && (
                         <Row label="Institutional Own."

@@ -249,22 +249,49 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   try {
     const finra = await finraShortInterest(t)
     if (finra?.sharesShort != null) {
-      // Yahoo pre-computed shortPercentOfFloat uses Yahoo's own sharesShort,
-      // but we now have FINRA's official count. If float is available, recompute.
-      const yhShortInfo   = yhSummary?.shortInfo
-      const floatFromYahoo = null   // yhSummary doesn't expose raw floatShares yet
-      // For now: keep Yahoo's % but mark FINRA as the shares source
-      // TODO: extract ks.floatShares from Yahoo to recompute with FINRA shares
+      const yhShortInfo  = yhSummary?.shortInfo
+      const floatShares  = yhSummary?.floatShares   // extracted from Yahoo ks.floatShares
+
+      // Compute shortPct ourselves: FINRA shares ÷ Yahoo float
+      // More transparent than using Yahoo's pre-computed value
+      let shortPercentOfFloat = null
+      let shortPctWarning     = null
+      if (floatShares != null && floatShares > 0) {
+        const rawPct = (finra.sharesShort / floatShares) * 100
+        if (rawPct > 100) {
+          shortPctWarning = 'result_exceeds_100pct'  // rehypothecation or data unit mismatch
+          shortPercentOfFloat = parseFloat(rawPct.toFixed(2))
+        } else {
+          shortPercentOfFloat = parseFloat(rawPct.toFixed(2))
+        }
+      }
+
+      const label = shortPercentOfFloat == null ? null
+        : shortPercentOfFloat < 5  ? 'Low'
+        : shortPercentOfFloat < 10 ? 'Moderate'
+        : shortPercentOfFloat < 20 ? 'Elevated' : 'High'
+
+      // Change vs prior: classify direction
+      const chg = finra.percentChangePrev
+      const changeTrend = chg == null ? null
+        : chg <= -15 ? 'Falling materially'
+        : chg >= 15  ? 'Rising materially' : 'Stable'
+
       data.shortInfo = {
         sharesShort:          finra.sharesShort,
-        shortRatio:           finra.shortRatio ?? yhShortInfo?.shortRatio ?? null,
-        shortPercentOfFloat:  yhShortInfo?.shortPercentOfFloat ?? null,
+        shortRatio:           finra.shortRatio    ?? yhShortInfo?.shortRatio ?? null,
+        shortRatioSource:     finra.shortRatioSource ?? yhShortInfo?.shortRatioSource ?? null,
+        shortPercentOfFloat,
+        shortPctWarning,
+        floatShares,
         settlementDate:       finra.settlementDate,
         percentChangePrev:    finra.percentChangePrev,
-        label:                yhShortInfo?.label ?? null,
-        source:               'finra',
-        floatSource:          yhShortInfo ? 'yahoo' : null,
-        note:                 'Shares short: FINRA official (biweekly). Short % float: Yahoo float denominator.',
+        changeTrend,
+        label,
+        source:       'finra',
+        dataset:      finra.dataset,
+        floatSource:  floatShares != null ? 'yahoo' : null,
+        floatFetchedAt: Date.now(),
       }
     } else {
       // FINRA returned no data for this ticker — fallback to Yahoo
@@ -2399,16 +2426,21 @@ async function yahooQuoteSummary(ticker) {
     .sort()[0] ?? null
 
   // Short interest (biweekly FINRA data — may be up to 2 weeks stale)
+  // floatShares exposed for FINRA % recalculation
+  const floatSharesRaw = ks.floatShares?.raw ?? null
+
   const shortInfo = ks.sharesShort?.raw != null ? {
+    sharesShort:         ks.sharesShort.raw,
     shortPercentOfFloat: ks.shortPercentOfFloat?.raw != null
       ? parseFloat((ks.shortPercentOfFloat.raw * 100).toFixed(2)) : null,
-    shortRatio: ks.shortRatio?.raw ?? null,
-    shortSharesAsOf: ks.sharesShortPriorMonth?.raw != null
-      ? new Date((ks.dateShortInterest?.raw ?? 0) * 1000).toISOString().split('T')[0] : null,
-    label: ks.shortPercentOfFloat?.raw < 0.05 ? 'Low'
-      : ks.shortPercentOfFloat?.raw < 0.10 ? 'Moderate'
-      : ks.shortPercentOfFloat?.raw < 0.20 ? 'Elevated' : 'High',
-    source: 'yahoo', note: 'FINRA biweekly — may be up to 2 weeks stale',
+    shortRatio:         ks.shortRatio?.raw ?? null,
+    shortRatioSource:   'yahoo',
+    label: ks.shortPercentOfFloat?.raw != null
+      ? (ks.shortPercentOfFloat.raw < 0.05 ? 'Low'
+        : ks.shortPercentOfFloat.raw < 0.10 ? 'Moderate'
+        : ks.shortPercentOfFloat.raw < 0.20 ? 'Elevated' : 'High')
+      : null,
+    source: 'yahoo',
   } : null
 
   // Institutional ownership
@@ -2434,7 +2466,7 @@ async function yahooQuoteSummary(ticker) {
     prevClose:       priceModule.regularMarketPreviousClose?.raw ?? null,
   }
 
-  return { target, nextEarnings, shortInfo, instOwn, extHours }
+  return { target, nextEarnings, shortInfo, instOwn, extHours, floatShares: floatSharesRaw }
 }
 
 // Keep old name as thin wrapper for backward compat
@@ -2547,11 +2579,13 @@ async function finraShortInterest(ticker) {
     if (!Array.isArray(data) || data.length === 0) return null
     const r = data[0]
     return {
-      sharesShort:       r.shortInterest     ?? null,   // official share count
-      shortRatio:        r.shortParInterestRatio ?? null, // days to cover
-      settlementDate:    r.settlementDate    ?? null,   // FINRA reporting date
+      sharesShort:       r.shortInterest              ?? null,
+      shortRatio:        r.shortParInterestRatio      ?? null,  // days to cover from FINRA
+      shortRatioSource:  r.shortParInterestRatio != null ? 'finra' : null,
+      settlementDate:    r.settlementDate             ?? null,
       percentChangePrev: r.percentChangePreviousSettlementDate ?? null,
-      source: 'finra',
+      source:  'finra',
+      dataset: 'finra_equity_short_interest',   // NOT daily short-sale volume (Reg SHO)
     }
   } catch { return null }
 }
