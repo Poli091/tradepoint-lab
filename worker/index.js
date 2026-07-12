@@ -1323,7 +1323,7 @@ Return ONLY valid JSON:
   "spotlight": [{ "ticker": "...", "reason": "one sentence", "severity": "low|medium|high" }],
   "watchZone": [{ "ticker": "...", "reason": "one sentence", "trigger": "what to watch" }],
   "weeklyPriority": { "ticker": "...", "action": "Review|Monitor|Consider reducing|etc", "reason": "one sentence" },
-  "dataCoverage": { "positionsAnalyzed": ${len(positions)}, "historicalComparisonsAvailable": ${len(histMap)} }
+  "dataCoverage": { "positionsAnalyzed": ${positions.length}, "historicalComparisonsAvailable": ${Object.keys(histMap).length} }
 }
 Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only provided data. Raw JSON only.`
 
