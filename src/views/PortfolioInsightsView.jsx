@@ -413,6 +413,11 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                   Updated {Math.round((Date.now()-macro.fetchedAt)/3600000)}h ago
                 </span>
               )}
+              {macro.coverage && macro.coverage.status !== 'complete' && (
+                <span style={{ fontSize:8, color:'var(--amber)', fontWeight:600 }}>
+                  {macro.coverage.available}/{macro.coverage.expected} series
+                </span>
+              )}
             </div>
           </div>
 

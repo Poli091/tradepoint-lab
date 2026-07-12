@@ -1897,25 +1897,35 @@ async function handleSectorTrends(db, kv) {
 const MACRO_REGIME_VERSION = 'macro-v1.0'
 
 function computeOverallRegime(rateRegime, curveRegime, inflRegime) {
+  // Unknown in critical dimensions → cannot determine regime
   if (rateRegime === 'Unknown' || curveRegime === 'Unknown') return 'Partial Coverage'
-  const restrictive   = rateRegime === 'Restrictive' || rateRegime === 'Highly Restrictive'
-  const accommodative = rateRegime === 'Accommodative'
-  const inverted      = curveRegime === 'Inverted' || curveRegime === 'Deeply Inverted'
-  const normal        = curveRegime === 'Normal' || curveRegime === 'Steep'
-  const elevated      = inflRegime === 'Elevated'
-  const nearTarget    = inflRegime === 'Near Target' || inflRegime === 'Below Target'
-  const aboveTarget   = inflRegime === 'Above Target'
 
-  if (restrictive && inverted && (elevated || aboveTarget)) return 'Adverse'
-  if (restrictive && inverted)                               return 'Restrictive'
-  if (restrictive && !normal && elevated)                    return 'Mixed'
-  if (restrictive && normal && (elevated || aboveTarget))    return 'Mixed'
-  if (restrictive && normal && nearTarget)                   return 'Neutral'
-  if (rateRegime === 'Neutral-High' && elevated)             return 'Mixed'
-  if (rateRegime === 'Neutral-High')                         return 'Neutral'
-  if (accommodative && nearTarget)                           return 'Supportive'
-  if (accommodative)                                         return 'Accommodative'
-  return 'Neutral'
+  // Normalize to families — explicit to avoid label-mismatch bugs
+  // (e.g. 'Highly Restrictive' must behave like 'Restrictive')
+  const restrictiveRate  = rateRegime === 'Restrictive' || rateRegime === 'Highly Restrictive'
+  const accommodative    = rateRegime === 'Accommodative'
+  const neutralHigh      = rateRegime === 'Neutral-High'
+
+  const invertedCurve    = curveRegime === 'Inverted' || curveRegime === 'Deeply Inverted'
+  const flatCurve        = curveRegime === 'Flat'
+  const normalCurve      = curveRegime === 'Normal' || curveRegime === 'Steep'
+
+  const elevatedInfl     = inflRegime === 'Elevated'
+  const aboveTargetInfl  = inflRegime === 'Above Target'
+  const nearTargetInfl   = inflRegime === 'Near Target' || inflRegime === 'Below Target'
+  const pressuredInfl    = elevatedInfl || aboveTargetInfl
+
+  // Lookup table — macro-v1.0
+  if (restrictiveRate && invertedCurve && pressuredInfl) return 'Adverse'
+  if (restrictiveRate && invertedCurve)                  return 'Restrictive'
+  if (restrictiveRate && (flatCurve || elevatedInfl))    return 'Mixed'
+  if (restrictiveRate && normalCurve && aboveTargetInfl) return 'Mixed'
+  if (restrictiveRate && normalCurve && nearTargetInfl)  return 'Neutral'
+  if (neutralHigh    && pressuredInfl)                   return 'Mixed'
+  if (neutralHigh)                                       return 'Neutral'
+  if (accommodative  && nearTargetInfl)                  return 'Supportive'
+  if (accommodative)                                     return 'Accommodative'
+  return 'Neutral'   // fallback: Neutral-High + normal curve + near target
 }
 
 async function handleMacroContext(kv, fredKey) {
@@ -1983,6 +1993,10 @@ async function handleMacroContext(kv, fredKey) {
 
   const overallRegime = computeOverallRegime(rateRegime, curveRegime, inflRegime)
 
+  // Coverage diagnostics — helps explain why 'Partial Coverage' appeared
+  const seriesAvailable = Object.values(results).filter(r => r?.value != null).length
+  const seriesExpected  = Object.keys(SERIES).length
+
   const data = {
     series: {
       effr:    results.effr,
@@ -1994,6 +2008,13 @@ async function handleMacroContext(kv, fredKey) {
       coreInf: { ...results.coreInf, yoy: coreInflYoY, yoyDate: coreInflYoYDate },
     },
     computed: { coreInflYoY, rateRegime, curveRegime, inflRegime, overallRegime },
+    coverage: {
+      available: seriesAvailable,
+      expected:  seriesExpected,
+      status:    seriesAvailable === seriesExpected ? 'complete'
+               : seriesAvailable > 0               ? 'partial'
+               : 'unavailable',
+    },
     fetchedAt: Date.now(),
     version: MACRO_REGIME_VERSION,
   }
