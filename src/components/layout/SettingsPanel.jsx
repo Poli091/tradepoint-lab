@@ -109,8 +109,10 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme, onPos
 
         const tickerIdx = colL.indexOf('ticker')
         // Yahoo Finance columns
-        const sharesIdx = colL.indexOf('shares')
-        const avgCostIdx = colL.indexOf('avg cost/share')
+        const sharesIdx    = colL.indexOf('shares')
+        const avgCostIdx   = colL.indexOf('avg cost/share')
+        const priceColIdx  = colL.indexOf('price')           // current market price
+        const mktValIdx    = colL.indexOf('market value')    // fallback for current value
         // TradePoint columns
         const qtyIdx   = colL.indexOf('qty')
         const priceIdx = colL.indexOf('avgprice')
@@ -127,13 +129,21 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme, onPos
           const avgPrice = isYahoo
             ? (avgCostIdx >= 0 ? parseFloat(p[avgCostIdx]) || 0 : 0)
             : (priceIdx   >= 0 ? parseFloat(p[priceIdx])   || 0 : 0)
+          // Current market price — use Price column, fallback to Market Value / qty
+          const currentPrice = isYahoo
+            ? (priceColIdx >= 0 && parseFloat(p[priceColIdx]) > 0
+                ? parseFloat(p[priceColIdx])
+                : mktValIdx >= 0 && qty > 0
+                  ? parseFloat(p[mktValIdx]) / qty
+                  : avgPrice)
+            : avgPrice
           // Account: Yahoo has none → use importAccount state; TradePoint may have it
           const account  = isYahoo
             ? importAccount
             : (acctIdx >= 0 ? p[acctIdx]?.trim() || importAccount : importAccount)
 
           return { ticker, qty, avgPrice, avgCost: avgPrice, account,
-            currentPrice: avgPrice, upside: 0 }
+            currentPrice, upside: 0 }
         }).filter(Boolean)
 
         if (!imported.length) { setImportError('No valid tickers found'); return }
