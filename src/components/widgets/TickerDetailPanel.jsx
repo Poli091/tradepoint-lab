@@ -1275,8 +1275,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                             : result.shortInfo.percentChangePrev <= -15 ? 'var(--green)' : undefined} />
                       )}
                       {result.shortInfo?.shortPctWarning === 'result_exceeds_100pct' && (
-                        <div style={{ fontSize:8, color:'var(--amber)', fontStyle:'italic', marginTop:2 }}>
-                          ⚠ Short % exceeds 100% — possible rehypothecation or data mismatch. Verify float source.
+                        <div style={{ fontSize:8, color:'var(--amber)', fontStyle:'italic', marginTop:2, lineHeight:1.5 }}>
+                          ⚠ {result.shortInfo?.quality?.note ?? 'Short interest exceeds reported float. Verify underlying data.'}
                         </div>
                       )}
                       {result.instOwnership?.pct != null && (

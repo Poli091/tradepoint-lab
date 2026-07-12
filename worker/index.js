@@ -256,14 +256,27 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
       // More transparent than using Yahoo's pre-computed value
       let shortPercentOfFloat = null
       let shortPctWarning     = null
+      let shortInterestQuality = null
       if (floatShares != null && floatShares > 0) {
         const rawPct = (finra.sharesShort / floatShares) * 100
+        shortPercentOfFloat = parseFloat(rawPct.toFixed(2))
         if (rawPct > 100) {
-          shortPctWarning = 'result_exceeds_100pct'  // rehypothecation or data unit mismatch
-          shortPercentOfFloat = parseFloat(rawPct.toFixed(2))
+          // >100% is not impossible (repeated share lending) but most often indicates:
+          // - settlement date mismatch between FINRA shares and Yahoo float
+          // - outdated or imprecise float estimate from Yahoo
+          // - symbol/unit mapping error
+          // Do not assume rehypothecation — flag for review
+          shortPctWarning = 'result_exceeds_100pct'
+          shortInterestQuality = { status: 'warning', numeratorSource: 'finra',
+            denominatorSource: 'yahoo', sameAsOfDate: false,
+            note: 'Short interest exceeds reported float. Possible causes: repeated share lending, misaligned reporting dates, or inaccurate float estimate. Verify underlying data.' }
         } else {
-          shortPercentOfFloat = parseFloat(rawPct.toFixed(2))
+          shortInterestQuality = { status: 'complete', numeratorSource: 'finra',
+            denominatorSource: 'yahoo', sameAsOfDate: false }
         }
+      } else {
+        shortInterestQuality = { status: 'partial', numeratorSource: 'finra',
+          denominatorSource: null, note: 'Float not available — short % cannot be computed.' }
       }
 
       const label = shortPercentOfFloat == null ? null
@@ -292,11 +305,14 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
         dataset:      finra.dataset,
         floatSource:  floatShares != null ? 'yahoo' : null,
         floatFetchedAt: Date.now(),
+        quality:      shortInterestQuality,
       }
     } else {
       // FINRA returned no data for this ticker — fallback to Yahoo
       data.shortInfo = yhSummary?.shortInfo
-        ? { ...yhSummary.shortInfo, source: 'yahoo_only' }
+        ? { ...yhSummary.shortInfo, source: 'yahoo_only',
+            quality: { status: 'fallback', numeratorSource: 'yahoo', denominatorSource: 'yahoo',
+              note: 'FINRA data unavailable for this ticker — using Yahoo pre-computed values.' } }
         : null
     }
   } catch(e) {
