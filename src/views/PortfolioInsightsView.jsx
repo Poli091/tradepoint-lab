@@ -5,11 +5,6 @@
  */
 
 import { useMemo, useState, useCallback, useEffect } from 'react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  ScatterChart, Scatter, Cell, ReferenceLine,
-} from 'recharts'
-import { calcPnL } from '../utils/finance.js'
 import { fUSD, fPct } from '../utils/format.js'
 import { workerAPI } from '../utils/api/worker.js'
 import { getGrade } from '../conviction/grade/index.js'
@@ -251,24 +246,21 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
 
-        {/* ── Grade distribution ── */}
+        {/* ── Grade distribution — CSS bars ── */}
         <Section title="Grade distribution">
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={gradeBarData} barSize={28}>
-              <XAxis dataKey="name" tick={{ fontSize:10, fill:'var(--txt-muted)' }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip
-                contentStyle={{ background:'var(--surface-up)', border:'1px solid var(--border)', borderRadius:6, fontSize:11 }}
-                formatter={(val, name, props) => [
-                  `${val} position${val !== 1 ? 's' : ''}`,
-                  props.payload.full,
-                ]}
-              />
-              <Bar dataKey="count" radius={[4,4,0,0]}>
-                {gradeBarData.map((d, i) => <Cell key={i} fill={d.color} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ display:'flex', gap:6, alignItems:'flex-end', height:90, marginBottom:8 }}>
+            {gradeBarData.map(d => {
+              const maxC = Math.max(...gradeBarData.map(x => x.count), 1)
+              return (
+                <div key={d.name} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                  <span style={{ fontSize:10, fontFamily:'var(--mono)', fontWeight:700, color:d.color }}>{d.count}</span>
+                  <div style={{ width:'100%', height:`${(d.count/maxC)*100}%`, minHeight:4,
+                    background:d.color, borderRadius:'3px 3px 0 0' }} />
+                  <span style={{ fontSize:9, color:'var(--txt-muted)' }}>{d.name}</span>
+                </div>
+              )
+            })}
+          </div>
           {/* Grade pills */}
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:4 }}>
             {Object.entries(GRADE_CONFIG).map(([g, cfg]) => {
@@ -303,36 +295,31 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
           ))}
         </Section>
 
-        {/* ── Score vs Upside scatter ── */}
+        {/* ── Score vs Upside — sortable list ── */}
+        {stats.scatterData.length > 0 && (
         <Section title="Score vs analyst upside">
-          <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:8 }}>
-            Top-right = best candidates (high score + high upside)
-          </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <ScatterChart margin={{ top:5, right:20, bottom:20, left:0 }}>
-              <XAxis dataKey="score" name="Score" type="number" domain={[0,100]}
-                tick={{ fontSize:9, fill:'var(--txt-muted)' }} label={{ value:'Conviction', position:'insideBottom', offset:-10, fontSize:9, fill:'var(--txt-muted)' }} />
-              <YAxis dataKey="upside" name="Upside" unit="%" type="number"
-                tick={{ fontSize:9, fill:'var(--txt-muted)' }} width={35} />
-              <ReferenceLine x={70} stroke="var(--green)" strokeDasharray="3 3" strokeWidth={0.8} />
-              <ReferenceLine x={55} stroke="var(--amber)" strokeDasharray="3 3" strokeWidth={0.8} />
-              <ReferenceLine x={40} stroke="var(--red)" strokeDasharray="3 3" strokeWidth={0.8} />
-              <ReferenceLine y={35} stroke="var(--txt-muted)" strokeDasharray="3 3" strokeWidth={0.8} />
-              <Tooltip
-                cursor={{ strokeDasharray:'3 3' }}
-                contentStyle={{ background:'var(--surface-up)', border:'1px solid var(--border)', borderRadius:6, fontSize:11 }}
-                formatter={(val, name) => [name === 'Upside' ? `+${val.toFixed(1)}%` : val, name]}
-                labelFormatter={(_, payload) => payload?.[0]?.payload?.ticker ?? ''}
-              />
-              <Scatter data={stats.scatterData} fill="var(--accent)">
-                {stats.scatterData.map((d, i) => {
-                  const gc = GRADE_CONFIG[d.grade]
-                  return <Cell key={i} fill={gc?.color ?? 'var(--accent)'} />
-                })}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
+          {[...stats.scatterData].sort((a,b) => b.score - a.score).map(d => {
+            const cfg = GRADE_CONFIG[d.grade]
+            return (
+              <div key={d.ticker} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
+                <span style={{ fontFamily:'var(--mono)', fontSize:11, fontWeight:700,
+                  width:46, flexShrink:0, color: cfg?.color ?? 'var(--txt)' }}>{d.ticker}</span>
+                <div style={{ flex:1, height:5, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${d.score}%`,
+                    background: cfg?.color ?? 'var(--accent)', borderRadius:3 }} />
+                </div>
+                <span style={{ fontSize:10, fontFamily:'var(--mono)', width:28, textAlign:'right',
+                  color:'var(--txt-muted)', flexShrink:0 }}>{d.score}</span>
+                {d.upside != null
+                  ? <span style={{ fontSize:10, fontFamily:'var(--mono)', color:'var(--green)',
+                      width:52, textAlign:'right', flexShrink:0 }}>+{d.upside.toFixed(1)}%</span>
+                  : <span style={{ fontSize:10, color:'var(--txt-muted)', width:52,
+                      textAlign:'right', flexShrink:0 }}>—</span>}
+              </div>
+            )
+          })}
         </Section>
+        )}
 
         {/* ── Best & worst conviction ── */}
         <Section title="Conviction ranking">
