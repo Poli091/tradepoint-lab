@@ -66,7 +66,12 @@ export function useAllConvictions(positions = [], prices = {}) {
                     prices,
                   })
                 } else {
-                  newResults[pos.ticker] = conviction
+                  // Attach earnings date so CalendarView and Portfolio Review can use it
+            newResults[pos.ticker] = {
+              ...conviction,
+              nextEarningsDate:   fundResult?.data?.nextEarningsDate   ?? null,
+              earningsDateSource: fundResult?.data?.earningsDateSource ?? null,
+            }
                 }
               } catch { newResults[pos.ticker] = conviction }
             } else {
