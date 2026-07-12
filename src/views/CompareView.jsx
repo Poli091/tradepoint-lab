@@ -433,8 +433,11 @@ export default function CompareView() {
 
   const swDelta      = (swA?.finalScore??0) - (swB?.finalScore??0)
   // FIX: apply LT_EDGE_THRESHOLD to ltEdge badges (was showing for ANY delta)
-  const timingEdgeA  = resultA && resultB && swDelta > TIMING_EDGE_THRESHOLD
-  const timingEdgeB  = resultA && resultB && swDelta < -TIMING_EDGE_THRESHOLD
+  // Guard: if either ticker has < 50 OHLCV bars, swing score is invalid — no timing edge
+  const swingValidA  = (resultA?.ohlcv?.length ?? 0) >= 50
+  const swingValidB  = (resultB?.ohlcv?.length ?? 0) >= 50
+  const timingEdgeA  = resultA && resultB && swingValidA && swingValidB && swDelta > TIMING_EDGE_THRESHOLD
+  const timingEdgeB  = resultA && resultB && swingValidA && swingValidB && swDelta < -TIMING_EDGE_THRESHOLD
 
   return (
     <div style={{padding:'16px',maxWidth:720,margin:'0 auto'}}>

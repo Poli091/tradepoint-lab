@@ -186,6 +186,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   const alignment_ = useMemo(() => {
     if (!result || !altResult) return null
+    // If OHLCV is insufficient, swing score is meaningless (0 = missing data, not bearish)
+    // Propagate null so downstream consumers (Decision, CompareView) don't misuse it
+    if ((result.ohlcv?.length ?? 0) < 50) return null
     const ltR = GRADE_RANK_MAP[result.grade]??2, swR = GRADE_RANK_MAP[altResult.grade]??2
     const ceiling   = [100,75,50,25,0][Math.min(Math.abs(ltR-swR),4)]
     const similarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
@@ -428,17 +431,17 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
               return (
                 <div
-                  title={`LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Ceiling: ${ceiling}% · Similarity: ${similarity}%`}
+                  title={alignment_==null ? 'Swing alignment unavailable — insufficient OHLCV data' : `LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Ceiling: ${ceiling}% · Similarity: ${similarity}%`}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center',
                     padding:'4px 10px', borderRadius:6, marginRight:6,
                     background:`${color}15`, border:`1px solid ${color}44`,
                     cursor:'default', minWidth:76 }}>
                   <div style={{ fontSize:13, fontWeight:800, color, lineHeight:1.1 }}>
-                    {alignment}%
+                    {alignment != null ? `${alignment}%` : 'N/A'}
                   </div>
                   <div style={{ fontSize:9.5, color, fontWeight:700,
                     whiteSpace:'nowrap', marginTop:2, textAlign:'center' }}>
-                    {matrixLabel}
+                    {alignment != null ? matrixLabel : 'Swing N/A'}
                   </div>
                   <div style={{ fontSize:9, color:'var(--txt-muted)',
                     whiteSpace:'nowrap', marginTop:1, textAlign:'center', fontStyle:'italic' }}>
