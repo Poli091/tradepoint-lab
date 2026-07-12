@@ -1329,6 +1329,24 @@ Strong Sell weight: ${strongSellWt.toFixed(1)}% | Sell-rated count: ${sellCount}
 UPCOMING EARNINGS (next 21d): ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
 SCORE CHANGES VS SNAPSHOT: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'none'}`
 
+  // Fetch macro context — Worker computes regime, Groq only narrates
+  let macroText = 'MACRO CONTEXT: Not available (FRED_KEY not configured).'
+  let macroResult = null
+  try {
+    macroResult = await handleMacroContext(kv, keys.fred)
+    const mc = macroResult?.data
+    if (mc) {
+      const { series: s, computed: c } = mc
+      macroText = `MACRO CONTEXT (FRED, ${new Date(mc.fetchedAt).toISOString().split('T')[0]}):
+Fed Funds Rate: ${s.effr?.value ?? 'N/A'}% (${s.effr?.date ?? '?'})
+2Y Treasury: ${s.dgs2?.value ?? 'N/A'}% | 10Y Treasury: ${s.dgs10?.value ?? 'N/A'}%
+Yield Curve (10Y-2Y): ${s.spread?.value != null ? (s.spread.value > 0 ? '+' : '') + s.spread.value + '%' : 'N/A'} [${c.curveRegime}]
+Core CPI YoY: ${c.coreInflYoY != null ? c.coreInflYoY + '%' : 'N/A'} [${c.inflRegime}]
+Rate Regime: ${c.rateRegime} | Overall: ${c.overallRegime}
+Note: These are pre-computed regimes. Do NOT recalculate or contradict them.`
+    }
+  } catch(e) { console.error('[PortfolioReview] macro fetch:', e.message) }
+
   const prompt = `You are reviewing a quantitative investment portfolio. All metrics below were computed deterministically — do not recalculate them.
 
 POSITIONS (${positions.length}):
