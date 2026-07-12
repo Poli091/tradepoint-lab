@@ -639,11 +639,29 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {mode === 'swing' && swingResult && (
                 <div style={{ background:`${swingResult.gradeColor}11`, border:`1px solid ${swingResult.gradeColor}33`,
                   borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
-                  {(result?.ohlcv?.length ?? 0) < 50 && (
-                    <div style={{ fontSize:10, color:'var(--amber)', marginBottom:8, fontStyle:'italic' }}>
-                      ⚠ Limited OHLCV data ({result?.ohlcv?.length ?? 0} bars) — swing indicators may be unreliable. 200+ bars recommended.
-                    </div>
-                  )}
+                  {(() => {
+                    const bars = result?.ohlcv?.length ?? 0
+                    if (bars < 50) return (
+                      <div style={{ padding:'10px 14px', background:'var(--red-dim)',
+                        border:'1px solid var(--red)', borderRadius:'var(--radius)',
+                        marginBottom:12, fontSize:11, color:'var(--red)' }}>
+                        ⚠ Insufficient OHLCV data ({bars} bars) — Swing Analysis unavailable.
+                        <div style={{ fontSize:9, marginTop:3, opacity:0.8 }}>
+                          EMA, ADX, MACD and most indicators require 200+ bars.
+                          Load historical data first via the price chart (2Y range).
+                        </div>
+                      </div>
+                    )
+                    if (bars < 200) return (
+                      <div style={{ fontSize:10, color:'var(--amber)', marginBottom:8,
+                        padding:'6px 10px', background:'var(--amber-dim)',
+                        border:'1px solid var(--amber)', borderRadius:'var(--radius)' }}>
+                        ⚠ Limited data ({bars}/200 bars) — EMA200 and ADX partially available.
+                        Some indicators may show 0 due to missing history, not bearish signals.
+                      </div>
+                    )
+                    return null
+                  })()}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
                     <div>
                       <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
@@ -654,8 +672,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         <span style={{ fontFamily:'var(--mono)', fontSize:14, color:'var(--txt-muted)' }}>/100</span>
                       </div>
                       <div style={{ fontFamily:'var(--mono)', fontSize:14, fontWeight:700,
-                        color:swingResult.gradeColor, marginTop:4 }}>
-                        {swingResult.grade} — Swing Timing
+                        color:(result?.ohlcv?.length ?? 0) < 50 ? 'var(--txt-muted)' : swingResult.gradeColor,
+                        marginTop:4 }}>
+                        {(result?.ohlcv?.length ?? 0) < 50 ? '— Insufficient Data' : `${swingResult.grade} — Swing Timing`}
                       </div>
                     </div>
                     <div style={{ textAlign:'right' }}>
