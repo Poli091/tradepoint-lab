@@ -9,8 +9,7 @@
  * No impact on Conviction, Swing, or any individual ticker scores.
  */
 
-import { useState, useEffect, useMemo } from 'react'
-import { Treemap, ResponsiveContainer } from 'recharts'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { workerAPI }     from '../utils/api/worker.js'
 import { UNIVERSE }      from '../data/tickerUniverse.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
@@ -437,6 +436,124 @@ function BalanceView({ industries }) {
   )
 }
 
+
+/* ══════════════════════════════════════════
+   Pure SVG Squarified Treemap — no recharts
+══════════════════════════════════════════ */
+function squarify(items, x, y, w, h) {
+  if (!items?.length || !w || !h) return []
+  const total = items.reduce((s, i) => s + (i.value||0), 0)
+  if (!total) return []
+  const result = [], remaining = [...items]
+  let rx = x, ry = y, rw = w, rh = h
+
+  while (remaining.length) {
+    const area = rw * rh
+    const short = Math.min(rw, rh)
+    const row = [remaining[0]]
+    let rowSum = remaining[0].value || 1
+
+    for (let i = 1; i < remaining.length; i++) {
+      const trial = rowSum + (remaining[i].value || 1)
+      const rowArea = (trial / total) * area
+      const thick = rowArea / short
+      const worstCurr = Math.max(...row.map(it => {
+        const len = ((it.value||1) / rowSum) * short
+        return Math.max(thick/len, len/thick)
+      }))
+      const newLen = ((remaining[i].value||1) / trial) * short
+      const worstNew = Math.max(thick/newLen, newLen/thick)
+      if (worstNew <= worstCurr || row.length === 0) { row.push(remaining[i]); rowSum = trial }
+      else break
+    }
+
+    const rowArea = (rowSum / total) * area
+    const thick = rowArea / short
+    let off = 0
+    for (const it of row) {
+      const len = ((it.value||1) / rowSum) * short
+      if (rw >= rh) result.push({ ...it, x: rx, y: ry + off, w: thick, h: len })
+      else           result.push({ ...it, x: rx + off, y: ry, w: len, h: thick })
+      off += len
+    }
+    remaining.splice(0, row.length)
+    if (rw >= rh) { rx += thick; rw -= thick } else { ry += thick; rh -= thick }
+  }
+  return result
+}
+
+function useSize(ref) {
+  const [s, setS] = useState({ w:0, h:0 })
+  useEffect(() => {
+    if (!ref.current) return
+    const ro = new ResizeObserver(([e]) => setS({ w:Math.floor(e.contentRect.width), h:Math.floor(e.contentRect.height) }))
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [ref])
+  return s
+}
+
+
+function TreemapContainer({ industries, onSelect }) {
+  const ref = useRef(null)
+  const { w, h } = useSize(ref)
+  return (
+    <div ref={ref} style={{ width:'100%', height:'100%' }}>
+      {w > 0 && h > 0 && <SVGTreemap industries={industries} onSelect={onSelect} width={w} height={h} />}
+    </div>
+  )
+}
+
+function SVGTreemap({ industries, onSelect, width, height }) {
+  const PAD = 2
+  const nodes = squarify(
+    (industries||[]).filter(i => (i.value||0) > 0 && i.name),
+    0, 0, width, height
+  )
+  if (!nodes.length) return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+      justifyContent:'center', height:'100%', gap:10, color:'var(--txt-muted)' }}>
+      <div style={{ fontSize:14, fontWeight:600, color:'var(--txt)' }}>No conviction data yet</div>
+      <div style={{ fontSize:11, textAlign:'center', maxWidth:300 }}>
+        Run the Scanner on a few tickers to populate the database.
+      </div>
+    </div>
+  )
+  return (
+    <svg width={width} height={height} style={{ cursor:'pointer', overflow:'hidden', display:'block' }}>
+      {nodes.map(n => {
+        const col  = TREND_COLOR(n.trendScore, n.insufficient)
+        const nw   = Math.max(0, n.w - PAD*2), nh = Math.max(0, n.h - PAD*2)
+        const show = nw > 55 && nh > 24
+        const showScore = nw > 70 && nh > 44
+        const fs   = Math.min(11, Math.max(8, nw/9))
+        return (
+          <g key={n.name} onClick={() => onSelect(n.name)}>
+            <rect x={n.x+PAD} y={n.y+PAD} width={nw} height={nh}
+              fill={col} rx={3} opacity={0.9} />
+            {show && (
+              <text x={n.x+PAD+nw/2} y={n.y+PAD+nh/2-(showScore?9:0)}
+                textAnchor="middle" dominantBaseline="middle"
+                fill="#fff" fontSize={fs} fontWeight={700}
+                style={{ userSelect:'none', pointerEvents:'none' }}>
+                {n.name.length > 20 && nw < 130 ? n.name.slice(0,17)+'…' : n.name}
+              </text>
+            )}
+            {showScore && n.trendScore != null && (
+              <text x={n.x+PAD+nw/2} y={n.y+PAD+nh/2+10}
+                textAnchor="middle" dominantBaseline="middle"
+                fill="#fff" fontSize={Math.max(7,fs-2)} opacity={0.85}
+                style={{ userSelect:'none', pointerEvents:'none' }}>
+                {n.trendScore>0?'+':''}{n.trendScore.toFixed(1)}% · {n.tickerCount}co
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 /* ══════════════════════════════════════════
    MAIN VIEW
 ══════════════════════════════════════════ */
@@ -589,25 +706,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
           {viewMode === 'trend' && (
             <>
               <div style={{ flex:1, padding:12, overflow:'hidden', minWidth:0 }}>
-                {industries.length === 0
-                  ? <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-                      justifyContent:'center', height:'100%', gap:10, color:'var(--txt-muted)' }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:'var(--txt)' }}>No conviction data yet</div>
-                      <div style={{ fontSize:11, textAlign:'center', maxWidth:300 }}>
-                        Run the Scanner on a few tickers to populate the database.
-                      </div>
-                    </div>
-                  : <ResponsiveContainer width="100%" height="100%">
-                      <Treemap data={Array.isArray(industries) ? industries : []} dataKey="value" aspectRatio={4/3}
-                        stroke="var(--surface)" strokeWidth={2}
-                        onClick={d => setSelected(d?.name ?? null)}
-                        content={({ x,y,width,height,name,trendScore,tickerCount,insufficient }) => (
-                          <TCell x={x} y={y} width={width} height={height}
-                            name={name} trendScore={trendScore}
-                            tickerCount={tickerCount} insufficient={insufficient} />
-                        )} />
-                    </ResponsiveContainer>
-                }
+                <TreemapContainer industries={industries} onSelect={setSelected} />
               </div>
 
               {/* Side panel */}
