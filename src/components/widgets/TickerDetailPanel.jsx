@@ -263,7 +263,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         .catch(e => setInsiderError(e.message))
         .finally(() => setInsiderLoading(false))
     }
-  }, [activeTab, result]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load score history from D1 when Score tab opens
   useEffect(() => {
@@ -276,9 +276,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
     }
   }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-load Market Intelligence when market tab opens
-// eslint-disable-line react-hooks/exhaustive-deps
-
   // Auto-load news when fundamentals tab opens
   useEffect(() => {
     if (activeTab === 'fundamentals' && !news && ticker) {
@@ -286,7 +283,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         .then(r => setNews(r?.data ?? []))
         .catch(() => setNews([]))
     }
-  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Notify parent (e.g. ScanView) when conviction result is ready
   // This populates the grade in scan history so the grade filter works

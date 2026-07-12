@@ -12,7 +12,7 @@ import Badge           from '../ui/Badge.jsx'
 import ConvictionRing  from '../ui/ConvictionRing.jsx'
 import { WATCHLIST }        from '../../data/watchlist.js'
 import { loadWatchlist }    from '../../utils/watchlistStorage.js'
-import { fUSD, fPct }  from '../../utils/format.js'
+import { fUSD }        from '../../utils/format.js'
 import { getGradeColor } from '../../conviction/grade/index.js'
 
 export default function WatchlistPanel({ style = {}, convictionResults = {}, onSelectTicker, onManage, prices = {} }) {

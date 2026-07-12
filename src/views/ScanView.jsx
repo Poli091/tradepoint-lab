@@ -15,7 +15,6 @@ import { useState, useRef, useEffect } from 'react'
 import { getUserId } from '../auth/webauthn.js'
 import { Search, X, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
-import { SECTORS }        from '../data/tickerUniverse.js'
 import { getGrade }       from '../conviction/grade/index.js'
 
 

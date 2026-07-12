@@ -14,7 +14,6 @@ import { Treemap, ResponsiveContainer } from 'recharts'
 import { workerAPI }     from '../utils/api/worker.js'
 import { UNIVERSE }      from '../data/tickerUniverse.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
-import { fUSD }          from '../utils/format.js'
 
 /* ══════════════════════════════════════════
    HELPERS

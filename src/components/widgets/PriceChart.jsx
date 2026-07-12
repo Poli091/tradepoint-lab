@@ -30,8 +30,7 @@ import {
 import { cache }                    from '../../utils/cache.js'
 import { workerAPI, getWorkerUrl }  from '../../utils/api/worker.js'
 import { fUSD, fPct }               from '../../utils/format.js'
-import { loadWatchlist, saveWatchlist } from '../../utils/watchlistStorage.js'
-import { loadOverrides, saveOverrides } from '../../utils/positionsStorage.js'
+
 
 /* ── Constants ──────────────────────────────────────────────────────────── */
 const RANGES  = ['1D', '1W', '1M', '6M', 'YTD', '1Y', '2Y', '5Y', 'ALL']
@@ -226,131 +225,6 @@ function ChartPanels({ chartData, ind, showRSI, showMACD, mainHeight, panelHeigh
 }
 
 
-/* ── Quick Add button — watchlist / portfolio ──────────────── */
-function QuickAdd({ ticker }) {
-  const [open,  setOpen]  = useState(false)
-  const [mode,  setMode]  = useState(null)
-  const [acct,  setAcct]  = useState('Brokerage')
-  const [qty,   setQty]   = useState('')
-  const [price, setPrice] = useState('')
-  const [saved, setSaved] = useState(false)
-  const wrapRef = useRef(null)
-
-  useEffect(() => {
-    const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) { setOpen(false); setMode(null) } }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const addToWatchlist = () => {
-    const items = loadWatchlist() ?? []
-    if (!items.find(i => i.ticker === ticker)) {
-      saveWatchlist([...items, { ticker, name: ticker, priority: 'med', upside: null, currentPrice: 0, dayChangePct: null }])
-    }
-    setSaved(true); setTimeout(() => { setSaved(false); setOpen(false) }, 1200)
-  }
-
-  const addToPortfolio = () => {
-    const q = parseFloat(qty), p = parseFloat(price)
-    if (!q || !p) return
-    const positions = loadOverrides() ?? []
-    saveOverrides([...positions, {
-      ticker, name: ticker, qty: q, avgPrice: p, currentPrice: p,
-      account: acct, conviction: 70, upside: null, dayChangePct: null,
-    }])
-    setSaved(true); setTimeout(() => { setSaved(false); setOpen(false); setMode(null); setQty(''); setPrice('') }, 1400)
-  }
-
-  if (!ticker) return null
-
-  return (
-    <div ref={wrapRef} style={{ position:'relative', flexShrink:0 }}>
-      <button onClick={() => { setOpen(v => !v); setMode(null); setSaved(false) }}
-        title="Add to watchlist or portfolio"
-        style={{ padding:'4px 9px', borderRadius:6, border:'1px solid var(--border)',
-          background: open ? 'var(--accent-dim)' : 'var(--surface-up)',
-          color: open ? 'var(--accent)' : 'var(--txt-muted)',
-          cursor:'pointer', fontSize:18, lineHeight:1, fontWeight:300, display:'flex', alignItems:'center' }}>
-        +
-      </button>
-
-      {open && !saved && (
-        <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:600, minWidth:210,
-          background:'var(--surface)', border:'1px solid var(--border)',
-          borderRadius:'var(--radius-lg)', boxShadow:'0 8px 24px rgba(0,0,0,0.3)', overflow:'hidden' }}>
-          {mode === null && (
-            <>
-              <button onClick={addToWatchlist}
-                style={{ width:'100%', padding:'10px 14px', border:'none', background:'transparent',
-                  cursor:'pointer', textAlign:'left', fontSize:12, color:'var(--txt)',
-                  borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}
-                onMouseEnter={e => e.currentTarget.style.background='var(--surface-up)'}
-                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                <span>👁</span> Add to Watchlist
-              </button>
-              <button onClick={() => setMode('pos')}
-                style={{ width:'100%', padding:'10px 14px', border:'none', background:'transparent',
-                  cursor:'pointer', textAlign:'left', fontSize:12, color:'var(--txt)',
-                  display:'flex', alignItems:'center', gap:8 }}
-                onMouseEnter={e => e.currentTarget.style.background='var(--surface-up)'}
-                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                <span>📈</span> Add to Portfolio…
-              </button>
-            </>
-          )}
-          {mode === 'pos' && (
-            <div style={{ padding:'12px 14px' }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'var(--txt)', marginBottom:10 }}>
-                Add {ticker} to Portfolio
-              </div>
-              <div style={{ display:'flex', gap:4, marginBottom:8 }}>
-                {['Brokerage','Roth IRA'].map(a => (
-                  <button key={a} onClick={() => setAcct(a)} style={{
-                    padding:'3px 8px', borderRadius:6,
-                    border:`1px solid ${acct===a?'var(--accent)':'var(--border)'}`,
-                    background: acct===a?'var(--accent-dim)':'transparent',
-                    color: acct===a?'var(--accent)':'var(--txt-muted)',
-                    fontSize:10, fontWeight:600, cursor:'pointer' }}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-              {[['Qty (shares)', qty, setQty], ['Avg price ($)', price, setPrice]].map(([lbl, val, setter]) => (
-                <div key={lbl} style={{ marginBottom:8 }}>
-                  <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:3, textTransform:'uppercase', letterSpacing:'0.06em' }}>{lbl}</div>
-                  <input value={val} onChange={e => setter(e.target.value)} type="number" min="0" step="any"
-                    style={{ width:'100%', padding:'5px 8px', borderRadius:6, border:'1px solid var(--border)',
-                      background:'var(--surface-up)', color:'var(--txt)', fontFamily:'var(--mono)',
-                      fontSize:12, boxSizing:'border-box', outline:'none' }} />
-                </div>
-              ))}
-              <div style={{ display:'flex', gap:6, marginTop:4 }}>
-                <button onClick={addToPortfolio} style={{ flex:1, padding:'6px', borderRadius:6,
-                  background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer',
-                  fontSize:11, fontWeight:700 }}>
-                  Add
-                </button>
-                <button onClick={() => setMode(null)} style={{ padding:'6px 10px', borderRadius:6,
-                  background:'transparent', border:'1px solid var(--border)', cursor:'pointer',
-                  fontSize:11, color:'var(--txt-muted)' }}>
-                  ←
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {saved && (
-        <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:600,
-          background:'var(--green)', color:'#fff', padding:'6px 12px',
-          borderRadius:6, fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>
-          ✓ Saved!
-        </div>
-      )}
-    </div>
-  )
-}
 
 /* ── Main component ──────────────────────────────────────────────────────── */
 export default function PriceChart({ ticker, onTickerChange, range, onRangeChange, prices = {} }) {
