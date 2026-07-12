@@ -93,7 +93,7 @@ function ScanBadge({ ticker, score, grade, onClick, active }) {
 }
 
 /* ── Main view ─────────────────────────────────────────────── */
-export default function ScanView() {
+export default function ScanView({ onSelectTicker, convictionResults = {} }) {
   const [inputValue,   setInputValue]   = useState('')
   const [activeTicker, setActiveTicker] = useState(null)
   const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
