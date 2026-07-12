@@ -16,6 +16,7 @@ const TTL = {
   INSIDER:       6  * 60 * 60,         // 6 hours — insider filings updated intraday
   OHLCV:        24 * 60 * 60,
   ANALYST:      24 * 60 * 60,
+  ANALYST_TARGET: 48 * 60 * 60,  // analyst targets + recommendations + earnings date
   NEWS:         8  * 60 * 60,
   EARNINGS:     7  * 24 * 60 * 60,
   FUNDAMENTALS: 90 * 24 * 60 * 60,
@@ -119,10 +120,34 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   const t     = ticker.toUpperCase()
   const kvKey = `fund:${t}`
 
-  // KV cache check
+  // KV cache check — split TTL strategy:
+  //   fund:TICKER     → 90 days (fundamentals, margins, EPS history)
+  //   analyst:TICKER  → 48 hours (price targets, recommendations, earnings date)
+  const analystKey = `analyst:${t}`
+
   if (!forceRefresh) {
-    const { value, metadata } = await kvGet(kv, kvKey)
-    if (value) return json({ data: value, meta: { ...metadata, fromCache: true } })
+    const { value: cached, metadata } = await kvGet(kv, kvKey)
+    if (cached) {
+      // Check if analyst sub-cache is also fresh
+      const { value: analystCached } = await kvGet(kv, analystKey)
+      if (analystCached) {
+        // Both caches fresh — merge and return
+        const merged = { ...cached, ...analystCached }
+        return json({ data: merged, meta: { ...metadata, fromCache: true, analystFromCache: true } })
+      }
+      // Fundamentals fresh but analyst targets stale — re-fetch analyst fields only
+      const freshAnalyst = await fetchAnalystFields(t, keys)
+      if (freshAnalyst) {
+        await kvSet(kv, analystKey, freshAnalyst, TTL.ANALYST_TARGET,
+          buildMeta(t, 'analyst', TTL.ANALYST_TARGET, false))
+        const merged = { ...cached, ...freshAnalyst }
+        // Update main fund cache with fresh analyst data
+        await kvSet(kv, kvKey, merged, TTL.FUNDAMENTALS, metadata ?? buildMeta(t, 'fundamentals', TTL.FUNDAMENTALS, false))
+        return json({ data: merged, meta: { ...metadata, fromCache: true, analystRefreshed: true } })
+      }
+      // Could not re-fetch analyst — serve stale analyst from main cache
+      return json({ data: cached, meta: { ...metadata, fromCache: true, analystStale: true } })
+    }
   }
 
   if (!keys.finnhub) {
@@ -322,6 +347,26 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
 
   const meta2 = buildMeta(t, 'fundamentals', TTL.FUNDAMENTALS, false)
   await kvSet(kv, kvKey, data, TTL.FUNDAMENTALS, meta2)
+
+  // Also cache analyst fields separately with 48h TTL
+  const analystFields = {
+    targetMean:        data.targetMean,
+    targetHigh:        data.targetHigh,
+    targetLow:         data.targetLow,
+    targetMedian:      data.targetMedian,
+    targetSource:      data.targetSource,
+    targetFetchedAt:   data.targetFetchedAt,
+    strongBuy:         data.strongBuy,
+    buy:               data.buy,
+    hold:              data.hold,
+    sell:              data.sell,
+    strongSell:        data.strongSell,
+    nextEarningsDate:  data.nextEarningsDate,
+    earningsDateSource:data.earningsDateSource,
+  }
+  await kvSet(kv, analystKey, analystFields, TTL.ANALYST_TARGET,
+    buildMeta(t, 'analyst', TTL.ANALYST_TARGET, false))
+
   return json({ data, meta: meta2 })
 }
 
@@ -2604,6 +2649,68 @@ async function finraShortInterest(ticker) {
       dataset: 'finra_equity_short_interest',   // NOT daily short-sale volume (Reg SHO)
     }
   } catch { return null }
+}
+
+
+/* ── Analyst Fields re-fetch (fast, 48h TTL) ─────────────────────────────
+   Only calls price-target + recommendations + Yahoo.
+   Used when fundamentals cache is fresh but analyst fields are stale.
+─────────────────────────────────────────────────────────────────────── */
+async function fetchAnalystFields(ticker, keys) {
+  const t = ticker.toUpperCase()
+  if (!keys.finnhub) return null
+  try {
+    // Price target (retry once)
+    let fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+    if (!fhTarget?.targetMean) {
+      await delay(300)
+      fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
+    }
+
+    // Yahoo fallback for target if Finnhub free returns null
+    let targetSource = 'finnhub'
+    if (!fhTarget?.targetMean) {
+      const yhSummary = await yahooQuoteSummary(t)
+      if (yhSummary?.target?.targetMeanPrice) {
+        fhTarget = {
+          targetMean:   yhSummary.target.targetMeanPrice,
+          targetHigh:   yhSummary.target.targetHighPrice,
+          targetLow:    yhSummary.target.targetLowPrice,
+          targetMedian: yhSummary.target.targetMedianPrice,
+        }
+        targetSource = 'yahoo'
+      }
+    }
+    await delay(200)
+
+    // Recommendations
+    const fhRecs = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
+    const rec = Array.isArray(fhRecs) ? fhRecs[0] : null
+    await delay(200)
+
+    // Earnings date from Yahoo
+    const yhEarnings = await yahooQuoteSummary(t).catch(() => null)
+
+    return {
+      targetMean:        fhTarget?.targetMean   ?? null,
+      targetHigh:        fhTarget?.targetHigh   ?? null,
+      targetLow:         fhTarget?.targetLow    ?? null,
+      targetMedian:      fhTarget?.targetMedian ?? null,
+      targetSource:      fhTarget?.targetMean ? targetSource : null,
+      targetFetchedAt:   fhTarget?.targetMean ? new Date().toISOString() : null,
+      strongBuy:         rec?.strongBuy  ?? 0,
+      buy:               rec?.buy        ?? 0,
+      hold:              rec?.hold       ?? 0,
+      sell:              rec?.sell       ?? 0,
+      strongSell:        rec?.strongSell ?? 0,
+      nextEarningsDate:  yhEarnings?.nextEarnings ?? null,
+      earningsDateSource:yhEarnings?.nextEarnings ? 'yahoo' : null,
+      _analystRefreshedAt: Date.now(),
+    }
+  } catch(e) {
+    console.error('[fetchAnalystFields]', ticker, e.message)
+    return null
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
