@@ -77,14 +77,38 @@ function AppInner() {
     const source = basePositions ?? POSITIONS
 
     // Filter by account using position.account field
-    const filtered = account === 'combined'
-      ? source
-      : source.filter(p => {
-          const acc = p.account?.toLowerCase() ?? ''
-          if (account === 'roth')      return acc.includes('roth')
-          if (account === 'brokerage') return acc.includes('brokerage')
-          return true
-        })
+    let filtered
+    if (account === 'combined') {
+      // Merge positions with same ticker across accounts:
+      // sum qty, weighted avg cost, sum market value
+      const byTicker = {}
+      for (const p of source) {
+        if (!byTicker[p.ticker]) {
+          byTicker[p.ticker] = { ...p, _accounts: [p.account] }
+        } else {
+          const existing = byTicker[p.ticker]
+          const totalQty  = (existing.qty || 0) + (p.qty || 0)
+          const totalCost = (existing.qty || 0) * (existing.avgPrice || 0)
+                          + (p.qty || 0) * (p.avgPrice || 0)
+          byTicker[p.ticker] = {
+            ...existing,
+            qty:      totalQty,
+            avgPrice: totalQty > 0 ? totalCost / totalQty : existing.avgPrice,
+            avgCost:  totalQty > 0 ? totalCost / totalQty : existing.avgPrice,
+            _accounts: [...(existing._accounts ?? []), p.account],
+            account: 'Combined',
+          }
+        }
+      }
+      filtered = Object.values(byTicker)
+    } else {
+      filtered = source.filter(p => {
+        const acc = p.account?.toLowerCase() ?? ''
+        if (account === 'roth')      return acc.includes('roth')
+        if (account === 'brokerage') return acc.includes('brokerage')
+        return true
+      })
+    }
 
     // Apply live prices
     return filtered.map(pos => ({
