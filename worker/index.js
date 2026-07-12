@@ -1298,25 +1298,40 @@ async function handlePortfolioReview(request, keys, kv, db) {
   // Gate details
   const gateRich = gatePositions.map(p => {
     const cv = p.conviction ?? {}
-    let gType, cause = ''
+    let gType, explanation = ''
     if (cv.gate === 'gate1') {
-      gType = 'Gate1(financials-capped-at-35)'
-      cause = cv.components?.growth < 10 ? 'low-growth-score' : 'financial-breakdown'
+      gType = 'Gate1(capped-at-35)'
+      explanation = `Financial condition failed; effective score capped at 35`
     } else if (cv.gate === 'gate2') {
-      gType = 'Gate2(quality-capped-at-58)'
+      gType = 'Gate2(capped-at-58)'
       const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
-      cause = `quality:${q}/20 strength:${s}/15 — both failed minimum threshold`
+      explanation = `Quality ${q}/20 and Strength ${s}/15 both failed minimum requirements; effective score capped at 58`
     } else {
       gType = cv.gate
+      explanation = 'Gate active'
     }
-    return `${p.ticker}(${cv.score} ${cv.grade} ${gType} cause:${cause})`
+    return `${p.ticker}(${cv.score} ${cv.grade} ${gType} explanation:"${explanation}")`
   })
 
   // Portfolio status factors
   const sellPositions = positions.filter(p=>['SELL','STRONG SELL'].includes(p.conviction?.grade))
   const sellCount    = sellPositions.length
   const sellWeight   = sellPositions.reduce((s,p)=>s+(p.weight||0),0)
-  const highSevCount = nearDowngrade.filter(d=>{const next=NEXT_GRADE[d.grade];return GRADE_SEVERITY[`${d.grade}→${next}`]==='High'}).length
+  const nearDowngradeSeverity = {}
+  nearDowngrade.forEach(d => {
+    const next = NEXT_GRADE[d.grade] ?? 'lower'
+    nearDowngradeSeverity[d.ticker] = GRADE_SEVERITY[`${d.grade}→${next}`] ?? 'Medium'
+  })
+  const highSevTickers = nearDowngrade.filter(d => nearDowngradeSeverity[d.ticker] === 'High').map(d=>d.ticker)
+  const medSevTickers  = nearDowngrade.filter(d => nearDowngradeSeverity[d.ticker] === 'Medium').map(d=>d.ticker)
+  const lowSevTickers  = nearDowngrade.filter(d => nearDowngradeSeverity[d.ticker] === 'Low').map(d=>d.ticker)
+  const highSevCount   = highSevTickers.length
+  // Deterministic posture facts — Groq must quote these, not recalculate
+  const postureFactsSentence = [
+    sellCount > 0 ? `${sellCount} position${sellCount>1?'s':''} rated SELL or STRONG SELL (${sellWeight.toFixed(1)}% of portfolio weight)` : null,
+    gatePositions.length > 0 ? `${gatePositions.length} active Gate${gatePositions.length>1?'s':''} (${gatePositions.map(p=>p.ticker).join(', ')})` : null,
+    highSevCount > 0 ? `${highSevCount} position${highSevCount>1?'s':''} close to a SELL threshold (${highSevTickers.join(', ')})` : null,
+  ].filter(Boolean).join('; ')
 
   const metricsText = `GRADE DISTRIBUTION: ${Object.entries(gradeCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(', ')}
 
@@ -1335,7 +1350,15 @@ Group near-downgrades by severity in footer: High=[list], Medium=[list], Low=[li
 TOP 3 BY WEIGHT: ${top3.map(p=>`${p.ticker} ${(p.weight||0).toFixed(1)}%`).join(', ')} = ${top3Pct.toFixed(1)}% combined
 
 PORTFOLIO STATUS FACTORS (cite these when justifying Cautious/Neutral/Defensive):
-SELL or STRONG SELL: ${sellCount} positions, ${sellWeight.toFixed(1)}% total portfolio weight | Active gates: ${gatePositions.length} | High-severity near-downgrades: ${highSevCount}
+VERIFIED POSTURE FACTS (quote these exactly — do not recalculate):
+${postureFactsSentence}
+
+SELL/STRONG SELL breakdown: ${sellCount} positions totaling ${sellWeight.toFixed(1)}% weight
+Active gates: ${gatePositions.length}
+Near-grade-boundary by severity:
+  High: ${highSevTickers.length>0?highSevTickers.join(', '):'none'}
+  Medium: ${medSevTickers.length>0?medSevTickers.join(', '):'none'}
+  Low (informational only): ${lowSevTickers.length>0?lowSevTickers.join(', '):'none'}
 
 UPCOMING EARNINGS (next 21d): ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
 SCORE CHANGES VS SNAPSHOT: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'none'}`
@@ -1457,14 +1480,24 @@ Rules:
     parsed.portfolioSummary.status = 'Neutral'
   }
 
+  // Fix 2: Post-validator excludes Low severity from Watch Zone by code (not by prompt)
+  if (Array.isArray(parsed.watchZone)) {
+    parsed.watchZone = parsed.watchZone.filter(item => {
+      if (!item?.ticker) return false
+      return nearDowngradeSeverity[item.ticker] !== 'Low'
+    })
+  }
+
   const data = { ...parsed,
     macro: macroResult?.data ?? null,
+    nearDowngradeGroups: { high: highSevTickers, medium: medSevTickers, low: lowSevTickers },
+    postureFactsSentence,
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
       nearDowngrade, topSector, concLevel, concRule, top3Pct,
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.1',
+      prompt_version: 'pr-v2.2',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },

@@ -197,7 +197,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.1', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.2', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
@@ -620,10 +620,26 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                     ⚠ Gates: {review.metrics.gatePositions.join(', ')}
                   </div>
                 )}
-                {review.metrics.nearDowngrade?.length > 0 && (
-                  <div style={{ fontSize:10, color:'var(--red)', background:'var(--red-dim)',
-                    padding:'4px 10px', borderRadius:'var(--radius)', border:'1px solid var(--red)' }}>
-                    ↓ Near downgrade: {review.metrics.nearDowngrade.map(d=>d.ticker).join(', ')}
+                {/* Near-grade-boundary grouped by severity — rendered by UI, not by Groq */}
+                {review.nearDowngradeGroups && (
+                  <div style={{ fontSize:10, background:'var(--surface-up)',
+                    padding:'6px 10px', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
+                    <span style={{ fontWeight:700, color:'var(--txt-muted)', marginRight:6 }}>↓ Near grade boundary:</span>
+                    {review.nearDowngradeGroups.high?.length > 0 && (
+                      <span style={{ color:'var(--red)', marginRight:8 }}>
+                        High · {review.nearDowngradeGroups.high.join(', ')}
+                      </span>
+                    )}
+                    {review.nearDowngradeGroups.medium?.length > 0 && (
+                      <span style={{ color:'var(--amber)', marginRight:8 }}>
+                        Medium · {review.nearDowngradeGroups.medium.join(', ')}
+                      </span>
+                    )}
+                    {review.nearDowngradeGroups.low?.length > 0 && (
+                      <span style={{ color:'var(--txt-muted)' }}>
+                        Low · {review.nearDowngradeGroups.low.join(', ')}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
