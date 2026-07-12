@@ -476,9 +476,10 @@ export default function SectorTrendsView({ onSelectTicker }) {
     }
 
     return Object.values(groups).map(g => {
-      const fresh    = g.tickers.filter(t => t.ageInDays != null && t.ageInDays <= MAX_STALE)
+      const tickers_ = Array.isArray(g.tickers) ? g.tickers : []
+      const fresh    = tickers_.filter(t => t.ageInDays != null && t.ageInDays <= MAX_STALE)
       const withData = fresh.filter(t => t.trendScore != null)
-      const cov      = g.tickers.length > 0 ? withData.length / g.tickers.length : 0
+      const cov      = tickers_.length > 0 ? withData.length / tickers_.length : 0
       const insuf    = cov < 0.40 || withData.length < 3
 
       const rs1M = withData.length ? median(withData.filter(t=>t.rs1M!=null).map(t=>t.rs1M)) : null
@@ -487,18 +488,18 @@ export default function SectorTrendsView({ onSelectTicker }) {
       const trendScore = withData.length ? median(withData.map(t=>t.trendScore)) : null
       const positiveRS  = withData.filter(t=>(t.trendScore??0)>0).length
       const breadthEMA200 = withData.filter(t=>t.aboveEMA200===true).length
-      const mAge = medianAge(g.tickers)
-      const oldest = g.tickers.reduce((mx,t) => t.ageInDays!=null ? Math.max(mx,t.ageInDays) : mx, 0)
+      const mAge = medianAge(tickers_)
+      const oldest = tickers_.reduce((mx,t) => t.ageInDays!=null ? Math.max(mx,t.ageInDays) : mx, 0)
 
       return {
         name: g.name, sector: g.sector,
-        tickers: g.tickers,
-        tickerCount: g.tickers.length, dataCount: withData.length,
+        tickers: tickers_,
+        tickerCount: tickers_.length, dataCount: withData.length,
         coverage: cov, insufficient: insuf,
         trendScore, rs1M, rs3M, rs6M,
         positiveRS, breadthEMA200,
         medianAge: mAge, oldestAge: oldest,
-        value: sizeMode === 'equal' ? 1 : g.tickers.length,
+        value: sizeMode === 'equal' ? 1 : tickers_.length,
       }
     })
     .filter(g => g.tickerCount >= 2)
@@ -598,7 +599,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
                       </div>
                     </div>
                   : <ResponsiveContainer width="100%" height="100%">
-                      <Treemap data={industries} dataKey="value" aspectRatio={4/3}
+                      <Treemap data={Array.isArray(industries) ? industries : []} dataKey="value" aspectRatio={4/3}
                         stroke="var(--surface)" strokeWidth={2}
                         onClick={d => setSelected(d?.name ?? null)}
                         content={({ x,y,width,height,name,trendScore,tickerCount,insufficient }) => (
