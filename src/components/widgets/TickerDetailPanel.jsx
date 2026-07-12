@@ -151,7 +151,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [activeTab, setActiveTab] = useState('score')
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
 
-  // Always compute swing result — used for alignment, and displayed when mode === 'swing'
+  // Always compute swing result — mode change does NOT re-fetch (mode not in deps)
   const swingResult = useMemo(() => {
     if (!result) return null
     try {
@@ -639,6 +639,11 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
               {mode === 'swing' && swingResult && (
                 <div style={{ background:`${swingResult.gradeColor}11`, border:`1px solid ${swingResult.gradeColor}33`,
                   borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
+                  {(result?.ohlcv?.length ?? 0) < 50 && (
+                    <div style={{ fontSize:10, color:'var(--amber)', marginBottom:8, fontStyle:'italic' }}>
+                      ⚠ Limited OHLCV data ({result?.ohlcv?.length ?? 0} bars) — swing indicators may be unreliable. 200+ bars recommended.
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
                     <div>
                       <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
@@ -659,8 +664,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       <div style={{ fontSize:15, fontWeight:800, color:'var(--txt)' }}>
                         {swingResult.setup}
                       </div>
-                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>
-                        {swingResult.setupConfidence}% confidence
+                      <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}
+                        title="Setup Quality: measures signal completeness and internal agreement — not probability of positive return">
+                        {swingResult.setupConfidence}% quality ⓘ
                       </div>
                     </div>
                   </div>
@@ -715,12 +721,15 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     </div>
                   )}
 
-                  {/* Entry levels */}
-                  {swingResult.levels && (
+                  {/* Entry levels — hidden if OHLCV continuity has errors */}
+                  {swingResult.levels && result?.meta?.continuity?.status !== 'error' && (
                     <div style={{ marginTop:12, borderTop:'1px solid var(--border)', paddingTop:10 }}>
                       <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
-                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
-                        Indicative Levels ({swingResult.setup})
+                        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>
+                        Indicative Trade Levels · {swingResult.setup}
+                      </div>
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic', marginBottom:8 }}>
+                        Based on current ATR and detected setup. Recalculate if price or volatility changes.
                       </div>
                       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
                         {[
