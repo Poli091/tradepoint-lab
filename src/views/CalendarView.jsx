@@ -28,7 +28,26 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
 
   // Compute days until each event
   const now = new Date()
-  const withDays = events
+
+  // Auto-generate earnings events from conviction results (Yahoo Finance dates)
+  const autoEvents = Object.entries(convictionResults)
+    .filter(([, cv]) => cv?.nextEarningsDate)
+    .map(([ticker, cv]) => ({
+      ticker,
+      date:  cv.nextEarningsDate,
+      type:  'monitor',
+      note:  `Next earnings · Source: ${cv.earningsDateSource ?? 'auto'}`,
+      _auto: true,
+    }))
+
+  // Merge: manual events take priority over auto (dedup by ticker)
+  const manualTickers = new Set(events.map(e => e.ticker))
+  const mergedEvents  = [
+    ...events,
+    ...autoEvents.filter(e => !manualTickers.has(e.ticker)),
+  ]
+
+  const withDays = mergedEvents
     .map(ev => {
       const date = new Date(ev.date)
       const days = Math.ceil((date - now) / 86400000)
@@ -36,7 +55,7 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
       const day   = date.getDate()
       return { ...ev, days, month, day }
     })
-    .filter(ev => ev.days >= 0)
+    .filter(ev => ev.days >= 0 && ev.days <= 180)
     .sort((a,b) => a.days - b.days)
 
   return (
@@ -52,7 +71,8 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {withDays.length === 0 && (
           <div style={{ padding:'32px', textAlign:'center', color:'var(--txt-muted)', fontSize:13 }}>
-            No upcoming earnings. Click ⚙ Manage to add events.
+            No upcoming earnings in the next 180 days.
+            <div style={{ fontSize:11, marginTop:6, opacity:0.7 }}>Click ⚙ Manage to add events manually, or run Scanner on your positions to fetch dates automatically.</div>
           </div>
         )}
         {withDays.map(event => {
@@ -90,6 +110,12 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
                     {event.ticker}
                   </span>
                   <Badge label={TYPE_LABELS[event.type]} type={event.type} />
+                  {event._auto && (
+                    <span style={{ fontSize:8, color:'var(--txt-muted)', fontStyle:'italic',
+                      padding:'1px 5px', border:'1px solid var(--border)', borderRadius:3 }}>
+                      auto · Yahoo
+                    </span>
+                  )}
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--txt-muted)' }}>
                     {event.date}
                   </span>

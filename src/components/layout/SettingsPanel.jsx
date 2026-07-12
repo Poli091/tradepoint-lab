@@ -43,6 +43,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
   // Data management
   const [importError,  setImportError]  = useState('')
   const [importOk,     setImportOk]     = useState('')
+  const [importAccount,setImportAccount] = useState('Brokerage')
   const [clearConfirm, setClearConfirm] = useState(false)
 
   // Auto-test worker on open
@@ -86,6 +87,8 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
   }
 
   // ── Import portfolio from CSV ───────────────────────────
+  // Supports: Yahoo Finance format (Ticker, Shares, Avg Cost/Share)
+  //       and TradePoint format  (ticker, qty, avgprice, account)
   const handleImportPortfolio = e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -93,31 +96,60 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
     const reader = new FileReader()
     reader.onload = ev => {
       try {
-        const lines = ev.target.result.split('\n').filter(Boolean)
-        const header = lines[0].toLowerCase()
-        if (!header.includes('ticker')) { setImportError('CSV must have a "ticker" column'); return }
-        const cols = header.split(',')
-        const tickerIdx = cols.indexOf('ticker')
-        const qtyIdx    = cols.indexOf('qty')
-        const priceIdx  = cols.indexOf('avgprice')
-        const acctIdx   = cols.indexOf('account')
+        const lines = ev.target.result.split('\n').filter(l => l.trim())
+        const rawHeader = lines[0]
+        const header    = rawHeader.toLowerCase()
+        if (!header.includes('ticker')) { setImportError('CSV must have a "Ticker" column (Yahoo Finance or TradePoint format)'); return }
+
+        const cols = rawHeader.split(',').map(c => c.trim())
+        const colL = cols.map(c => c.toLowerCase())
+
+        // Detect Yahoo Finance vs TradePoint format
+        const isYahoo = colL.includes('shares') || colL.includes('avg cost/share')
+
+        const tickerIdx = colL.indexOf('ticker')
+        // Yahoo Finance columns
+        const sharesIdx = colL.indexOf('shares')
+        const avgCostIdx = colL.indexOf('avg cost/share')
+        // TradePoint columns
+        const qtyIdx   = colL.indexOf('qty')
+        const priceIdx = colL.indexOf('avgprice')
+        const acctIdx  = colL.indexOf('account')
+
         const imported = lines.slice(1).map(l => {
           const p = l.split(',')
-          return {
-            ticker:   p[tickerIdx]?.trim().toUpperCase(),
-            qty:      qtyIdx >= 0    ? parseFloat(p[qtyIdx]) || 0 : 0,
-            avgPrice: priceIdx >= 0  ? parseFloat(p[priceIdx]) || 0 : 0,
-            account:  acctIdx >= 0   ? p[acctIdx]?.trim() : 'combined',
-          }
-        }).filter(i => i.ticker && i.ticker.length <= 6)
+          const ticker = p[tickerIdx]?.trim().toUpperCase()
+          if (!ticker || ticker.length > 6 || ticker === 'TICKER') return null
+
+          const qty      = isYahoo
+            ? (sharesIdx  >= 0 ? parseFloat(p[sharesIdx])  || 0 : 0)
+            : (qtyIdx     >= 0 ? parseFloat(p[qtyIdx])     || 0 : 0)
+          const avgPrice = isYahoo
+            ? (avgCostIdx >= 0 ? parseFloat(p[avgCostIdx]) || 0 : 0)
+            : (priceIdx   >= 0 ? parseFloat(p[priceIdx])   || 0 : 0)
+          // Account: Yahoo has none → use importAccount state; TradePoint may have it
+          const account  = isYahoo
+            ? importAccount
+            : (acctIdx >= 0 ? p[acctIdx]?.trim() || importAccount : importAccount)
+
+          return { ticker, qty, avgPrice, avgCost: avgPrice, account,
+            currentPrice: avgPrice, upside: 0 }
+        }).filter(Boolean)
+
         if (!imported.length) { setImportError('No valid tickers found'); return }
+
         const existing = loadOverrides() ?? []
         const existingTickers = new Set(existing.map(p => p.ticker))
-        const merged = [...existing, ...imported.filter(i => !existingTickers.has(i.ticker))]
-        saveOverrides(merged)
-        setImportOk(`Added ${merged.length - existing.length} positions`)
-        setTimeout(() => setImportOk(''), 3000)
-      } catch { setImportError('Failed to parse CSV') }
+        const newItems = imported.filter(i => !existingTickers.has(i.ticker))
+        saveOverrides([...existing, ...newItems])
+        const fmt = isYahoo ? 'Yahoo Finance' : 'TradePoint'
+        if (!newItems.length && imported.length) {
+          setImportError(`All ${imported.length} tickers already exist. Use ⚙ Manage in Positions to update.`)
+        } else {
+          setImportOk(`Added ${newItems.length} position${newItems.length !== 1 ? 's' : ''} to ${importAccount} (${fmt} format).${newItems.length < imported.length ? ` ${imported.length - newItems.length} skipped (already exist).` : ''}`)
+          setTimeout(() => setImportOk(''), 5000)
+        }
+      } catch(err) { setImportError('Failed to parse CSV: ' + err.message) }
     }
     reader.readAsText(file)
     e.target.value = ''
@@ -334,13 +366,27 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
           <div>
             <SectionLabel icon={Download} label={t.sectionData} />
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-              <label style={{ padding:'8px 14px', borderRadius:'var(--radius)',
-                border:'1px solid var(--border)', cursor:'pointer', fontSize:12, fontWeight:600,
-                color:'var(--accent)', display:'flex', alignItems:'center', gap:6 }}>
-                <Upload size={12} /> Import Portfolio CSV
-                <input type="file" accept=".csv" onChange={handleImportPortfolio}
-                  style={{ display:'none' }} />
-              </label>
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:2 }}>
+                  Import all tickers to:
+                </div>
+                <select value={importAccount} onChange={e => setImportAccount(e.target.value)}
+                  style={{ padding:'5px 8px', borderRadius:'var(--radius)', border:'1px solid var(--border)',
+                    background:'var(--surface-up)', color:'var(--txt)', fontSize:11, cursor:'pointer' }}>
+                  <option value="Brokerage">Brokerage</option>
+                  <option value="Roth IRA">Roth IRA</option>
+                </select>
+                <label style={{ padding:'7px 12px', borderRadius:'var(--radius)',
+                  border:'1px solid var(--border)', cursor:'pointer', fontSize:11, fontWeight:600,
+                  color:'var(--accent)', display:'flex', alignItems:'center', gap:6 }}>
+                  <Upload size={12} /> Import Portfolio CSV
+                  <input type="file" accept=".csv" onChange={handleImportPortfolio}
+                    style={{ display:'none' }} />
+                </label>
+                <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic', maxWidth:180, lineHeight:1.4 }}>
+                  Yahoo Finance doesn't include account info. Import twice if you have positions in both accounts.
+                </div>
+              </div>
               {btn(<><Download size={12} /> Export Portfolio CSV</>, handleExportPortfolio, { accent: true })}
               <label style={{ padding:'8px 14px', borderRadius:'var(--radius)',
                 border:'1px solid var(--border)', cursor:'pointer', fontSize:12, fontWeight:600,
