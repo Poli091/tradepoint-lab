@@ -1244,20 +1244,24 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic', marginBottom:6, opacity:0.8 }}>
                         Yahoo Finance · informational only · not used in scoring
                       </div>
-                      {result.shortInfo?.shortPercentOfFloat != null && (
-                        <Row label="Short % Float"
-                          value={`${result.shortInfo.shortPercentOfFloat.toFixed(1)}%`}
-                          sub={result.shortInfo.label}
-                          color={result.shortInfo.label === 'Low' ? 'var(--green)'
-                            : result.shortInfo.label === 'High' || result.shortInfo.label === 'Elevated' ? 'var(--amber)'
-                            : undefined} />
-                      )}
+                      {result.shortInfo?.shortPercentOfFloat != null
+                        ? (
+                          <Row label="Short % Float"
+                            value={`${result.shortInfo.shortPercentOfFloat.toFixed(1)}%`}
+                            sub={`${result.shortInfo.label}${result.shortInfo.shortSharesAsOf ? ` · As of ${result.shortInfo.shortSharesAsOf}` : ' · FINRA biweekly'}`}
+                            color={result.shortInfo.label === 'Low' ? 'var(--green)'
+                              : result.shortInfo.label === 'High' || result.shortInfo.label === 'Elevated' ? 'var(--amber)'
+                              : undefined} />
+                        ) : result.shortInfo != null ? (
+                          <Row label="Short % Float" value="Unavailable" sub="Not reported" />
+                        ) : null}
                       {result.shortInfo?.shortRatio != null && (
                         <Row label="Short Ratio" value={`${result.shortInfo.shortRatio.toFixed(1)}d`} sub="days to cover" />
                       )}
                       {result.instOwnership?.pct != null && (
-                        <Row label="Institutional Own." value={`${result.instOwnership.pct.toFixed(1)}%`}
-                          sub="13F filings — may be 45d+ stale" />
+                        <Row label="Institutional Own."
+                          value={`${result.instOwnership.pct.toFixed(1)}%`}
+                          sub="Latest 13F filing — may be 45d+ stale" />
                       )}
                     </>
                   )}

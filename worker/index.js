@@ -145,7 +145,7 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
         targetLow:    yhSummary.target.targetLowPrice,
         targetMedian: yhSummary.target.targetMedianPrice,
         _source:      'yahoo',
-        _asOf:        yhSummary.target.asOf,
+        _fetchedAt:   new Date().toISOString(),
       }
       console.log('[Fundamentals] Yahoo Finance price target for', t, fhTarget.targetMean)
     }
@@ -215,7 +215,7 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     relStrength4W:     m['priceRelativeToS&P5004Week']   ?? null,
     // ── Analyst consensus — Finnhub primary, Yahoo Finance fallback ──
     targetSource:      fhTarget?._source ?? 'finnhub',
-    targetAsOf:        fhTarget?._asOf   ?? null,
+    targetFetchedAt:   fhTarget?._fetchedAt ?? null,   // When TradePoint fetched it — NOT the analyst revision date
     targetMean:        fhTarget?.targetMean ?? null,
     targetHigh:        fhTarget?.targetHigh    ?? null,
     targetLow:         fhTarget?.targetLow     ?? null,
@@ -357,12 +357,16 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
       }
 
       // Fallback to Yahoo Finance if Alpaca returns nothing for this segment
+      // NOTE: Yahoo v8 returns split-adjusted close (adjclose) by default.
+      // Alpaca IEX uses adjustment=split. Both should be split-adjusted — verify continuity.
       if (segBars.length === 0) {
-        console.log('[OHLCV] Alpaca empty for', t, segStart, '— trying Yahoo Finance')
+        console.log('[OHLCV] Alpaca empty for', t, segStart, '— trying Yahoo Finance (split-adjusted)')
         const yhRange = segYears <= 2 ? '2y' : segYears <= 5 ? '5y' : '10y'
-        if (i === 0) {   // only fetch Yahoo once (covers full range)
+        if (i === 0) {
           const yhBars = await yahooOHLCV(t, yhRange)
-          segBars = yhBars.filter(b => b.bar_date >= segStart && b.bar_date <= segEnd)
+          segBars = yhBars
+            .filter(b => b.bar_date >= segStart && b.bar_date <= segEnd)
+            .map(b => ({ ...b, _source: 'yahoo', _adjustment: 'split_adjusted' }))
         }
       }
 
@@ -2307,7 +2311,7 @@ async function yahooQuoteSummary(ticker) {
     targetMedianPrice: fd.targetMedianPrice?.raw ?? null,
     numberOfAnalysts:  fd.numberOfAnalystOpinions?.raw ?? null,
     recommendationKey: fd.recommendationKey ?? null,
-    source: 'yahoo', asOf: new Date().toISOString().split('T')[0],
+    source: 'yahoo', fetchedAt: new Date().toISOString(),
   } : null
 
   // Earnings date (next earnings from calendarEvents)
