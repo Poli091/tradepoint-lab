@@ -15,14 +15,14 @@ import { getFundamentalsInfo, clearFundamentals } from '../../utils/api/index.js
 import { getGradeColor } from '../../conviction/grade/index.js'
 
 const SORT_COLS = [
-  { key: 'ticker',      label: 'Symbol',      align: 'left'  },
-  { key: 'price',       label: 'Price',       align: 'right' },
-  { key: 'dayChangePct',label: 'Day %',       align: 'right' },
-  { key: 'value',       label: 'Mkt Value',   align: 'right' },
-  { key: 'gain',        label: 'P&L',         align: 'right', minW: 110 },
-  { key: 'chart',       label: 'Today',       align: 'center', noSort: true },
-  { key: 'upside',      label: 'Upside ↑',    align: 'right' },
-  { key: 'conviction',  label: 'Conviction',  align: 'right' },
+  { key: 'ticker',       label: 'Symbol',     align: 'left',   minW: 100 },
+  { key: 'price',        label: 'Price',      align: 'right',  minW: 90  },
+  { key: 'dayChangePct', label: 'Day %',      align: 'right',  minW: 70  },
+  { key: 'value',        label: 'Mkt Value',  align: 'right',  minW: 100 },
+  { key: 'gain',         label: 'P&L',        align: 'right',  minW: 120 },
+  { key: 'chart',        label: 'Today',      align: 'center', minW: 90, noSort: true },
+  { key: 'upside',       label: 'Upside ↑',  align: 'right',  minW: 80  },
+  { key: 'conviction',   label: 'Conviction', align: 'right',  minW: 90  },
 ]
 
 /* ── Refresh button ─────────────────────────────────── */

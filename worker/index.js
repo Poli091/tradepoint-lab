@@ -335,14 +335,19 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
     }
 
     if (allNewBars.length > 0) {
-      // Save to D1
+      // Save to D1 in chunks of 75 — D1 hard limit is 100 statements per batch.
+      // 250 bars × 2 segments = 500 rows would silently fail as one batch.
       if (db) {
-        try {
-          const stmt = db.prepare(
-            'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-          )
-          await db.batch(allNewBars.map(b => stmt.bind(t, b.bar_date, 'D', b.open, b.high, b.low, b.close, b.volume)))
-        } catch (e) { console.error('[D1 OHLCV save]', e.message) }
+        const CHUNK = 75
+        const stmt  = db.prepare(
+          'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        for (let ci = 0; ci < allNewBars.length; ci += CHUNK) {
+          try {
+            const chunk = allNewBars.slice(ci, ci + CHUNK)
+            await db.batch(chunk.map(b => stmt.bind(t, b.bar_date, 'D', b.open, b.high, b.low, b.close, b.volume)))
+          } catch (e) { console.error('[D1 OHLCV chunk]', t, ci, e.message) }
+        }
       }
 
       // Merge + deduplicate + sort
@@ -2016,6 +2021,203 @@ async function handleMacroContext(kv, fredKey) {
   return { data }
 }
 
+
+/* ── OHLCV Debug: inspect D1 state for a ticker+range ─── */
+async function handleOHLCVDebug(ticker, range, db) {
+  const t        = ticker.toUpperCase()
+  const calDays  = range === '2Y' ? 730 : range === '5Y' ? 1825 : 3650
+  const nowMs    = Date.now()
+  const rangeStart = new Date(nowMs - calDays * 86_400_000).toISOString().split('T')[0]
+
+  // First: check if ohlcv_bars table exists
+  let tableExists = false, tableError = null
+  if (db) {
+    try {
+      await db.prepare(`SELECT 1 FROM ohlcv_bars LIMIT 1`).all()
+      tableExists = true
+    } catch(e) { tableError = e.message }
+  }
+
+  // Then: try a test insert (non-destructive, uses INSERT OR IGNORE)
+  let testInsert = { ok: false, error: null }
+  if (db && tableExists) {
+    try {
+      await db.prepare(
+        `INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume)
+         VALUES ('__TEST__', '2000-01-01', 'D', 1, 1, 1, 1, 1)`
+      ).run()
+      // Clean it up
+      await db.prepare(`DELETE FROM ohlcv_bars WHERE ticker = '__TEST__'`).run()
+      testInsert = { ok: true, error: null }
+    } catch(e) { testInsert = { ok: false, error: e.message } }
+  }
+
+  let d1Info = { count: 0, oldest: null, newest: null, rangeStart, tableExists, tableError, testInsert }
+  if (db && tableExists) {
+    try {
+      const count = await db.prepare(
+        `SELECT COUNT(*) as cnt, MIN(bar_date) as oldest, MAX(bar_date) as newest
+         FROM ohlcv_bars WHERE ticker = ? AND res = 'D' AND bar_date >= ?`
+      ).bind(t, rangeStart).first()
+      d1Info = {
+        ...d1Info,
+        count:   count?.cnt    ?? 0,
+        oldest:  count?.oldest ?? null,
+        newest:  count?.newest ?? null,
+      }
+    } catch(e) { d1Info.queryError = e.message }
+  }
+
+  const lastStored    = d1Info.newest
+  const oldestStored  = d1Info.oldest
+  const daysSinceLast = lastStored
+    ? (nowMs - new Date(lastStored + 'T12:00:00Z').getTime()) / 86_400_000
+    : null
+
+  const needsHistory = !oldestStored || oldestStored > rangeStart
+  const needsRecent  = daysSinceLast == null || daysSinceLast > 8
+
+  return json({
+    ticker: t, range,
+    d1:     d1Info,
+    logic: {
+      daysSinceLast: daysSinceLast?.toFixed(1),
+      needsHistory,
+      needsRecent,
+      wouldFetch: needsHistory || needsRecent,
+    },
+    segments: Array.from({ length: range === '2Y' ? 2 : range === '5Y' ? 5 : 10 }, (_, i) => {
+      const segYears = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
+      const idx = segYears - 1 - i
+      const segStart = new Date(nowMs - (idx + 1) * 365 * 86_400_000).toISOString().split('T')[0]
+      const segEnd   = new Date(nowMs - idx * 365 * 86_400_000).toISOString().split('T')[0]
+      const isRecent = idx === 0
+      const skip = isRecent
+        ? (!needsRecent && oldestStored && segStart >= oldestStored)
+        : (!!oldestStored && segStart >= oldestStored)
+      return { segStart, segEnd, isRecent, wouldSkip: skip }
+    }),
+  })
+}
+
+
+/* ── Alpaca Direct Test — debug what Alpaca returns for a ticker ── */
+async function handleAlpacaTest(ticker, keys) {
+  const t = ticker.toUpperCase()
+  if (!keys.alpacaKey || !keys.alpacaSecret)
+    return json({ error: 'Alpaca keys not configured' }, 401)
+
+  const hdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  const results = {}
+
+  // Test 1: recent 10 days (should always work)
+  const nowMs  = Date.now()
+  const recent = new Date(nowMs - 10 * 86_400_000).toISOString().split('T')[0]
+  const today  = new Date(nowMs).toISOString().split('T')[0]
+  try {
+    const r = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${recent}&end=${today}&limit=15&feed=iex&adjustment=split`,
+      { headers: hdr }
+    )
+    results.recent = { barsCount: r?.bars?.length ?? 0, firstDate: r?.bars?.[0]?.t ?? null, error: r?.message ?? null, symbol: r?.symbol ?? null }
+  } catch(e) { results.recent = { error: e.message } }
+
+  // Test 2: 1 year ago segment
+  const y1start = new Date(nowMs - 730 * 86_400_000).toISOString().split('T')[0]
+  const y1end   = new Date(nowMs - 365 * 86_400_000).toISOString().split('T')[0]
+  try {
+    const r = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${y1start}&end=${y1end}&limit=300&feed=iex&adjustment=split`,
+      { headers: hdr }
+    )
+    results.year2ago = { barsCount: r?.bars?.length ?? 0, firstDate: r?.bars?.[0]?.t ?? null, lastDate: r?.bars?.[r?.bars?.length-1]?.t ?? null, error: r?.message ?? null }
+  } catch(e) { results.year2ago = { error: e.message } }
+
+  // Test 3: without feed param (let Alpaca pick)
+  try {
+    const r = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${y1start}&end=${y1end}&limit=10`,
+      { headers: hdr }
+    )
+    results.noFeed = { barsCount: r?.bars?.length ?? 0, error: r?.message ?? null }
+  } catch(e) { results.noFeed = { error: e.message } }
+
+  return json({ ticker: t, ranges: { recent: `${recent}→${today}`, year2ago: `${y1start}→${y1end}` }, results })
+}
+
+
+/* ── OHLCV Force Fetch — bypasses KV, calls Alpaca, saves to D1 ── */
+async function handleOHLCVForce(ticker, range, keys, db) {
+  const t       = ticker.toUpperCase()
+  const calDays = range === '2Y' ? 730 : range === '5Y' ? 1825 : 3650
+  const nowMs   = Date.now()
+  const rangeStart = new Date(nowMs - calDays * 86_400_000).toISOString().split('T')[0]
+  const log = []
+
+  if (!keys.alpacaKey || !keys.alpacaSecret)
+    return json({ error: 'Alpaca keys not configured' })
+
+  const hdr      = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  const segYears = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
+  const allBars  = []
+
+  for (let i = segYears - 1; i >= 0; i--) {
+    const segEnd   = new Date(nowMs - i * 365 * 86_400_000).toISOString().split('T')[0]
+    const segStart = new Date(nowMs - (i + 1) * 365 * 86_400_000).toISOString().split('T')[0]
+    log.push({ step: `seg-${i}`, segStart, segEnd, status: 'starting' })
+
+    try {
+      const raw = await fetchJSON(
+        `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${segStart}&end=${segEnd}&limit=300&feed=iex&adjustment=split`,
+        { headers: hdr }
+      )
+      const bars = (raw?.bars ?? []).map(b => ({
+        bar_date: new Date(b.t).toISOString().split('T')[0],
+        close: parseFloat(b.c.toFixed(2)), open: b.o, high: b.h, low: b.l, volume: b.v,
+      }))
+      log[log.length-1].barsReceived = bars.length
+      log[log.length-1].alpacaError  = raw?.message ?? null
+      allBars.push(...bars)
+    } catch(e) {
+      log[log.length-1].fetchError = e.message
+    }
+  }
+
+  log.push({ step: 'total', allBarsCount: allBars.length })
+
+  // Save to D1 in chunks of 75
+  let savedCount = 0, chunkErrors = []
+  if (db && allBars.length > 0) {
+    const CHUNK = 75
+    const stmt  = db.prepare(
+      'INSERT OR IGNORE INTO ohlcv_bars (ticker, bar_date, res, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+    for (let ci = 0; ci < allBars.length; ci += CHUNK) {
+      const chunk = allBars.slice(ci, ci + CHUNK)
+      try {
+        await db.batch(chunk.map(b => stmt.bind(t, b.bar_date, 'D', b.open, b.high, b.low, b.close, b.volume)))
+        savedCount += chunk.length
+      } catch(e) {
+        chunkErrors.push({ ci, error: e.message })
+      }
+    }
+    log.push({ step: 'd1-save', savedCount, chunkErrors, totalBars: allBars.length })
+  }
+
+  // Verify D1
+  let d1Count = 0
+  if (db) {
+    try {
+      const r = await db.prepare(
+        `SELECT COUNT(*) as cnt FROM ohlcv_bars WHERE ticker = ? AND res = 'D' AND bar_date >= ?`
+      ).bind(t, rangeStart).first()
+      d1Count = r?.cnt ?? 0
+    } catch(e) { log.push({ step: 'd1-verify', error: e.message }) }
+  }
+
+  return json({ ticker: t, range, rangeStart, log, d1CountAfter: d1Count, success: d1Count > 0 })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -2076,6 +2278,12 @@ export default {
           return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
+        case 'ohlcv-force':
+          return await handleOHLCVForce(param1, param2, keys, db)
+        case 'alpaca-test':
+          return await handleAlpacaTest(param1, keys)
+        case 'ohlcv-debug':
+          return await handleOHLCVDebug(param1, param2, db)
         case 'macro':
           const macroCtx = await handleMacroContext(kv, keys.fred)
           return json(macroCtx)
