@@ -215,7 +215,7 @@ function AppInner() {
         />
         <main className="app-content">{renderView()}</main>
       </div>
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} toggleTheme={toggleTheme} />
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} toggleTheme={toggleTheme} onPositionChange={() => setPositionSeed(s => s + 1)} />
       {/* Global search panel — opened from Header search, not tied to any view */}
       {searchTicker && (
         <TickerDetailPanel

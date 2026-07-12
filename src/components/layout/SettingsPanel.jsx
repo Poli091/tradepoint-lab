@@ -28,7 +28,7 @@ function SectionLabel({ icon: Icon, label }) {
 }
 
 /* ── Main settings panel ────────────────────────────────── */
-export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
+export default function SettingsPanel({ open, onClose, theme, toggleTheme, onPositionChange }) {
   const { lang, switchLang, t } = useLang()
   const { profileName, deleteProfile, lock } = useAuth()
   const overlayRef = useRef(null)
@@ -142,6 +142,7 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
         const existingTickers = new Set(existing.map(p => p.ticker))
         const newItems = imported.filter(i => !existingTickers.has(i.ticker))
         saveOverrides([...existing, ...newItems])
+        onPositionChange?.()   // refresh App state without page reload
         const fmt = isYahoo ? 'Yahoo Finance' : 'TradePoint'
         if (!newItems.length && imported.length) {
           setImportError(`All ${imported.length} tickers already exist. Use ⚙ Manage in Positions to update.`)
