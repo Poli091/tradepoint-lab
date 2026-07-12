@@ -1237,6 +1237,31 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       color={result.technical.aboveEMA200 ? 'var(--green)' : 'var(--red)'} />
                   )}
 
+                  {/* ── Market Structure: Short Interest + Institutional Ownership ── */}
+                  {(result.shortInfo || result.instOwnership) && (
+                    <>
+                      <SectionHeader icon={BarChart2} label="Market Structure" />
+                      <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic', marginBottom:6, opacity:0.8 }}>
+                        Yahoo Finance · informational only · not used in scoring
+                      </div>
+                      {result.shortInfo?.shortPercentOfFloat != null && (
+                        <Row label="Short % Float"
+                          value={`${result.shortInfo.shortPercentOfFloat.toFixed(1)}%`}
+                          sub={result.shortInfo.label}
+                          color={result.shortInfo.label === 'Low' ? 'var(--green)'
+                            : result.shortInfo.label === 'High' || result.shortInfo.label === 'Elevated' ? 'var(--amber)'
+                            : undefined} />
+                      )}
+                      {result.shortInfo?.shortRatio != null && (
+                        <Row label="Short Ratio" value={`${result.shortInfo.shortRatio.toFixed(1)}d`} sub="days to cover" />
+                      )}
+                      {result.instOwnership?.pct != null && (
+                        <Row label="Institutional Own." value={`${result.instOwnership.pct.toFixed(1)}%`}
+                          sub="13F filings — may be 45d+ stale" />
+                      )}
+                    </>
+                  )}
+
                   <SectionHeader icon={Clock} label="Data Freshness" />
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                     <FreshnessRow label="Fundamentals (90d TTL)" freshness={freshness} />

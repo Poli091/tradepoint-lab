@@ -135,17 +135,19 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   let fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
   if (!fhTarget?.targetMean) { await delay(300); fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub) }
   // Finnhub free tier often returns null targetMean — fallback to Yahoo Finance
+  let yhSummary = null
   if (!fhTarget?.targetMean) {
-    const yhTarget = await yahooTargetPrice(t)
-    if (yhTarget?.targetMeanPrice) {
+    yhSummary = await yahooQuoteSummary(t)
+    if (yhSummary?.target?.targetMeanPrice) {
       fhTarget = {
-        targetMean:   yhTarget.targetMeanPrice,
-        targetHigh:   yhTarget.targetHighPrice,
-        targetLow:    yhTarget.targetLowPrice,
-        targetMedian: yhTarget.targetMedianPrice,
-        _source: 'yahoo',
+        targetMean:   yhSummary.target.targetMeanPrice,
+        targetHigh:   yhSummary.target.targetHighPrice,
+        targetLow:    yhSummary.target.targetLowPrice,
+        targetMedian: yhSummary.target.targetMedianPrice,
+        _source:      'yahoo',
+        _asOf:        yhSummary.target.asOf,
       }
-      console.log('[Fundamentals] Using Yahoo Finance price target for', t, fhTarget.targetMean)
+      console.log('[Fundamentals] Yahoo Finance price target for', t, fhTarget.targetMean)
     }
   }
   await delay(200)
@@ -211,8 +213,9 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     relStrength52W:    m['priceRelativeToS&P50052Week']  ?? null,
     relStrength13W:    m['priceRelativeToS&P50013Week']  ?? null,
     relStrength4W:     m['priceRelativeToS&P5004Week']   ?? null,
-    // ── Analyst consensus — Finnhub preferred, FMP /stable/ as fallback ──
-    // FMP returns array [{targetConsensus, targetHigh...}], Finnhub returns object
+    // ── Analyst consensus — Finnhub primary, Yahoo Finance fallback ──
+    targetSource:      fhTarget?._source ?? 'finnhub',
+    targetAsOf:        fhTarget?._asOf   ?? null,
     targetMean:        fhTarget?.targetMean ?? null,
     targetHigh:        fhTarget?.targetHigh    ?? null,
     targetLow:         fhTarget?.targetLow     ?? null,
@@ -224,6 +227,11 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     strongSell:        rec.strongSell                   ?? 0,
     consecutiveBeats,
     epsSurprisePct,
+    // ── Yahoo Finance supplemental data (informational only — no score impact) ──
+    nextEarningsDate:  yhSummary?.nextEarnings ?? null,
+    earningsDateSource: yhSummary?.nextEarnings ? 'yahoo' : null,
+    shortInfo:         yhSummary?.shortInfo    ?? null,
+    instOwnership:     yhSummary?.instOwn      ?? null,
     // Debug — tells the client which sources responded
     _sources: {
       finnhubMetric:   !!fhMetrics,
@@ -2275,20 +2283,67 @@ async function yahooOHLCV(ticker, rangeStr) {
   })).filter(b => b.close != null && b.bar_date)
 }
 
-async function yahooTargetPrice(ticker) {
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData`
+/* Yahoo Finance adapter — fallback only, not primary source.
+   If Yahoo changes structure or blocks access, TradePoint continues without this data.
+   All fields tagged with source:'yahoo' and asOf date for transparency. */
+async function yahooQuoteSummary(ticker) {
+  const modules = 'financialData,defaultKeyStatistics,calendarEvents'
+  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=${modules}`
   const data = await fetchJSON(url, {
     headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
   }).catch(() => null)
-  const fd = data?.quoteSummary?.result?.[0]?.financialData
-  return {
-    targetMeanPrice:   fd?.targetMeanPrice?.raw   ?? null,
-    targetHighPrice:   fd?.targetHighPrice?.raw   ?? null,
-    targetLowPrice:    fd?.targetLowPrice?.raw    ?? null,
-    targetMedianPrice: fd?.targetMedianPrice?.raw ?? null,
-    numberOfAnalystOpinions: fd?.numberOfAnalystOpinions?.raw ?? null,
-    recommendationKey: fd?.recommendationKey ?? null,
-  }
+  const result = data?.quoteSummary?.result?.[0]
+  if (!result) return null
+
+  const fd  = result.financialData     ?? {}
+  const ks  = result.defaultKeyStatistics ?? {}
+  const cal = result.calendarEvents     ?? {}
+
+  // Analyst target
+  const target = fd.targetMeanPrice?.raw ? {
+    targetMeanPrice:   fd.targetMeanPrice.raw,
+    targetHighPrice:   fd.targetHighPrice?.raw   ?? null,
+    targetLowPrice:    fd.targetLowPrice?.raw    ?? null,
+    targetMedianPrice: fd.targetMedianPrice?.raw ?? null,
+    numberOfAnalysts:  fd.numberOfAnalystOpinions?.raw ?? null,
+    recommendationKey: fd.recommendationKey ?? null,
+    source: 'yahoo', asOf: new Date().toISOString().split('T')[0],
+  } : null
+
+  // Earnings date (next earnings from calendarEvents)
+  const earningsDates = cal.earnings?.earningsDate ?? []
+  const nextEarnings = earningsDates
+    .map(d => d.raw ? new Date(d.raw * 1000).toISOString().split('T')[0] : null)
+    .filter(d => d && d >= new Date().toISOString().split('T')[0])
+    .sort()[0] ?? null
+
+  // Short interest (biweekly FINRA data — may be up to 2 weeks stale)
+  const shortInfo = ks.sharesShort?.raw != null ? {
+    shortPercentOfFloat: ks.shortPercentOfFloat?.raw != null
+      ? parseFloat((ks.shortPercentOfFloat.raw * 100).toFixed(2)) : null,
+    shortRatio: ks.shortRatio?.raw ?? null,
+    shortSharesAsOf: ks.sharesShortPriorMonth?.raw != null
+      ? new Date((ks.dateShortInterest?.raw ?? 0) * 1000).toISOString().split('T')[0] : null,
+    label: ks.shortPercentOfFloat?.raw < 0.05 ? 'Low'
+      : ks.shortPercentOfFloat?.raw < 0.10 ? 'Moderate'
+      : ks.shortPercentOfFloat?.raw < 0.20 ? 'Elevated' : 'High',
+    source: 'yahoo', note: 'FINRA biweekly — may be up to 2 weeks stale',
+  } : null
+
+  // Institutional ownership
+  const instOwn = ks.heldPercentInstitutions?.raw != null ? {
+    pct: parseFloat((ks.heldPercentInstitutions.raw * 100).toFixed(1)),
+    note: 'From 13F filings — may be 45+ days stale',
+    source: 'yahoo',
+  } : null
+
+  return { target, nextEarnings, shortInfo, instOwn }
+}
+
+// Keep old name as thin wrapper for backward compat
+async function yahooTargetPrice(ticker) {
+  const r = await yahooQuoteSummary(ticker)
+  return r?.target ?? null
 }
 
 /* ════════════════════════════════════════════════════════════
