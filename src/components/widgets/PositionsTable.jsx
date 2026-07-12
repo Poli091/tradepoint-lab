@@ -19,8 +19,8 @@ const SORT_COLS = [
   { key: 'price',        label: 'Price',      align: 'right',  minW: 90  },
   { key: 'dayChangePct', label: 'Day %',      align: 'right',  minW: 70  },
   { key: 'value',        label: 'Mkt Value',  align: 'right',  minW: 100 },
-  { key: 'gain',         label: 'P&L',        align: 'right',  minW: 120 },
-  { key: 'chart',        label: 'Today',      align: 'center', minW: 90, noSort: true },
+  { key: 'chart',        label: 'Today',      align: 'center', minW: 95, noSort: true },
+  { key: 'gain',         label: 'All-time P&L', align: 'right', minW: 130 },
   { key: 'upside',       label: 'Upside ↑',  align: 'right',  minW: 80  },
   { key: 'conviction',   label: 'Conviction', align: 'right',  minW: 90  },
 ]
@@ -187,13 +187,13 @@ export default function PositionsTable({
                     </div>
                   </td>
 
-                  {/* Day Chart */}
-                  <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {/* Today sparkline — BEFORE P&L so they're visually distinct */}
+                  <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderRight: '1px solid var(--border)' }}>
                     <LiveMiniChart ticker={pos.ticker} prices={prices} width={60} height={26} compact />
                   </td>
 
-                  {/* P&L */}
-                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 110 }}>
+                  {/* All-time P&L */}
+                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 130 }}>
                     <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fSignedUSD(gain)}
                     </div>

@@ -120,7 +120,8 @@ export default function ScanView() {
   // so grade filter pills appear without needing to manually scan each ticker
   useEffect(() => {
     const existing = loadScanHistory()
-    if (existing.length > 0) return  // don't override existing history
+    // Only skip if we already have entries WITH grades — blank history should be seeded
+    if (existing.some(h => h.grade)) return
     const seeded = Object.entries(convictionResults)
       .filter(([, r]) => r?.finalScore != null && r?.grade)
       .map(([ticker, r]) => ({ ticker, score: r.finalScore, grade: r.grade }))

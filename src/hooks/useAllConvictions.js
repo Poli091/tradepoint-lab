@@ -53,29 +53,27 @@ export function useAllConvictions(positions = [], prices = {}) {
               spyOhlcv,
               prices,
             })
-            // If upside is null (likely stale cache without targetMean),
-            // retry with forceRefresh to get fresh fundamentals from Finnhub
+            // If upside is null, retry with forceRefresh — bypasses 90d KV cache
+            // Yahoo Finance fallback in worker provides targetMean for free tier
+            let finalConviction = conviction
             if (conviction.wallStreet?.upside == null) {
               try {
                 const freshFund = await workerAPI.fundamentals(pos.ticker, true)
                 if (freshFund?.data?.targetMean) {
-                  newResults[pos.ticker] = runConviction({
+                  finalConviction = runConviction({
                     fundamentals: freshFund.data,
                     ohlcv:        ohlcvResult?.data ?? [],
                     spyOhlcv,
                     prices,
                   })
-                } else {
-                  // Attach earnings date so CalendarView and Portfolio Review can use it
+                }
+              } catch { /* keep conviction as fallback */ }
+            }
+            // Always attach earnings date from fundamentals
             newResults[pos.ticker] = {
-              ...conviction,
+              ...finalConviction,
               nextEarningsDate:   fundResult?.data?.nextEarningsDate   ?? null,
               earningsDateSource: fundResult?.data?.earningsDateSource ?? null,
-            }
-                }
-              } catch { newResults[pos.ticker] = conviction }
-            } else {
-              newResults[pos.ticker] = conviction
             }
           }
         } catch (err) {
