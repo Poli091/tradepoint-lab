@@ -70,6 +70,7 @@ function getKeys(request, env) {
     alpacaSecret: env.ALPACA_SECRET    || h('X-Alpaca-Secret'),
     groq:         env.GROQ_KEY         || h('X-Groq-Key'),
     fred:         env.FRED_KEY         || h('X-Fred-Key'),
+    adminKey:     env.TRADEPOINT_ADMIN_KEY ?? null,
   }
 }
 
@@ -396,8 +397,8 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
 
       // Continuity validation — flags boundary gaps and data quality issues
       const continuity = validateOHLCV(allBars)
-      if (continuity.warnings) {
-        console.warn('[OHLCV continuity]', t, range, JSON.stringify(continuity.warnings.slice(0,3)))
+      if (continuity.events) {
+        console.warn('[OHLCV continuity]', t, range, continuity.status, JSON.stringify(continuity.events.slice(0,3)))
       }
     }
   }
@@ -2358,65 +2359,85 @@ async function yahooTargetPrice(ticker) {
 
 
 /* ── OHLCV Segment Continuity Validator ─────────────────────────────────
-   Checks for anomalous gaps between source boundaries and basic data quality.
-   Returns {ok, warnings, validBars} — never discards data, only flags.
+   Checks data quality and cross-source boundaries. Never discards bars.
+   
+   Severity:
+     info    — duplicates removed (expected when segments overlap)
+     warning — unexpected calendar gap (suspension, listing, holiday)
+     error   — OHLC corrupt, negative values, adjustment mismatch (>30%)
+   
+   Dedup policy (explicit):
+     Same date from multiple sources → keep Alpaca, discard Yahoo
+     Same source, same date → keep first encountered
 ─────────────────────────────────────────────────────────────────────── */
 function validateOHLCV(bars) {
-  const warnings = []
-  const seen = new Set()
+  const events  = []           // {severity, type, ...detail}
+  const dedupMap = new Map()   // bar_date → bar (Alpaca preferred over Yahoo)
   let prev = null
 
-  for (let i = 0; i < bars.length; i++) {
-    const b = bars[i]
-
-    // 1. Duplicate bar_date
-    if (seen.has(b.bar_date)) {
-      warnings.push({ type: 'duplicate', bar_date: b.bar_date })
-      continue   // skip exact duplicate
-    }
-    seen.add(b.bar_date)
-
-    // 2. OHLC sanity
-    if (b.low != null && b.high != null && b.low > b.high) {
-      warnings.push({ type: 'invalid_ohlc', bar_date: b.bar_date, low: b.low, high: b.high })
-    }
-
-    // 3. Negative volume
-    if (b.volume != null && b.volume < 0) {
-      warnings.push({ type: 'negative_volume', bar_date: b.bar_date, volume: b.volume })
-    }
-
-    // 4. Source boundary gap check
-    if (prev && prev._source !== b._source && prev.close && b.close) {
-      const gapPct = Math.abs((b.close - prev.close) / prev.close * 100)
-      if (gapPct > 30) {
-        warnings.push({
-          type:         'boundary_gap',
-          status:       'possible_adjustment_mismatch',
-          boundaryDate: b.bar_date,
-          gapPct:       parseFloat(gapPct.toFixed(1)),
-          sources:      [prev._source ?? 'alpaca', b._source ?? 'alpaca'],
-          prevClose:    prev.close,
-          nextClose:    b.close,
-        })
+  // Pass 1: dedup with source preference (Alpaca > Yahoo > other)
+  for (const b of bars) {
+    const existing = dedupMap.get(b.bar_date)
+    if (existing) {
+      // Keep Alpaca; discard Yahoo duplicate
+      const keepExisting = existing._source !== 'yahoo' || b._source === 'yahoo'
+      if (keepExisting) {
+        events.push({ severity:'info', type:'duplicate_removed', bar_date: b.bar_date,
+          kept: existing._source ?? 'alpaca', discarded: b._source ?? 'alpaca' })
+        continue
+      } else {
+        events.push({ severity:'info', type:'duplicate_removed', bar_date: b.bar_date,
+          kept: b._source ?? 'alpaca', discarded: existing._source ?? 'yahoo' })
       }
     }
+    dedupMap.set(b.bar_date, b)
+  }
 
-    // 5. Internal gap > 7 calendar days (non-holiday weekday gap)
+  // Pass 2: quality checks on deduplicated sorted series
+  const sorted = [...dedupMap.values()].sort((a, b) => a.bar_date.localeCompare(b.bar_date))
+
+  for (const b of sorted) {
+    // OHLC sanity — check all relationships
+    if (b.low != null && b.high != null) {
+      if (b.low < 0 || b.high < 0)
+        events.push({ severity:'error', type:'negative_price', bar_date: b.bar_date, low: b.low, high: b.high })
+      else if (b.low > b.high)
+        events.push({ severity:'error', type:'low_exceeds_high', bar_date: b.bar_date, low: b.low, high: b.high })
+      if (b.open != null && (b.open < b.low || b.open > b.high))
+        events.push({ severity:'error', type:'open_out_of_range', bar_date: b.bar_date })
+      if (b.close != null && (b.close < b.low || b.close > b.high))
+        events.push({ severity:'error', type:'close_out_of_range', bar_date: b.bar_date })
+    }
+    if (b.volume != null && b.volume < 0)
+      events.push({ severity:'error', type:'negative_volume', bar_date: b.bar_date, volume: b.volume })
+
     if (prev) {
-      const dayGap = (new Date(b.bar_date) - new Date(prev.bar_date)) / 86_400_000
-      if (dayGap > 7) {
-        warnings.push({ type: 'gap', from: prev.bar_date, to: b.bar_date, calendarDays: Math.round(dayGap) })
+      // Source boundary gap check
+      if (prev._source !== b._source && prev.close && b.close) {
+        const gapPct = Math.abs((b.close - prev.close) / prev.close * 100)
+        if (gapPct > 30)
+          events.push({ severity:'error', type:'possible_adjustment_mismatch',
+            boundaryDate: b.bar_date, gapPct: parseFloat(gapPct.toFixed(1)),
+            sources: [prev._source ?? 'alpaca', b._source ?? 'alpaca'],
+            prevClose: prev.close, nextClose: b.close })
       }
+      // Unexpected calendar gap > 7 days
+      const dayGap = (new Date(b.bar_date) - new Date(prev.bar_date)) / 86_400_000
+      if (dayGap > 7)
+        events.push({ severity:'warning', type:'unexpected_calendar_gap',
+          from: prev.bar_date, to: b.bar_date, calendarDays: Math.round(dayGap) })
     }
-
     prev = b
   }
 
+  const errors   = events.filter(e => e.severity === 'error')
+  const warnings = events.filter(e => e.severity === 'warning')
+  const ok       = errors.length === 0   // errors degrade quality; warnings are informational
+
   return {
-    ok:       warnings.filter(w => w.type === 'boundary_gap' || w.type === 'invalid_ohlc').length === 0,
-    barCount: bars.length,
-    warnings: warnings.length > 0 ? warnings : null,
+    ok, barCount: sorted.length,
+    status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
+    events: events.length > 0 ? events : null,
   }
 }
 
@@ -2501,8 +2522,12 @@ export default {
         case 'cache':
           if (param1 === 'info')  return await handleCacheInfo(param2, kv)
           if (param1 === 'clear') {
-            if (!keys.finnhub && !keys.groq && !keys.alpacaKey)
-              return json({ error: 'API key required to clear cache' }, 401)
+            // Require TRADEPOINT_ADMIN_KEY (set via: npx wrangler secret put TRADEPOINT_ADMIN_KEY)
+            // and POST method — GET must not produce side effects
+            const suppliedKey = request.headers.get('X-TradePoint-Admin-Key')
+            if (!keys.adminKey) return json({ error: 'Admin key not configured on server' }, 503)
+            if (request.method !== 'POST') return json({ error: 'POST required for cache invalidation' }, 405)
+            if (suppliedKey !== keys.adminKey) return json({ error: 'Unauthorized' }, 401)
             return await handleCacheClear(param2, kv)
           }
           return json({ error: `Unknown cache action: ${param1}` }, 400)
