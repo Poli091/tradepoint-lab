@@ -19,7 +19,7 @@ const SORT_COLS = [
   { key: 'price',       label: 'Price',       align: 'right' },
   { key: 'dayChangePct',label: 'Day %',       align: 'right' },
   { key: 'value',       label: 'Mkt Value',   align: 'right' },
-  { key: 'gain',        label: 'P&L',         align: 'right' },
+  { key: 'gain',        label: 'P&L',         align: 'right', minW: 110 },
   { key: 'chart',       label: 'Today',       align: 'center', noSort: true },
   { key: 'upside',      label: 'Upside ↑',    align: 'right' },
   { key: 'conviction',  label: 'Conviction',  align: 'right' },
@@ -116,7 +116,7 @@ export default function PositionsTable({
               {SORT_COLS.map(col => {
                 const active = sortBy === col.key
                 return (
-                  <th key={col.key} onClick={() => onSort(col.key)} style={{
+                  <th key={col.key} onClick={() => { if (col.noSort) return; onSort(col.key) }} style={{ minWidth: col.minW,
                     padding: '7px 10px', textAlign: col.align,
                     fontSize: 10, fontWeight: 600,
                     color: active ? 'var(--accent)' : 'var(--txt-muted)',
@@ -193,7 +193,7 @@ export default function PositionsTable({
                   </td>
 
                   {/* P&L */}
-                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 110 }}>
                     <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fSignedUSD(gain)}
                     </div>

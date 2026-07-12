@@ -47,12 +47,31 @@ export function useAllConvictions(positions = [], prices = {}) {
           ])
 
           if (fundResult?.data) {
-            newResults[pos.ticker] = runConviction({
+            const conviction = runConviction({
               fundamentals: fundResult.data,
               ohlcv:        ohlcvResult?.data ?? [],
               spyOhlcv,
               prices,
             })
+            // If upside is null (likely stale cache without targetMean),
+            // retry with forceRefresh to get fresh fundamentals from Finnhub
+            if (conviction.wallStreet?.upside == null) {
+              try {
+                const freshFund = await workerAPI.fundamentals(pos.ticker, true)
+                if (freshFund?.data?.targetMean) {
+                  newResults[pos.ticker] = runConviction({
+                    fundamentals: freshFund.data,
+                    ohlcv:        ohlcvResult?.data ?? [],
+                    spyOhlcv,
+                    prices,
+                  })
+                } else {
+                  newResults[pos.ticker] = conviction
+                }
+              } catch { newResults[pos.ticker] = conviction }
+            } else {
+              newResults[pos.ticker] = conviction
+            }
           }
         } catch (err) {
           console.warn('[useAllConvictions]', pos.ticker, err.message)
