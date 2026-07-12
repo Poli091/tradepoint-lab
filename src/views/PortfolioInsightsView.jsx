@@ -202,7 +202,10 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
       } else {
-        setReviewError('No review data returned')
+        // Show actual worker error for debugging
+        const errMsg = res?.error ?? 'No review data returned'
+        setReviewError(errMsg)
+        console.error('[PortfolioReview] Worker error:', res)
       }
     } catch(err) {
       setReviewError(err.message)
