@@ -1393,6 +1393,38 @@ Rules:
     }
   }
 
+  // ── Post-validation: enforce rules regardless of what Groq decided ──────────
+  // The prompt guides; the Worker guarantees.
+  const validTickers = new Set(positions.map(p => p.ticker))
+  const allowedSeverities = new Set(['low', 'medium', 'high'])
+
+  // 1. Spotlight: max 3, valid tickers only
+  if (Array.isArray(parsed.spotlight)) {
+    parsed.spotlight = parsed.spotlight
+      .filter(s => s?.ticker && validTickers.has(s.ticker))
+      .slice(0, 3)
+      .map(s => ({ ...s, severity: allowedSeverities.has(s.severity?.toLowerCase()) ? s.severity.toLowerCase() : 'medium' }))
+  }
+
+  // 2. Watch Zone: must NOT repeat Spotlight tickers, max 5, valid tickers only
+  const spotlightTickers = new Set((parsed.spotlight ?? []).map(s => s.ticker))
+  if (Array.isArray(parsed.watchZone)) {
+    parsed.watchZone = parsed.watchZone
+      .filter(w => w?.ticker && validTickers.has(w.ticker) && !spotlightTickers.has(w.ticker))
+      .slice(0, 5)
+  }
+
+  // 3. Weekly Priority: must be a valid ticker or null
+  if (parsed.weeklyPriority?.ticker && !validTickers.has(parsed.weeklyPriority.ticker)) {
+    parsed.weeklyPriority.ticker = null
+  }
+
+  // 4. Portfolio Summary: status must be one of the allowed values
+  const allowedStatus = new Set(['Constructive', 'Neutral', 'Cautious', 'Defensive'])
+  if (parsed.portfolioSummary && !allowedStatus.has(parsed.portfolioSummary.status)) {
+    parsed.portfolioSummary.status = 'Neutral'
+  }
+
   const data = { ...parsed,
     macro: macroResult?.data ?? null,
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
