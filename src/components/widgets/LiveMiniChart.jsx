@@ -34,10 +34,13 @@ function getMarketPhase() {
 }
 
 const PHASE_META = {
-  open:   { label: '●', color: '#22C55E', title: 'Market Open' },
-  pre:    { label: 'PRE', color: '#818CF8', title: 'Pre-market'  },
-  after:  { label: 'AH',  color: '#F59E0B', title: 'After-hours' },
-  closed: { label: null,  color: 'var(--txt-muted)', title: 'Closed' },
+  open:    { label: '●',   color: '#22C55E', title: 'Market Open'  },
+  pre:     { label: 'PRE', color: '#818CF8', title: 'Pre-market'   },
+  after:   { label: 'AH',  color: '#F59E0B', title: 'After-hours'  },
+  closed:  { label: null,  color: 'var(--txt-muted)', title: 'Closed' },
+  REGULAR: { label: '●',   color: '#22C55E', title: 'Market Open'  },
+  PRE:     { label: 'PRE', color: '#818CF8', title: 'Pre-market'   },
+  POST:    { label: 'AH',  color: '#F59E0B', title: 'After-hours'  },
 }
 
 /* ── Tiny SVG sparkline ────────────────────────────────────── */
@@ -145,12 +148,25 @@ export default function LiveMiniChart({ ticker, prices, width = 72, height = 32,
     return () => clearInterval(timerRef.current)
   }, [fetchBars])
 
-  // Price + change from live prices feed
-  const livePrice  = prices?.[ticker]?.price     ?? null
-  const changePct  = prices?.[ticker]?.changePct ?? null
-  const isUp       = (changePct ?? 0) >= 0
-  const lineColor  = phase === 'pre' ? '#818CF8' : phase === 'after' ? '#F59E0B' : isUp ? '#22C55E' : '#EF4444'
-  const meta       = PHASE_META[phase]
+  // Price + change — use extended hours data when available, fallback to regular session
+  const p = prices?.[ticker]
+  const serverPhase = p?.phase   // PRE | REGULAR | POST | CLOSED from Yahoo via worker
+  const effectivePhase = serverPhase === 'PRE'  ? 'pre'
+                       : serverPhase === 'POST' ? 'after'
+                       : serverPhase === 'REGULAR' ? 'open'
+                       : phase  // fallback to locally computed phase
+
+  // Pick the right price and % for the current market phase
+  const displayPrice = effectivePhase === 'pre'   ? (p?.preMarketPrice  ?? p?.price)
+                     : effectivePhase === 'after'  ? (p?.postMarketPrice ?? p?.price)
+                     : p?.price ?? null
+  const changePct    = effectivePhase === 'pre'   ? (p?.preMarketChangePct  ?? p?.changePct)
+                     : effectivePhase === 'after'  ? (p?.postMarketChangePct ?? p?.changePct)
+                     : p?.changePct ?? null
+
+  const isUp      = (changePct ?? 0) >= 0
+  const lineColor = effectivePhase === 'pre' ? '#818CF8' : effectivePhase === 'after' ? '#F59E0B' : isUp ? '#22C55E' : '#EF4444'
+  const meta      = PHASE_META[effectivePhase] ?? PHASE_META['closed']
 
   const pctStr = changePct != null
     ? `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`

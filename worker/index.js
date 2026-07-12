@@ -255,7 +255,42 @@ async function handlePrice(ticker, keys, kv) {
   if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
   const raw = await fhGet(`/quote?symbol=${t}`, keys.finnhub)
   if (!raw) return json({ error: `Finnhub returned no data for ${t}` }, 502)
-  const data = { ticker: t, price: raw.c, change: raw.d, changePct: raw.dp, high: raw.h, low: raw.l, open: raw.o, prevClose: raw.pc }
+
+  const data = {
+    ticker: t,
+    price:      raw.c,
+    change:     raw.d,
+    changePct:  raw.dp,
+    high:       raw.h,
+    low:        raw.l,
+    open:       raw.o,
+    prevClose:  raw.pc,
+    // Extended hours — Finnhub free doesn't provide these; filled from Yahoo
+    preMarketPrice:      null,
+    preMarketChangePct:  null,
+    postMarketPrice:     null,
+    postMarketChangePct: null,
+    phase:               null,   // PRE | REGULAR | POST | CLOSED
+    extSource:           null,
+  }
+
+  // Yahoo Finance for extended-hours prices (pre-market, after-hours)
+  // Use short TTL for price data (5 min) — same as Finnhub
+  try {
+    const yhFull = await yahooQuoteSummary(t)
+    const yh = yhFull?.extHours
+    if (yh) {
+      data.phase = yh.phase
+      // Pre-market: before 9:30 AM ET
+      if (yh.preMarketPrice != null)  { data.preMarketPrice  = yh.preMarketPrice;  data.preMarketChangePct  = yh.preMarketChangePct  }
+      // After-hours: after 4:00 PM ET
+      if (yh.postMarketPrice != null) { data.postMarketPrice = yh.postMarketPrice; data.postMarketChangePct = yh.postMarketChangePct }
+      // Use prevClose from Yahoo if Finnhub didn't return it
+      if (!data.prevClose && yh.prevClose) data.prevClose = yh.prevClose
+      data.extSource = 'yahoo'
+    }
+  } catch(e) { console.warn('[handlePrice] Yahoo extended hours failed:', t, e.message) }
+
   const meta2 = buildMeta(t, 'price', TTL.PRICE, false)
   await kvSet(kv, kvKey, data, TTL.PRICE, meta2)
   return json({ data, meta: meta2 })
@@ -2298,7 +2333,7 @@ async function yahooOHLCV(ticker, rangeStr) {
    If Yahoo changes structure or blocks access, TradePoint continues without this data.
    All fields tagged with source:'yahoo' and asOf date for transparency. */
 async function yahooQuoteSummary(ticker) {
-  const modules = 'financialData,defaultKeyStatistics,calendarEvents'
+  const modules = 'financialData,defaultKeyStatistics,calendarEvents,price'
   const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=${modules}`
   const data = await fetchJSON(url, {
     headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
@@ -2348,7 +2383,23 @@ async function yahooQuoteSummary(ticker) {
     source: 'yahoo',
   } : null
 
-  return { target, nextEarnings, shortInfo, instOwn }
+  // Extended hours price data
+  const priceModule = result.price ?? {}
+  const extHours = {
+    phase: priceModule.marketState ?? null,   // PRE, REGULAR, POST, CLOSED
+    regularPrice:    priceModule.regularMarketPrice?.raw   ?? null,
+    regularChangePct:priceModule.regularMarketChangePercent?.raw != null
+      ? parseFloat((priceModule.regularMarketChangePercent.raw * 100).toFixed(3)) : null,
+    preMarketPrice:  priceModule.preMarketPrice?.raw   ?? null,
+    preMarketChangePct: priceModule.preMarketChangePercent?.raw != null
+      ? parseFloat((priceModule.preMarketChangePercent.raw * 100).toFixed(3)) : null,
+    postMarketPrice: priceModule.postMarketPrice?.raw  ?? null,
+    postMarketChangePct: priceModule.postMarketChangePercent?.raw != null
+      ? parseFloat((priceModule.postMarketChangePercent.raw * 100).toFixed(3)) : null,
+    prevClose:       priceModule.regularMarketPreviousClose?.raw ?? null,
+  }
+
+  return { target, nextEarnings, shortInfo, instOwn, extHours }
 }
 
 // Keep old name as thin wrapper for backward compat
