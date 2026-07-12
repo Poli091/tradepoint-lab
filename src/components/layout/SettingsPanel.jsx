@@ -367,6 +367,28 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme }) {
           </div>
 
           {/* ── DANGER ZONE ── */}
+          {/* Clear chart cache */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--txt)', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.06em' }}>
+              Chart Cache
+            </div>
+            <div style={{ fontSize:10, color:'var(--txt-muted)', marginBottom:8 }}>
+              Clears locally cached OHLCV chart data. Use when charts show
+              outdated history (2Y/5Y) after the server was updated.
+            </div>
+            <button onClick={() => {
+              const keys = Object.keys(localStorage).filter(k => k.includes('tp_ohlcv') || k.includes('tp_fund'))
+              keys.forEach(k => localStorage.removeItem(k))
+              alert(`Cleared ${keys.length} chart cache entries. Reload the page to see fresh data.`)
+            }} style={{
+              padding:'7px 14px', borderRadius:'var(--radius)',
+              background:'var(--surface-up)', border:'1px solid var(--border)',
+              color:'var(--txt-muted)', cursor:'pointer', fontSize:11, fontWeight:600
+            }}>
+              Clear Chart Cache
+            </button>
+          </div>
+
           <div>
             <SectionLabel icon={Trash2} label={t.sectionDanger} />
             <div style={{ padding:'12px', border:'1px solid var(--red-dim)',

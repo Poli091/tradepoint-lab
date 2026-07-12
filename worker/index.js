@@ -131,9 +131,23 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
   // Sequential Finnhub calls (avoids rate limit on 60 req/min free plan)
   const fhMetrics = await fhGet(`/stock/metric?symbol=${t}&metric=all`, keys.finnhub)
   await delay(200)
-  // Price target — retry once if first call fails
+  // Price target — retry once if first call fails, then fallback to Yahoo Finance
   let fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub)
   if (!fhTarget?.targetMean) { await delay(300); fhTarget = await fhGet(`/stock/price-target?symbol=${t}`, keys.finnhub) }
+  // Finnhub free tier often returns null targetMean — fallback to Yahoo Finance
+  if (!fhTarget?.targetMean) {
+    const yhTarget = await yahooTargetPrice(t)
+    if (yhTarget?.targetMeanPrice) {
+      fhTarget = {
+        targetMean:   yhTarget.targetMeanPrice,
+        targetHigh:   yhTarget.targetHighPrice,
+        targetLow:    yhTarget.targetLowPrice,
+        targetMedian: yhTarget.targetMedianPrice,
+        _source: 'yahoo',
+      }
+      console.log('[Fundamentals] Using Yahoo Finance price target for', t, fhTarget.targetMean)
+    }
+  }
   await delay(200)
   const fhRecs    = await fhGet(`/stock/recommendation?symbol=${t}`, keys.finnhub)
 
@@ -321,17 +335,30 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
       if (!isRecentSegment && oldestStored && segStart >= oldestStored) continue
       if (isRecentSegment && !needsRecent && oldestStored && segStart >= oldestStored) continue
 
+      let segBars = []
       const raw = await fetchJSON(
         `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${segStart}&end=${segEnd}&limit=300&feed=iex&adjustment=split`,
         { headers: alpacaHdr }
       ).catch(e => { console.error('[Alpaca segment]', t, i, e.message); return null })
 
       if (raw?.bars?.length > 0) {
-        allNewBars.push(...raw.bars.map(bar => ({
+        segBars = raw.bars.map(bar => ({
           bar_date: new Date(bar.t).toISOString().split('T')[0],
           close: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
-        })))
+        }))
       }
+
+      // Fallback to Yahoo Finance if Alpaca returns nothing for this segment
+      if (segBars.length === 0) {
+        console.log('[OHLCV] Alpaca empty for', t, segStart, '— trying Yahoo Finance')
+        const yhRange = segYears <= 2 ? '2y' : segYears <= 5 ? '5y' : '10y'
+        if (i === 0) {   // only fetch Yahoo once (covers full range)
+          const yhBars = await yahooOHLCV(t, yhRange)
+          segBars = yhBars.filter(b => b.bar_date >= segStart && b.bar_date <= segEnd)
+        }
+      }
+
+      allNewBars.push(...segBars)
     }
 
     if (allNewBars.length > 0) {
@@ -2216,6 +2243,52 @@ async function handleOHLCVForce(ticker, range, keys, db) {
   }
 
   return json({ ticker: t, range, rangeStart, log, d1CountAfter: d1Count, success: d1Count > 0 })
+}
+
+
+/* ── Yahoo Finance helpers — free, no API key ────────────────────────────
+   v8 chart: OHLCV up to 10 years, daily bars
+   quoteSummary: analyst price targets (targetMeanPrice)
+   Note: unofficial API, may break without notice.
+─────────────────────────────────────────────────────────────────────── */
+async function yahooOHLCV(ticker, rangeStr) {
+  // rangeStr: '2y', '5y', '10y'
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${rangeStr}&includePrePost=false`
+  const data = await fetchJSON(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+  }).catch(() => null)
+  const result = data?.chart?.result?.[0]
+  if (!result?.timestamp?.length) return []
+  const { timestamp, indicators } = result
+  const closes  = indicators?.quote?.[0]?.close  ?? []
+  const opens   = indicators?.quote?.[0]?.open   ?? []
+  const highs   = indicators?.quote?.[0]?.high   ?? []
+  const lows    = indicators?.quote?.[0]?.low    ?? []
+  const volumes = indicators?.quote?.[0]?.volume ?? []
+  return timestamp.map((ts, i) => ({
+    bar_date: new Date(ts * 1000).toISOString().split('T')[0],
+    close:    closes[i]  != null ? parseFloat(closes[i].toFixed(2))  : null,
+    open:     opens[i]   ?? null,
+    high:     highs[i]   ?? null,
+    low:      lows[i]    ?? null,
+    volume:   volumes[i] ?? null,
+  })).filter(b => b.close != null && b.bar_date)
+}
+
+async function yahooTargetPrice(ticker) {
+  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData`
+  const data = await fetchJSON(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+  }).catch(() => null)
+  const fd = data?.quoteSummary?.result?.[0]?.financialData
+  return {
+    targetMeanPrice:   fd?.targetMeanPrice?.raw   ?? null,
+    targetHighPrice:   fd?.targetHighPrice?.raw   ?? null,
+    targetLowPrice:    fd?.targetLowPrice?.raw    ?? null,
+    targetMedianPrice: fd?.targetMedianPrice?.raw ?? null,
+    numberOfAnalystOpinions: fd?.numberOfAnalystOpinions?.raw ?? null,
+    recommendationKey: fd?.recommendationKey ?? null,
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
