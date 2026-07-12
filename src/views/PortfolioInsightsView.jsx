@@ -28,6 +28,195 @@ function Stat({ label, value, sub, color }) {
       <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700,
         color: color ?? 'var(--txt)' }}>{value}</div>
       {sub && <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>{sub}</div>}
+
+      {/* ══ PORTFOLIO WEEKLY REVIEW ══════════════════════════════════════════ */}
+      <div style={{ marginTop:16, background:'var(--surface)', border:'1px solid var(--border)',
+        borderRadius:'var(--radius-lg)', padding:'16px' }}>
+
+        {/* Header + Generate button */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--txt)' }}>Portfolio Weekly Review</div>
+            <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:2 }}>
+              AI narrative + deterministic metrics · Groq Llama 3.1 · Cached 7 days
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {review && (
+              <span style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic' }}>
+                {review._meta?.fallback_used ? 'Deterministic fallback' : `${review._meta?.llm_model ?? 'AI'}`}
+                {review.generatedAt ? ` · ${new Date(review.generatedAt).toLocaleDateString()}` : ''}
+              </span>
+            )}
+            <button onClick={generateReview} disabled={reviewLoading} style={{
+              padding:'7px 14px', borderRadius:'var(--radius)', cursor: reviewLoading ? 'default' : 'pointer',
+              background: reviewLoading ? 'var(--surface-up)' : 'var(--accent)',
+              border: 'none', color: reviewLoading ? 'var(--txt-muted)' : '#fff',
+              fontSize:11, fontWeight:700, transition:'all 0.15s',
+            }}>
+              {reviewLoading ? '⟳ Generating…' : review ? '↺ Regenerate' : '✦ Generate Review'}
+            </button>
+          </div>
+        </div>
+
+        {/* Error */}
+        {reviewError && (
+          <div style={{ padding:'8px 12px', background:'var(--red-dim)', border:'1px solid var(--red)',
+            borderRadius:'var(--radius)', fontSize:11, color:'var(--red)', marginBottom:10 }}>
+            ⚠ {reviewError}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!review && !reviewLoading && !reviewError && (
+          <div style={{ padding:'20px', textAlign:'center', color:'var(--txt-muted)', fontSize:12 }}>
+            Generate a weekly review to see portfolio narrative, spotlight positions and weekly priority.
+          </div>
+        )}
+
+        {/* Review content */}
+        {review && (
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* Portfolio Summary */}
+            {review.portfolioSummary && (
+              <div style={{ padding:'12px 14px', borderRadius:'var(--radius-lg)',
+                background: review.portfolioSummary.status === 'Constructive' ? 'rgba(34,197,94,0.08)'
+                          : review.portfolioSummary.status === 'Defensive'    ? 'rgba(239,68,68,0.08)'
+                          : review.portfolioSummary.status === 'Cautious'     ? 'rgba(251,191,36,0.08)'
+                          : 'var(--surface-up)',
+                border: `1px solid ${
+                  review.portfolioSummary.status === 'Constructive' ? 'rgba(34,197,94,0.3)'
+                : review.portfolioSummary.status === 'Defensive'    ? 'rgba(239,68,68,0.3)'
+                : review.portfolioSummary.status === 'Cautious'     ? 'rgba(251,191,36,0.3)'
+                : 'var(--border)'}` }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                  <span style={{ fontSize:11, fontWeight:800,
+                    color: review.portfolioSummary.status === 'Constructive' ? 'var(--green)'
+                         : review.portfolioSummary.status === 'Defensive'    ? 'var(--red)'
+                         : review.portfolioSummary.status === 'Cautious'     ? 'var(--amber)'
+                         : 'var(--txt)' }}>
+                    {review.portfolioSummary.status ?? 'Neutral'}
+                  </span>
+                  <span style={{ fontSize:9, color:'var(--txt-muted)' }}>Portfolio posture</span>
+                </div>
+                <div style={{ fontSize:12, color:'var(--txt)', lineHeight:1.6 }}>
+                  {review.portfolioSummary.text}
+                </div>
+              </div>
+            )}
+
+            {/* Spotlight + Watch Zone side by side */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+
+              {/* Spotlight */}
+              {review.spotlight?.length > 0 && (
+                <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'12px 14px' }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                    textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>
+                    🔦 Spotlight
+                  </div>
+                  {review.spotlight.map((s, i) => (
+                    <div key={i} style={{ marginBottom: i < review.spotlight.length-1 ? 8 : 0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                        <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700,
+                          color: s.severity === 'high' ? 'var(--red)' : s.severity === 'medium' ? 'var(--amber)' : 'var(--txt)' }}>
+                          {s.ticker}
+                        </span>
+                        <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700,
+                          background: s.severity === 'high' ? 'var(--red-dim)' : s.severity === 'medium' ? 'var(--amber-dim)' : 'var(--surface)',
+                          color:      s.severity === 'high' ? 'var(--red)'     : s.severity === 'medium' ? 'var(--amber)'     : 'var(--txt-muted)' }}>
+                          {s.severity ?? 'low'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.4 }}>{s.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Watch Zone */}
+              {review.watchZone?.length > 0 && (
+                <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'12px 14px' }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                    textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>
+                    👁 Watch Zone
+                  </div>
+                  {review.watchZone.map((w, i) => (
+                    <div key={i} style={{ marginBottom: i < review.watchZone.length-1 ? 8 : 0 }}>
+                      <div style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700,
+                        color:'var(--txt)', marginBottom:2 }}>{w.ticker}</div>
+                      <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.4 }}>{w.reason}</div>
+                      {w.trigger && (
+                        <div style={{ fontSize:10, color:'var(--accent)', marginTop:2 }}>
+                          → {w.trigger}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Weekly Priority */}
+            {review.weeklyPriority?.action && (
+              <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px',
+                background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.25)',
+                borderRadius:'var(--radius-lg)' }}>
+                <div style={{ fontSize:16, flexShrink:0 }}>📌</div>
+                <div>
+                  <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                    textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>
+                    Weekly Priority
+                    {review.weeklyPriority.ticker && (
+                      <span style={{ fontFamily:'var(--mono)', marginLeft:6, fontSize:11,
+                        color:'var(--accent)', fontWeight:800 }}>
+                        {review.weeklyPriority.ticker}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--txt)', fontWeight:600 }}>
+                    {review.weeklyPriority.action}
+                  </div>
+                  {review.weeklyPriority.reason && (
+                    <div style={{ fontSize:11, color:'var(--txt-muted)', marginTop:2, lineHeight:1.4 }}>
+                      {review.weeklyPriority.reason}
+                    </div>
+                  )}
+                  <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:6, fontStyle:'italic' }}>
+                    This is not a trade order — it highlights what deserves attention this week.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Metrics footer */}
+            {review.metrics && (
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {review.metrics.upcomingEarnings?.length > 0 && (
+                  <div style={{ fontSize:10, color:'var(--txt-muted)', background:'var(--surface-up)',
+                    padding:'4px 10px', borderRadius:'var(--radius)' }}>
+                    📅 Upcoming: {review.metrics.upcomingEarnings.map(e => `${e.ticker} ${e.daysAway}d`).join(' · ')}
+                  </div>
+                )}
+                {review.metrics.gatePositions?.length > 0 && (
+                  <div style={{ fontSize:10, color:'var(--amber)', background:'var(--amber-dim)',
+                    padding:'4px 10px', borderRadius:'var(--radius)', border:'1px solid var(--amber)' }}>
+                    ⚠ Gates active: {review.metrics.gatePositions.join(', ')}
+                  </div>
+                )}
+                {review.metrics.nearDowngrade?.length > 0 && (
+                  <div style={{ fontSize:10, color:'var(--red)', background:'var(--red-dim)',
+                    padding:'4px 10px', borderRadius:'var(--radius)', border:'1px solid var(--red)' }}>
+                    ↓ Near downgrade: {review.metrics.nearDowngrade.map(d => d.ticker).join(', ')}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
