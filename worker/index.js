@@ -1327,7 +1327,7 @@ PORTFOLIO STATUS FACTORS (cite these when justifying Cautious/Neutral/Defensive)
 Strong Sell weight: ${strongSellWt.toFixed(1)}% | Sell-rated count: ${sellCount} | Active gates: ${gatePositions.length} | High-severity near-downgrades: ${highSevCount}
 
 UPCOMING EARNINGS (next 21d): ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
-SCORE CHANGES VS SNAPSHOT: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'none'}`uteConviction } from './conviction.js'
+SCORE CHANGES VS SNAPSHOT: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'none'}`
 
 /**
  * TradePoint Lab — Cloudflare Worker v1.1
