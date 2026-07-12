@@ -171,7 +171,7 @@ function AppInner() {
       case 'calendar':
         return <CalendarView convictionResults={convictionResults} prices={prices} />
       case 'scan':
-        return <ScanView onSelectTicker={handleSelectTicker} convictionResults={convictionResults} />
+        return <ScanView onSelectTicker={ticker => { setSearchTicker(ticker); fetchSingle(ticker) }} convictionResults={convictionResults} />
       case 'market':
         return <SectorTrendsView onSelectTicker={ticker => { setSearchTicker(ticker); fetchSingle(ticker) }} />
       case 'insights':
