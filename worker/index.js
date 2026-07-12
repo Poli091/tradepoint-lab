@@ -69,6 +69,7 @@ function getKeys(request, env) {
     alpacaKey:    env.ALPACA_KEY       || h('X-Alpaca-Key'),
     alpacaSecret: env.ALPACA_SECRET    || h('X-Alpaca-Secret'),
     groq:         env.GROQ_KEY         || h('X-Groq-Key'),
+    fred:         env.FRED_KEY         || h('X-Fred-Key'),
   }
 }
 
@@ -1086,10 +1087,29 @@ Top 3 concentration: ${top3Pct.toFixed(1)}% (${top3.map(p=>p.ticker).join(', ')}
 Earnings next 21 days: ${upcomingEarnings.length>0?upcomingEarnings.map(e=>`${e.ticker} in ${e.daysAway}d (${e.weight.toFixed(1)}%)`).join(', '):'none'}
 Score changes vs last snapshot: ${deltas.length>0?deltas.map(d=>`${d.ticker} ${d.scoreDelta>0?'+':''}${d.scoreDelta}${d.gradeChanged?' GRADE CHANGE':''}`).join(', '):'no changes'}`
 
+  // Fetch macro context — Worker computes regime, Groq only explains
+  let macroText = 'MACRO CONTEXT: Not available (FRED_KEY not configured).'
+  try {
+    const macroResult = await handleMacroContext(kv, keys.fred)
+    const mc = macroResult.data
+    if (mc) {
+      const { series: s, computed: c } = mc
+      macroText = `MACRO CONTEXT (FRED, ${new Date(mc.fetchedAt).toISOString().split('T')[0]}):
+Fed Funds Rate: ${s.fedfunds?.value ?? 'N/A'}% (${s.fedfunds?.date ?? '?'})
+2Y Treasury: ${s.dgs2?.value ?? 'N/A'}% | 10Y Treasury: ${s.dgs10?.value ?? 'N/A'}%
+Yield Curve (10Y-2Y): ${s.spread?.value != null ? (s.spread.value > 0 ? '+' : '') + s.spread.value + '%' : 'N/A'} [${c.curveRegime}]
+Core CPI YoY: ${c.coreInflYoY != null ? c.coreInflYoY + '%' : 'N/A'} [${c.inflRegime}]
+Rate Regime: ${c.rateRegime} | Overall: ${c.overallRegime}
+Note: These are pre-computed regimes. Do NOT recalculate or contradict them.`
+    }
+  } catch(e) { console.error('[PortfolioReview] macro fetch:', e.message) }
+
   const prompt = `You are reviewing a quantitative investment portfolio. All metrics below were computed deterministically — do not recalculate them.
 
 POSITIONS (${positions.length}):
 ${posSummary}
+
+${macroText}
 
 PRE-COMPUTED METRICS:
 ${metricsText}
@@ -1137,6 +1157,7 @@ Rules: spotlight max 3 items. weeklyPriority is not a trade order. Use only prov
   }
 
   const data = { ...parsed,
+    macro: macroResult?.data ?? null,
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
       nearDowngrade, topSector, concLevel, concRule, top3Pct,
       upcomingEarnings, deltas },
@@ -1867,6 +1888,120 @@ async function handleSectorTrends(db, kv) {
   }
 }
 
+
+/* ── Macro Context via FRED API ──────────────────────────────────────────
+   Fix 1: EFFR (daily) instead of FEDFUNDS (monthly) — current rate posture
+   Fix 2: Deterministic Overall Regime via versioned lookup table (macro-v1.0)
+   Fix 3: Date per series; partial failures return null, not zero
+─────────────────────────────────────────────────────────────────────── */
+const MACRO_REGIME_VERSION = 'macro-v1.0'
+
+function computeOverallRegime(rateRegime, curveRegime, inflRegime) {
+  if (rateRegime === 'Unknown' || curveRegime === 'Unknown') return 'Partial Coverage'
+  const restrictive   = rateRegime === 'Restrictive' || rateRegime === 'Highly Restrictive'
+  const accommodative = rateRegime === 'Accommodative'
+  const inverted      = curveRegime === 'Inverted' || curveRegime === 'Deeply Inverted'
+  const normal        = curveRegime === 'Normal' || curveRegime === 'Steep'
+  const elevated      = inflRegime === 'Elevated'
+  const nearTarget    = inflRegime === 'Near Target' || inflRegime === 'Below Target'
+  const aboveTarget   = inflRegime === 'Above Target'
+
+  if (restrictive && inverted && (elevated || aboveTarget)) return 'Adverse'
+  if (restrictive && inverted)                               return 'Restrictive'
+  if (restrictive && !normal && elevated)                    return 'Mixed'
+  if (restrictive && normal && (elevated || aboveTarget))    return 'Mixed'
+  if (restrictive && normal && nearTarget)                   return 'Neutral'
+  if (rateRegime === 'Neutral-High' && elevated)             return 'Mixed'
+  if (rateRegime === 'Neutral-High')                         return 'Neutral'
+  if (accommodative && nearTarget)                           return 'Supportive'
+  if (accommodative)                                         return 'Accommodative'
+  return 'Neutral'
+}
+
+async function handleMacroContext(kv, fredKey) {
+  const kvKey = `macro:fred:${MACRO_REGIME_VERSION}`
+  const { value: cached } = await kvGet(kv, kvKey)
+  if (cached) return { data: cached, fromCache: true }
+  if (!fredKey) return { data: null, error: 'FRED_KEY not configured' }
+
+  const base   = 'https://api.stlouisfed.org/fred/series/observations'
+  const params = `&api_key=${fredKey}&file_type=json&sort_order=desc&limit=5`
+
+  const SERIES = {
+    effr:    'EFFR',      // Effective Fed Funds Rate — daily, current posture
+    tgtLow:  'DFEDTARL', // FOMC target lower bound
+    tgtHigh: 'DFEDTARU', // FOMC target upper bound
+    dgs2:    'DGS2',     // 2Y Treasury yield
+    dgs10:   'DGS10',    // 10Y Treasury yield
+    t10y2y:  'T10Y2Y',   // 10Y-2Y spread (FRED-computed)
+    coreInf: 'CPILFESL', // Core CPI
+  }
+
+  const results = {}
+  for (const [key, sid] of Object.entries(SERIES)) {
+    try {
+      const r = await fetchJSON(`${base}?series_id=${sid}${params}`)
+      const obs = (r?.observations ?? []).find(o => o.value !== '.' && o.value !== '')
+      results[key] = obs ? { date: obs.date, value: parseFloat(obs.value) } : { date: null, value: null }
+    } catch { results[key] = { date: null, value: null } }
+    await delay(200)
+  }
+
+  // Core CPI YoY: last 13 observations
+  let coreInflYoY = null, coreInflYoYDate = null
+  try {
+    const r  = await fetchJSON(`${base}?series_id=CPILFESL${params}&limit=14`)
+    const obs = (r?.observations ?? []).filter(o => o.value !== '.' && o.value !== '')
+    if (obs.length >= 13) {
+      coreInflYoY      = parseFloat(((parseFloat(obs[0].value) / parseFloat(obs[12].value) - 1) * 100).toFixed(2))
+      coreInflYoYDate  = obs[0].date
+    }
+  } catch {}
+
+  const effr   = results.effr?.value   ?? null
+  const spread = results.t10y2y?.value ?? null
+
+  const rateRegime = effr   == null ? 'Unknown'
+    : effr >= 5.0 ? 'Highly Restrictive'
+    : effr >= 3.5 ? 'Restrictive'
+    : effr >= 2.5 ? 'Neutral-High'
+    : effr >= 1.5 ? 'Neutral'
+    : 'Accommodative'
+
+  const curveRegime = spread == null ? 'Unknown'
+    : spread <= -0.5 ? 'Deeply Inverted'
+    : spread <  0    ? 'Inverted'
+    : spread <  0.5  ? 'Flat'
+    : spread <  1.5  ? 'Normal'
+    : 'Steep'
+
+  const inflRegime = coreInflYoY == null ? 'Unknown'
+    : coreInflYoY >= 4.0 ? 'Elevated'
+    : coreInflYoY >= 3.0 ? 'Above Target'
+    : coreInflYoY >= 2.0 ? 'Near Target'
+    : 'Below Target'
+
+  const overallRegime = computeOverallRegime(rateRegime, curveRegime, inflRegime)
+
+  const data = {
+    series: {
+      effr:    results.effr,
+      tgtLow:  results.tgtLow,
+      tgtHigh: results.tgtHigh,
+      dgs2:    results.dgs2,
+      dgs10:   results.dgs10,
+      spread:  results.t10y2y,
+      coreInf: { ...results.coreInf, yoy: coreInflYoY, yoyDate: coreInflYoYDate },
+    },
+    computed: { coreInflYoY, rateRegime, curveRegime, inflRegime, overallRegime },
+    fetchedAt: Date.now(),
+    version: MACRO_REGIME_VERSION,
+  }
+
+  await kvSet(kv, kvKey, data, 24*60*60, buildMeta('macro','fred',86400,false))
+  return { data }
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -1927,6 +2062,9 @@ export default {
           return await handleGetSnapshots(param1, db)
         case 'save':
           return await handleSaveAnalysis(param1, request, db)
+        case 'macro':
+          const macroCtx = await handleMacroContext(kv, keys.fred)
+          return json(macroCtx)
         case 'sector-trends':
           return await handleSectorTrends(db, kv)
         case 'search':

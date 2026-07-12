@@ -4,7 +4,7 @@
  * score vs upside correlation, risk metrics.
  */
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, Cell, ReferenceLine,
@@ -51,6 +51,7 @@ function Section({ title, children }) {
 
 export default function PortfolioInsightsView({ visiblePositions = [], convictionResults = {}, prices = {} }) {
   const [review,        setReview]        = useState(null)
+  const [macro,         setMacro]         = useState(null)
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewError,   setReviewError]   = useState(null)
   const [reviewKey,     setReviewKey]     = useState(null)
@@ -154,6 +155,13 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
   }, [visiblePositions, convictionResults])
 
   // Build payload from current convictionResults and positions
+  // Fetch macro context on mount (24h cached in KV)
+  useEffect(() => {
+    workerAPI.macro()
+      .then(r => { if (r?.data) setMacro(r.data) })
+      .catch(() => {})
+  }, [])
+
   const generateReview = useCallback(async () => {
     if (!visiblePositions.length) return
     setReviewLoading(true); setReviewError(null)
@@ -193,7 +201,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v1.0' })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v1.0', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
@@ -376,6 +384,88 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
           })}
         </Section>
       </div>
+
+      {/* ── Macro Regime ── */}
+      {macro && (
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)',
+          borderRadius:'var(--radius-lg)', padding:'14px 16px', marginTop:4 }}>
+          {/* Header with version + freshness */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <div>
+              <span style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
+                textTransform:'uppercase', letterSpacing:'0.07em' }}>Macro Regime</span>
+              <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--txt-muted)',
+                marginLeft:8, opacity:0.6 }}>{macro.version}</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:11, fontWeight:800,
+                color: macro.computed?.overallRegime === 'Adverse'      ? 'var(--red)'
+                     : macro.computed?.overallRegime === 'Restrictive'  ? 'var(--amber)'
+                     : macro.computed?.overallRegime === 'Mixed'        ? 'var(--amber)'
+                     : macro.computed?.overallRegime === 'Supportive'   ? 'var(--green)'
+                     : macro.computed?.overallRegime === 'Accommodative'? 'var(--green)'
+                     : macro.computed?.overallRegime === 'Partial Coverage' ? 'var(--txt-muted)'
+                     : 'var(--txt)' }}>
+                {macro.computed?.overallRegime ?? 'Unknown'}
+              </span>
+              {macro.fetchedAt && (
+                <span style={{ fontSize:9, color:'var(--txt-muted)' }}>
+                  Updated {Math.round((Date.now()-macro.fetchedAt)/3600000)}h ago
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Series cards — show date + handle unavailable gracefully */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:6, marginBottom:10 }}>
+            {[
+              { label:'EFFR (Daily)',
+                value: macro.series?.effr?.value != null ? `${macro.series.effr.value}%` : 'Unavailable',
+                sub:   macro.series?.effr?.date ?? null,
+                sub2:  macro.computed?.rateRegime },
+              { label:'Target Range',
+                value: (macro.series?.tgtLow?.value != null && macro.series?.tgtHigh?.value != null)
+                  ? `${macro.series.tgtLow.value}–${macro.series.tgtHigh.value}%` : 'Unavailable',
+                sub:   macro.series?.tgtLow?.date ?? null,
+                sub2:  'FOMC official' },
+              { label:'2Y Treasury',
+                value: macro.series?.dgs2?.value  != null ? `${macro.series.dgs2.value}%` : 'Unavailable',
+                sub:   macro.series?.dgs2?.date   ?? null },
+              { label:'10Y Treasury',
+                value: macro.series?.dgs10?.value != null ? `${macro.series.dgs10.value}%` : 'Unavailable',
+                sub:   macro.series?.dgs10?.date  ?? null },
+              { label:'Yield Curve (10-2)',
+                value: macro.series?.spread?.value != null
+                  ? `${macro.series.spread.value >= 0 ? '+' : ''}${macro.series.spread.value}%` : 'Unavailable',
+                sub:   macro.series?.spread?.date  ?? null,
+                sub2:  macro.computed?.curveRegime,
+                color: macro.series?.spread?.value != null
+                  ? macro.series.spread.value < 0 ? 'var(--amber)' : 'var(--green)' : 'var(--txt-muted)' },
+              { label:'Core CPI YoY',
+                value: macro.series?.coreInf?.yoy != null ? `${macro.series.coreInf.yoy}%` : 'Unavailable',
+                sub:   macro.series?.coreInf?.yoyDate ?? null,
+                sub2:  macro.computed?.inflRegime,
+                color: macro.series?.coreInf?.yoy >= 4 ? 'var(--red)'
+                     : macro.series?.coreInf?.yoy >= 3 ? 'var(--amber)' : 'var(--green)' },
+            ].map(({ label, value, sub, sub2, color }) => (
+              <div key={label} style={{ background:'var(--surface-up)', borderRadius:'var(--radius)',
+                padding:'8px 10px' }}>
+                <div style={{ fontSize:9, color:'var(--txt-muted)', marginBottom:3,
+                  textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1.2 }}>{label}</div>
+                <div style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700,
+                  color: value === 'Unavailable' ? 'var(--txt-muted)' : (color ?? 'var(--txt)') }}>
+                  {value}
+                </div>
+                {sub && <div style={{ fontSize:8, color:'var(--txt-muted)', marginTop:1 }}>As of {sub}</div>}
+                {sub2 && <div style={{ fontSize:8, color:'var(--txt-muted)', opacity:0.8 }}>{sub2}</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic' }}>
+            Source: FRED (St. Louis Fed) · Regime deterministic · {macro.version}
+          </div>
+        </div>
+      )}
 
       {/* ── Risk signals ── */}
       {stats.lowConviction.length > 0 && (
