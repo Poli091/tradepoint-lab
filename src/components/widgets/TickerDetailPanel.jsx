@@ -15,10 +15,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
-import {
-  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip as RTooltip, ResponsiveContainer, ReferenceLine,
-} from 'recharts'
+// recharts removed — Score History uses pure SVG
 import { useConviction }           from '../../hooks/useConviction.js'
 import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
 import { computeDecision }                    from '../../conviction/decision/engine.js'
@@ -871,35 +868,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   { key:'technical_score', label:'Technical', max:15 },
                 ]
 
-                // Custom dot for conviction line — colored by grade
-                const GradeDot = ({ cx, cy, payload }) => {
-                  if (cx == null || cy == null) return null
-                  const col = GRADE_COLOR[payload.grade] ?? 'var(--accent)'
-                  return <circle cx={cx} cy={cy} r={3.5} fill={col} stroke="var(--surface)" strokeWidth={1.5} />
-                }
-
-                // Custom tooltip
-                const HistTooltip = ({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const d = payload[0]?.payload
-                  return (
-                    <div style={{ background:'var(--surface-up)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:'8px 12px', fontSize:10 }}>
-                      <div style={{ fontFamily:'var(--mono)', fontWeight:700, color:'var(--txt)', marginBottom:3 }}>
-                        {new Date(d.analysis_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })}
-                      </div>
-                      <div style={{ color: GRADE_COLOR[d.grade] ?? 'var(--txt)', fontWeight:700 }}>
-                        {d.final_score}/100 · {d.grade}
-                      </div>
-                      {d.upside_pct != null && (
-                        <div style={{ color:'var(--green)', marginTop:2 }}>Upside: +{d.upside_pct.toFixed(1)}%</div>
-                      )}
-                      {d.price != null && (
-                        <div style={{ color:'var(--txt-muted)', marginTop:1 }}>Price: {fUSD(d.price)}</div>
-                      )}
-                    </div>
-                  )
-                }
-
                 const hasUpside = pts.some(p => p.upside_pct != null)
 
                 return (
@@ -924,59 +892,76 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       </div>
                     </div>
 
-                    {/* Recharts score + upside chart */}
-                    {pts.length >= 2 && (
-                      <div style={{ marginBottom:10 }}>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <ComposedChart data={pts} margin={{ top:6, right: hasUpside ? 38 : 4, bottom:0, left:0 }}>
-                            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="analysis_date"
-                              tick={{ fill:'var(--txt-muted)', fontSize:8, fontFamily:'var(--mono)' }}
-                              tickLine={false} axisLine={false}
-                              tickFormatter={v => new Date(v).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
-                              interval="preserveStartEnd"
-                            />
-                            {/* Conviction score Y-axis (left) */}
-                            <YAxis domain={[Math.max(0, Math.min(...pts.map(p => p.final_score ?? 0)) - 8), Math.min(100, Math.max(...pts.map(p => p.final_score ?? 0)) + 8)]}
-                              tick={{ fill:'var(--txt-muted)', fontSize:8, fontFamily:'var(--mono)' }}
-                              tickLine={false} axisLine={false} width={26}
-                            />
-                            {/* Analyst upside Y-axis (right) */}
-                            {hasUpside && (
-                              <YAxis yAxisId="upside" orientation="right"
-                                tick={{ fill:'var(--green)', fontSize:8, fontFamily:'var(--mono)' }}
-                                tickLine={false} axisLine={false} width={34}
-                                tickFormatter={v => `+${v.toFixed(0)}%`}
-                              />
-                            )}
-                            {/* Grade threshold lines */}
-                            {[{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}].map(t => (
-                              <ReferenceLine key={t.v} y={t.v} stroke={t.c} strokeDasharray="4 3" strokeWidth={0.8} opacity={0.5} />
+                    {/* Pure SVG score history chart — no recharts */}
+                    {pts.length >= 2 && (() => {
+                      const W = 320, H = 130, PAD = { t:8, r:8, b:20, l:28 }
+                      const scores  = pts.map(p => p.final_score ?? 0)
+                      const minS    = Math.max(0,  Math.min(...scores) - 8)
+                      const maxS    = Math.min(100, Math.max(...scores) + 8)
+                      const rangeS  = maxS - minS || 1
+                      const cw      = W - PAD.l - PAD.r
+                      const ch      = H - PAD.t - PAD.b
+
+                      const sx = (i) => PAD.l + (i / (pts.length - 1)) * cw
+                      const sy = (v) => PAD.t + (1 - (v - minS) / rangeS) * ch
+
+                      const linePath = pts.map((p, i) =>
+                        `${i === 0 ? 'M' : 'L'}${sx(i).toFixed(1)},${sy(p.final_score ?? 0).toFixed(1)}`
+                      ).join(' ')
+
+                      // Grade thresholds
+                      const thresholds = [{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}]
+
+                      return (
+                        <div style={{ marginBottom:10, overflowX:'auto' }}>
+                          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
+                            {/* Grid lines at grade thresholds */}
+                            {thresholds.filter(t => t.v >= minS && t.v <= maxS).map(t => (
+                              <g key={t.v}>
+                                <line x1={PAD.l} y1={sy(t.v)} x2={W-PAD.r} y2={sy(t.v)}
+                                  stroke={t.c} strokeDasharray="4 3" strokeWidth={0.8} opacity={0.5} />
+                                <text x={PAD.l - 3} y={sy(t.v)+3} textAnchor="end"
+                                  fill={t.c} fontSize={7} opacity={0.7}>{t.v}</text>
+                              </g>
                             ))}
-                            <RTooltip content={<HistTooltip />} />
-                            {/* Analyst upside line */}
-                            {hasUpside && (
-                              <Line yAxisId="upside" type="monotone" dataKey="upside_pct"
-                                stroke="#22C55E" strokeWidth={1.5} strokeDasharray="5 3"
-                                dot={false} connectNulls={false} />
-                            )}
-                            {/* Conviction score line */}
-                            <Line type="monotone" dataKey="final_score"
-                              stroke="var(--accent)" strokeWidth={2}
-                              dot={<GradeDot />}
-                              activeDot={{ r:5, fill:'var(--accent)', stroke:'var(--surface)', strokeWidth:2 }}
-                              connectNulls={false}
-                            />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                        {hasUpside && (
-                          <div style={{ display:'flex', gap:12, fontSize:8, color:'var(--txt-muted)', fontFamily:'var(--mono)', marginTop:2 }}>
-                            <span style={{ color:'var(--accent)' }}>── Conviction score</span>
-                            <span style={{ color:'var(--green)' }}>- - Analyst upside</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+
+                            {/* Score line */}
+                            <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth={2}
+                              strokeLinejoin="round" strokeLinecap="round" />
+
+                            {/* Grade-colored dots + date labels */}
+                            {pts.map((p, i) => {
+                              const cx = sx(i), cy = sy(p.final_score ?? 0)
+                              const col = GRADE_COLOR[p.grade] ?? 'var(--accent)'
+                              const showLabel = i === 0 || i === pts.length-1 || pts.length <= 6
+                              return (
+                                <g key={i}>
+                                  <circle cx={cx} cy={cy} r={3.5} fill={col}
+                                    stroke="var(--surface)" strokeWidth={1.5} />
+                                  {showLabel && (
+                                    <text x={cx} y={H - 4} textAnchor="middle"
+                                      fill="var(--txt-muted)" fontSize={7} fontFamily="var(--mono)">
+                                      {new Date(p.analysis_date).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+                                    </text>
+                                  )}
+                                  {/* Score label on dot */}
+                                  <text x={cx} y={cy - 6} textAnchor="middle"
+                                    fill={col} fontSize={8} fontWeight="700" fontFamily="var(--mono)">
+                                    {p.final_score}
+                                  </text>
+                                </g>
+                              )
+                            })}
+                          </svg>
+                          {hasUpside && (
+                            <div style={{ display:'flex', gap:12, fontSize:8, color:'var(--txt-muted)',
+                              fontFamily:'var(--mono)', marginTop:2, paddingLeft:PAD.l }}>
+                              <span style={{ color:'var(--accent)' }}>── Conviction score</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     {/* Single snapshot message */}
                     {pts.length === 1 && (

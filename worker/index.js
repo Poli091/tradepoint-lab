@@ -2311,42 +2311,120 @@ async function handleAlpacaTest(ticker, keys) {
   if (!keys.alpacaKey || !keys.alpacaSecret)
     return json({ error: 'Alpaca keys not configured' }, 401)
 
-  const hdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  const hdr  = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  const base = 'https://data.alpaca.markets/v2/stocks'
   const results = {}
 
-  // Test 1: recent 10 days (should always work)
-  const nowMs  = Date.now()
-  const recent = new Date(nowMs - 10 * 86_400_000).toISOString().split('T')[0]
+  // ── Test 1: Latest snapshot — includes latestTrade, latestQuote, dailyBar ──
+  // This is the most important test for extended hours: latestTrade can be
+  // from pre/post market if called during those sessions.
+  try {
+    const r = await fetchJSON(`${base}/${t}/snapshot?feed=iex`, { headers: hdr })
+    const snap = r?.snapshot ?? r
+    results.snapshot = {
+      latestTrade: snap?.latestTrade
+        ? { price: snap.latestTrade.p, size: snap.latestTrade.s,
+            time: snap.latestTrade.t, exchange: snap.latestTrade.x }
+        : null,
+      latestQuote: snap?.latestQuote
+        ? { bidPrice: snap.latestQuote.bp, askPrice: snap.latestQuote.ap,
+            time: snap.latestQuote.t }
+        : null,
+      minuteBar: snap?.minuteBar
+        ? { open: snap.minuteBar.o, close: snap.minuteBar.c,
+            time: snap.minuteBar.t, volume: snap.minuteBar.v }
+        : null,
+      dailyBar: snap?.dailyBar
+        ? { open: snap.dailyBar.o, close: snap.dailyBar.c,
+            time: snap.dailyBar.t, volume: snap.dailyBar.v }
+        : null,
+      prevDailyBar: snap?.prevDailyBar
+        ? { open: snap.prevDailyBar.o, close: snap.prevDailyBar.c,
+            time: snap.prevDailyBar.t }
+        : null,
+      error: r?.message ?? null,
+    }
+  } catch(e) { results.snapshot = { error: e.message } }
+
+  // ── Test 2: Latest trade ──────────────────────────────────────────────────
+  // During pre/post market, this reflects the most recent extended hours trade
+  try {
+    const r = await fetchJSON(`${base}/${t}/trades/latest?feed=iex`, { headers: hdr })
+    const tr = r?.trade ?? r?.trades?.[t]
+    results.latestTrade = tr
+      ? { price: tr.p, size: tr.s, time: tr.t, exchange: tr.x, conditions: tr.c }
+      : { error: r?.message ?? 'No trade data' }
+  } catch(e) { results.latestTrade = { error: e.message } }
+
+  // ── Test 3: Latest quote ──────────────────────────────────────────────────
+  try {
+    const r = await fetchJSON(`${base}/${t}/quotes/latest?feed=iex`, { headers: hdr })
+    const qt = r?.quote ?? r?.quotes?.[t]
+    results.latestQuote = qt
+      ? { bid: qt.bp, bidSize: qt.bs, ask: qt.ap, askSize: qt.as, time: qt.t }
+      : { error: r?.message ?? 'No quote data' }
+  } catch(e) { results.latestQuote = { error: e.message } }
+
+  // ── Test 4: Intraday 1Min bars (last 30 mins) — shows if AH bars exist ───
+  const nowMs = Date.now()
+  const thirtyMinAgo = new Date(nowMs - 30 * 60 * 1000).toISOString()
+  try {
+    const r = await fetchJSON(
+      `${base}/${t}/bars?timeframe=1Min&start=${thirtyMinAgo}&limit=30&feed=iex`,
+      { headers: hdr }
+    )
+    const bars = r?.bars ?? []
+    results.recentMinuteBars = {
+      count:     bars.length,
+      firstTime: bars[0]?.t  ?? null,
+      lastTime:  bars[bars.length-1]?.t ?? null,
+      lastClose: bars[bars.length-1]?.c ?? null,
+      error:     r?.message ?? null,
+    }
+  } catch(e) { results.recentMinuteBars = { error: e.message } }
+
+  // ── Test 5: Previous close (for % change calculation) ────────────────────
   const today  = new Date(nowMs).toISOString().split('T')[0]
+  const recent = new Date(nowMs - 5 * 86_400_000).toISOString().split('T')[0]
   try {
     const r = await fetchJSON(
-      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${recent}&end=${today}&limit=15&feed=iex&adjustment=split`,
+      `${base}/${t}/bars?timeframe=1Day&start=${recent}&end=${today}&limit=5&feed=iex&adjustment=split`,
       { headers: hdr }
     )
-    results.recent = { barsCount: r?.bars?.length ?? 0, firstDate: r?.bars?.[0]?.t ?? null, error: r?.message ?? null, symbol: r?.symbol ?? null }
-  } catch(e) { results.recent = { error: e.message } }
+    const bars = r?.bars ?? []
+    results.dailyBars = {
+      count:     bars.length,
+      dates:     bars.map(b => b.t?.split('T')[0]),
+      lastClose: bars[bars.length-1]?.c ?? null,
+      prevClose: bars[bars.length-2]?.c ?? null,
+      error:     r?.message ?? null,
+    }
+  } catch(e) { results.dailyBars = { error: e.message } }
 
-  // Test 2: 1 year ago segment
-  const y1start = new Date(nowMs - 730 * 86_400_000).toISOString().split('T')[0]
-  const y1end   = new Date(nowMs - 365 * 86_400_000).toISOString().split('T')[0]
-  try {
-    const r = await fetchJSON(
-      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${y1start}&end=${y1end}&limit=300&feed=iex&adjustment=split`,
-      { headers: hdr }
-    )
-    results.year2ago = { barsCount: r?.bars?.length ?? 0, firstDate: r?.bars?.[0]?.t ?? null, lastDate: r?.bars?.[r?.bars?.length-1]?.t ?? null, error: r?.message ?? null }
-  } catch(e) { results.year2ago = { error: e.message } }
+  // ── Summary: can Alpaca serve extended hours? ──────────────────────────────
+  const tradeTime    = results.snapshot?.latestTrade?.time ?? results.latestTrade?.time ?? null
+  const isExtended   = tradeTime ? (() => {
+    const h = new Date(tradeTime).toLocaleString('en-US', { timeZone:'America/New_York', hour:'numeric', hour12:false })
+    const hour = parseInt(h)
+    return hour < 9 || hour >= 16
+  })() : null
 
-  // Test 3: without feed param (let Alpaca pick)
-  try {
-    const r = await fetchJSON(
-      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${y1start}&end=${y1end}&limit=10`,
-      { headers: hdr }
-    )
-    results.noFeed = { barsCount: r?.bars?.length ?? 0, error: r?.message ?? null }
-  } catch(e) { results.noFeed = { error: e.message } }
-
-  return json({ ticker: t, ranges: { recent: `${recent}→${today}`, year2ago: `${y1start}→${y1end}` }, results })
+  return json({
+    ticker: t,
+    timestamp: new Date().toISOString(),
+    extendedHoursSummary: {
+      latestTradeTime: tradeTime,
+      isExtendedHours: isExtended,
+      latestPrice:     results.snapshot?.latestTrade?.price ?? results.latestTrade?.price ?? null,
+      minuteBarAvailable: (results.recentMinuteBars?.count ?? 0) > 0,
+      conclusion: isExtended === true
+        ? 'Alpaca IEX IS providing extended hours data — can use as primary source'
+        : isExtended === false
+        ? 'Alpaca has data but it is regular session — Yahoo needed for extended hours'
+        : 'Cannot determine — run during pre/post market hours for accurate test',
+    },
+    results,
+  })
 }
 
 
@@ -2713,6 +2791,157 @@ async function fetchAnalystFields(ticker, keys) {
   }
 }
 
+
+/* ── Stooq Shadow Test — compare vs D1 (Alpaca/Yahoo) ───────────────────
+   Shadow mode: fetches Stooq CSV, compares with D1 bars, reports diff.
+   No production use — validates adjustment consistency before wiring.
+   Stooq URL: https://stooq.com/q/d/l/?s={ticker}.us&i=d
+   Returns: CSV (Date,Open,High,Low,Close,Volume), daily, all history, no auth.
+─────────────────────────────────────────────────────────────────────── */
+async function handleStooqTest(ticker, db) {
+  const t = ticker.toUpperCase()
+  const symbol = t.replace('.', '-').toLowerCase()  // BRK.B → brk-b
+
+  // ── 1. Fetch Stooq CSV ────────────────────────────────────────────────
+  let stooqBars = [], stooqError = null, stooqRawPreview = null
+  const stooqSymbols = [`${symbol}.us`, `${t.toLowerCase()}.us`, `${t}.US`]
+  for (const sym of stooqSymbols) {
+    try {
+      const url = `https://stooq.com/q/d/l/?s=${sym}&i=d`
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/csv,text/plain,*/*',
+          'Referer': 'https://stooq.com/',
+        }
+      })
+      if (!resp.ok) { stooqError = `HTTP ${resp.status} for ${sym}`; continue }
+      const csv = await resp.text()
+      stooqRawPreview = csv.slice(0, 200)  // first 200 chars for diagnosis
+
+      // Detect if Stooq returned HTML (blocked/redirected) vs CSV
+      if (csv.trim().startsWith('<') || csv.includes('<!DOCTYPE')) {
+        stooqError = `Stooq returned HTML (blocked) for ${sym} — server-side requests may be blocked`
+        continue
+      }
+
+      const lines = csv.trim().split('\n').slice(1)
+      if (lines.length === 0 || !lines[0].includes(',')) {
+        stooqError = `No CSV data returned for ${sym}`; continue
+      }
+
+      for (const line of lines) {
+        const [date, open, high, low, close, volume] = line.split(',')
+        if (!date || !close || close === 'null' || close.trim() === '') continue
+        const c = parseFloat(close)
+        if (!isFinite(c) || c <= 0) continue
+        stooqBars.push({
+          date: date.trim(), open: parseFloat(open), high: parseFloat(high),
+          low: parseFloat(low), close: c, volume: parseInt(volume) || 0,
+        })
+      }
+      if (stooqBars.length > 0) {
+        stooqBars.reverse()  // Stooq returns newest first
+        stooqError = null
+        break
+      }
+    } catch(e) { stooqError = e.message }
+  }
+
+  // ── 2. Fetch D1 bars for comparison ───────────────────────────────────
+  let d1Bars = [], d1Error = null
+  if (db) {
+    try {
+      const rows = await db.prepare(
+        `SELECT bar_date, close, open, high, low, volume
+         FROM ohlcv_bars WHERE ticker = ? AND res = 'D'
+         ORDER BY bar_date ASC LIMIT 2000`
+      ).bind(t).all()
+      d1Bars = rows.results ?? []
+    } catch(e) { d1Error = e.message }
+  }
+
+  if (stooqError) return json({ ticker: t, error: stooqError, stooqUrl: `https://stooq.com/q/d/l/?s=${symbol}.us&i=d` })
+
+  // ── 3. Compare overlap ─────────────────────────────────────────────────
+  const stooqByDate = {}
+  for (const b of stooqBars) stooqByDate[b.date] = b
+
+  const d1ByDate = {}
+  for (const b of d1Bars) d1ByDate[b.bar_date] = b
+
+  const d1Dates   = new Set(Object.keys(d1ByDate))
+  const stooqDates = new Set(Object.keys(stooqByDate))
+  const overlap   = [...d1Dates].filter(d => stooqDates.has(d))
+
+  // Price divergence on overlapping dates
+  const diffs = []
+  let maxDiffPct = 0
+  for (const date of overlap.slice(-30)) {  // check last 30 overlap days
+    const d1Close    = d1ByDate[date]?.close
+    const stooqClose = stooqByDate[date]?.close
+    if (!d1Close || !stooqClose) continue
+    const diffPct = Math.abs((stooqClose - d1Close) / d1Close * 100)
+    if (diffPct > maxDiffPct) maxDiffPct = diffPct
+    if (diffPct > 0.5) {
+      diffs.push({ date, d1: d1Close, stooq: stooqClose, diffPct: parseFloat(diffPct.toFixed(3)) })
+    }
+  }
+
+  // Coverage analysis
+  const stooqOldest = stooqBars[0]?.date ?? null
+  const stooqNewest = stooqBars[stooqBars.length-1]?.date ?? null
+  const d1Oldest    = d1Bars[0]?.bar_date ?? null
+  const d1Newest    = d1Bars[d1Bars.length-1]?.bar_date ?? null
+
+  // Adjustment check: compare around known NVDA split dates
+  // NVDA had 10:1 split on 2024-06-10
+  const splitCheck = stooqByDate['2024-06-09']
+  const splitCheckD1 = d1ByDate['2024-06-09']
+
+  // Verdict
+  const maxDiff = parseFloat(maxDiffPct.toFixed(3))
+  const verdict = stooqBars.length === 0
+    ? 'No data from Stooq — symbol not found or blocked'
+    : diffs.length === 0
+    ? 'Prices match (< 0.5% divergence on all overlap days) — safe to use as fallback'
+    : maxDiff < 2
+    ? 'Minor divergence (< 2%) — likely rounding or data freshness difference'
+    : maxDiff < 10
+    ? 'Moderate divergence — possible adjustment mismatch, do NOT use without further validation'
+    : 'Large divergence — adjustment method differs, NOT safe to mix with Alpaca/Yahoo'
+
+  return json({
+    ticker: t,
+    stooqUrl:    `https://stooq.com/q/d/l/?s=${symbol}.us&i=d`,
+    stooq: {
+      totalBars: stooqBars.length,
+      oldest: stooqOldest, newest: stooqNewest,
+      error: stooqError,
+      rawPreview: stooqRawPreview,  // first 200 chars — diagnose HTML vs CSV
+    },
+    d1: {
+      totalBars: d1Bars.length,
+      oldest: d1Oldest, newest: d1Newest,
+      sources: [...new Set(d1Bars.map(b => b._source).filter(Boolean))],
+      error: d1Error,
+    },
+    comparison: {
+      overlapDays: overlap.length,
+      divergentDays: diffs.length,
+      maxDivergencePct: maxDiff,
+      divergenceSample: diffs.slice(0, 5),
+      splitCheck: splitCheck ? {
+        stooq: splitCheck.close, d1: splitCheckD1?.close ?? null,
+        match: splitCheckD1 ? Math.abs(splitCheck.close - splitCheckD1.close) < 0.1 : null,
+        note: 'NVDA 10:1 split 2024-06-10 — both should show ~pre-split/10 price'
+      } : null,
+    },
+    verdict,
+    shadowStatus: 'NOT wired to production — diagnostic only',
+  })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -2775,6 +3004,8 @@ export default {
           return await handleSaveAnalysis(param1, request, db)
         case 'ohlcv-force':
           return await handleOHLCVForce(param1, param2, keys, db)
+        case 'stooq-test':
+          return await handleStooqTest(param1, db)
         case 'alpaca-test':
           return await handleAlpacaTest(param1, keys)
         case 'ohlcv-debug':
