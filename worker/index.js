@@ -231,8 +231,9 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     // ── Yahoo Finance supplemental data (informational only — no score impact) ──
     nextEarningsDate:  yhSummary?.nextEarnings ?? null,
     earningsDateSource: yhSummary?.nextEarnings ? 'yahoo' : null,
-    shortInfo:         yhSummary?.shortInfo    ?? null,
     instOwnership:     yhSummary?.instOwn      ?? null,
+    // shortInfo computed below from FINRA (official) + Yahoo float ──────────
+    shortInfo:         null,   // populated after FINRA fetch
     // Debug — tells the client which sources responded
     _sources: {
       finnhubMetric:   !!fhMetrics,
@@ -240,6 +241,40 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
       finnhubRecs:     !!fhRecs,
       finnhubEarnings: earns.length > 0,
     },
+  }
+
+  // FINRA short interest — official biweekly source.
+  // Yahoo already fetched (yhSummary) — used for float shares to compute %.
+  // Architecture: FINRA shares short + Yahoo float → short % float
+  try {
+    const finra = await finraShortInterest(t)
+    if (finra?.sharesShort != null) {
+      // Yahoo pre-computed shortPercentOfFloat uses Yahoo's own sharesShort,
+      // but we now have FINRA's official count. If float is available, recompute.
+      const yhShortInfo   = yhSummary?.shortInfo
+      const floatFromYahoo = null   // yhSummary doesn't expose raw floatShares yet
+      // For now: keep Yahoo's % but mark FINRA as the shares source
+      // TODO: extract ks.floatShares from Yahoo to recompute with FINRA shares
+      data.shortInfo = {
+        sharesShort:          finra.sharesShort,
+        shortRatio:           finra.shortRatio ?? yhShortInfo?.shortRatio ?? null,
+        shortPercentOfFloat:  yhShortInfo?.shortPercentOfFloat ?? null,
+        settlementDate:       finra.settlementDate,
+        percentChangePrev:    finra.percentChangePrev,
+        label:                yhShortInfo?.label ?? null,
+        source:               'finra',
+        floatSource:          yhShortInfo ? 'yahoo' : null,
+        note:                 'Shares short: FINRA official (biweekly). Short % float: Yahoo float denominator.',
+      }
+    } else {
+      // FINRA returned no data for this ticker — fallback to Yahoo
+      data.shortInfo = yhSummary?.shortInfo
+        ? { ...yhSummary.shortInfo, source: 'yahoo_only' }
+        : null
+    }
+  } catch(e) {
+    console.warn('[Fundamentals] FINRA short interest failed:', t, e.message)
+    data.shortInfo = yhSummary?.shortInfo ?? null
   }
 
   const meta2 = buildMeta(t, 'fundamentals', TTL.FUNDAMENTALS, false)
@@ -2490,6 +2525,35 @@ function validateOHLCV(bars) {
     status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
     events: events.length > 0 ? events : null,
   }
+}
+
+
+/* ── FINRA Short Interest — official biweekly data, no API key required ──
+   Source: FINRA Equity Short Interest (https://api.finra.org)
+   Published twice monthly. settlementDate = actual FINRA reporting date.
+   Returns shares short + days-to-cover from official source.
+   Float (for % calculation) comes from Yahoo — hybrid but transparent.
+─────────────────────────────────────────────────────────────────────── */
+async function finraShortInterest(ticker) {
+  try {
+    const domainFilter = JSON.stringify([{ fieldName: 'symbolCode', values: [ticker.toUpperCase()] }])
+    const url = `https://api.finra.org/data/group/equity/name/shortInterest?limit=1`
+      + `&domainFilters=${encodeURIComponent(domainFilter)}&sortFields=${encodeURIComponent('[-settlementDate]')}`
+
+    const data = await fetchJSON(url, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'TradePoint/1.0' }
+    }).catch(() => null)
+
+    if (!Array.isArray(data) || data.length === 0) return null
+    const r = data[0]
+    return {
+      sharesShort:       r.shortInterest     ?? null,   // official share count
+      shortRatio:        r.shortParInterestRatio ?? null, // days to cover
+      settlementDate:    r.settlementDate    ?? null,   // FINRA reporting date
+      percentChangePrev: r.percentChangePreviousSettlementDate ?? null,
+      source: 'finra',
+    }
+  } catch { return null }
 }
 
 /* ════════════════════════════════════════════════════════════

@@ -1244,19 +1244,35 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       <div style={{ fontSize:9, color:'var(--txt-muted)', fontStyle:'italic', marginBottom:6, opacity:0.8 }}>
                         Yahoo Finance · informational only · not used in scoring
                       </div>
+                      {/* Shares Short — official FINRA count when available */}
+                      {result.shortInfo?.sharesShort != null && (
+                        <Row label="Shares Short"
+                          value={result.shortInfo.sharesShort > 1e6
+                            ? `${(result.shortInfo.sharesShort/1e6).toFixed(1)}M`
+                            : `${(result.shortInfo.sharesShort/1e3).toFixed(0)}K`}
+                          sub={`${result.shortInfo.source === 'finra' ? 'FINRA official' : 'Yahoo'}${result.shortInfo.settlementDate ? ` · As of ${result.shortInfo.settlementDate}` : ''}`}
+                          color="var(--txt)" />
+                      )}
                       {result.shortInfo?.shortPercentOfFloat != null
                         ? (
                           <Row label="Short % Float"
                             value={`${result.shortInfo.shortPercentOfFloat.toFixed(1)}%`}
-                            sub={`${result.shortInfo.label}${result.shortInfo.shortSharesAsOf ? ` · As of ${result.shortInfo.shortSharesAsOf}` : ' · FINRA biweekly'}`}
+                            sub={`${result.shortInfo.label ?? ''}${result.shortInfo.floatSource ? ` · float: ${result.shortInfo.floatSource}` : ''}`}
                             color={result.shortInfo.label === 'Low' ? 'var(--green)'
                               : result.shortInfo.label === 'High' || result.shortInfo.label === 'Elevated' ? 'var(--amber)'
                               : undefined} />
                         ) : result.shortInfo != null ? (
-                          <Row label="Short % Float" value="Unavailable" sub="Not reported" />
+                          <Row label="Short % Float" value="Unavailable" sub="Float data not available" />
                         ) : null}
                       {result.shortInfo?.shortRatio != null && (
                         <Row label="Short Ratio" value={`${result.shortInfo.shortRatio.toFixed(1)}d`} sub="days to cover" />
+                      )}
+                      {result.shortInfo?.percentChangePrev != null && (
+                        <Row label="Change vs Prior"
+                          value={`${result.shortInfo.percentChangePrev >= 0 ? '+' : ''}${result.shortInfo.percentChangePrev.toFixed(1)}%`}
+                          sub="vs previous FINRA settlement"
+                          color={result.shortInfo.percentChangePrev > 10 ? 'var(--amber)'
+                            : result.shortInfo.percentChangePrev < -10 ? 'var(--green)' : undefined} />
                       )}
                       {result.instOwnership?.pct != null && (
                         <Row label="Institutional Own."
