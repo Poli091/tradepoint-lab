@@ -255,6 +255,10 @@ function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge
 function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
   if (!rA || !rB) return null
 
+  // OHLCV sufficiency — swing scores invalid if < 50 bars
+  const swingValidA = (rA?.ohlcv?.length ?? 0) >= 50
+  const swingValidB = (rB?.ohlcv?.length ?? 0) >= 50
+
   // LT Edge
   const ltDelta = rA.finalScore - rB.finalScore
   const ltEdgeTicker  = ltDelta > 0 ? tA : ltDelta < 0 ? tB : null
@@ -345,8 +349,8 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
         const ltClear     = Math.abs(ltDelta) > LT_EDGE_THRESHOLD
         const timingClear = Math.abs(swDelta) > TIMING_EDGE_THRESHOLD
         const ltWinner    = ltEdgeTicker
-        const swingDataOk = swingValidA && swingValidB
-    const swWinner    = timingEdgeTicker
+            const swingDataOk = swingValidA && swingValidB
+        const swWinner    = timingEdgeTicker
         const ltLoserColor  = gc(ltWinner === tA ? rB.grade : rA.grade)
         const ltWinnerColor = gc(ltWinner === tA ? rA.grade : rB.grade)
 
