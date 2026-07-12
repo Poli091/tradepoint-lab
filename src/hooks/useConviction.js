@@ -68,7 +68,14 @@ export function useConviction(ticker, prices = {}) {
       })
 
       // Tag result with ticker so we can detect stale results
-      setResult({ ...conviction, _ticker: ticker })
+      setResult({
+        ...conviction,
+        _ticker:          ticker,
+        fundamentalsData: fundResult.data,      // exposed for CompareView swing
+        ohlcv:            ohlcvResult?.data ?? [],
+        spyOhlcv:         spyResult?.data   ?? [],
+        fetchedAt,
+      })
 
       // Auto-save to D1 — silent failure
       workerAPI.saveAnalysis(ticker, conviction).catch(() => {})

@@ -5,7 +5,7 @@
  * No single "winner" — each dimension has its own leader.
  */
 
-import { useState }              from 'react'
+import { useState, useMemo }     from 'react'
 import { ArrowLeftRight }        from 'lucide-react'
 import { useConviction }         from '../hooks/useConviction.js'
 import { runSwingConviction }    from '../conviction/index.js'
@@ -72,7 +72,7 @@ function TickerInput({ value, onChange, placeholder }) {
 }
 
 /* ── Single column ───────────────────────────────────────────── */
-function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge }) {
+function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge, swingResult }) {
   if (!ticker) return (
     <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',
       color:'var(--txt-muted)',fontSize:12,minHeight:200}}>
@@ -92,13 +92,8 @@ function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge
       color:'var(--txt-muted)',fontSize:12,minHeight:200}}>No data</div>
   )
 
-  // Swing
-  let swing = null
-  try {
-    swing = runSwingConviction(
-      result.fundamentalsData, result.ohlcv ?? [], result.spyOhlcv ?? []
-    )
-  } catch {}
+  // Swing — pre-computed in parent to avoid 6x calls
+  const swing = swingResult ?? null
 
   // Decision
   let decision = null
@@ -257,7 +252,7 @@ function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge
 }
 
 /* ── Summary block ───────────────────────────────────────────── */
-function ComparisonSummary({ tA, tB, rA, rB }) {
+function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
   if (!rA || !rB) return null
 
   // LT Edge
@@ -266,9 +261,7 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
   const ltEdgeMargin  = Math.abs(ltDelta)
 
   // Timing Edge (Swing)
-  let swA = null, swB = null
-  try { swA = runSwingConviction(rA.fundamentalsData, rA.ohlcv??[], rA.spyOhlcv??[]) } catch {}
-  try { swB = runSwingConviction(rB.fundamentalsData, rB.ohlcv??[], rB.spyOhlcv??[]) } catch {}
+  // swA, swB pre-computed by parent (no redundant calls)
   const swDelta = (swA?.finalScore??0) - (swB?.finalScore??0)
   const timingEdgeTicker = swDelta > TIMING_EDGE_THRESHOLD ? tA : swDelta < -TIMING_EDGE_THRESHOLD ? tB : null
   const timingMargin = Math.abs(swDelta)
@@ -289,11 +282,11 @@ function ComparisonSummary({ tA, tB, rA, rB }) {
   const ltAndTimingSplit = ltEdgeTicker && timingEdgeTicker && ltEdgeTicker !== timingEdgeTicker
 
   // model_version guard
-  if (rA.modelVersion && rB.modelVersion && rA.modelVersion !== rB.modelVersion) {
+  if (rA.audit?.modelVersion && rB.audit?.modelVersion && rA.audit.modelVersion !== rB.audit.modelVersion) {
     return (
       <div style={{padding:'12px 14px',background:'var(--amber-dim)',border:'1px solid var(--amber)',
         borderRadius:'var(--radius-lg)',marginBottom:14,fontSize:11,color:'var(--amber)'}}>
-        ⚠ Different scoring methodologies ({rA.modelVersion} vs {rB.modelVersion}) — comparison may not be valid.
+        ⚠ Different scoring methodologies ({rA.audit.modelVersion} vs {rB.audit.modelVersion}) — comparison may not be valid.
       </div>
     )
   }
@@ -421,13 +414,25 @@ export default function CompareView() {
 
   // Compute edges for badge display
   const ltDelta  = (resultA?.finalScore??0) - (resultB?.finalScore??0)
-  const ltEdgeA  = resultA && resultB && ltDelta > 0
-  const ltEdgeB  = resultA && resultB && ltDelta < 0
+  // FIX: use LT_EDGE_THRESHOLD so badge matches summary logic
+  const ltEdgeA  = resultA && resultB && ltDelta > LT_EDGE_THRESHOLD
+  const ltEdgeB  = resultA && resultB && ltDelta < -LT_EDGE_THRESHOLD
 
-  let swA = null, swB = null
-  try { if (resultA) swA = runSwingConviction(resultA.fundamentalsData, resultA.ohlcv??[], resultA.spyOhlcv??[]) } catch {}
-  try { if (resultB) swB = runSwingConviction(resultB.fundamentalsData, resultB.ohlcv??[], resultB.spyOhlcv??[]) } catch {}
+  // Compute swing ONCE here — passed to children to avoid 6x redundant calls
+  const swA = useMemo(() => {
+    if (!resultA?.fundamentalsData) return null
+    try { return runSwingConviction(resultA.fundamentalsData, resultA.ohlcv??[], resultA.spyOhlcv??[]) }
+    catch { return null }
+  }, [resultA?.fundamentalsData, resultA?.ohlcv, resultA?.spyOhlcv])
+
+  const swB = useMemo(() => {
+    if (!resultB?.fundamentalsData) return null
+    try { return runSwingConviction(resultB.fundamentalsData, resultB.ohlcv??[], resultB.spyOhlcv??[]) }
+    catch { return null }
+  }, [resultB?.fundamentalsData, resultB?.ohlcv, resultB?.spyOhlcv])
+
   const swDelta      = (swA?.finalScore??0) - (swB?.finalScore??0)
+  // FIX: apply LT_EDGE_THRESHOLD to ltEdge badges (was showing for ANY delta)
   const timingEdgeA  = resultA && resultB && swDelta > TIMING_EDGE_THRESHOLD
   const timingEdgeB  = resultA && resultB && swDelta < -TIMING_EDGE_THRESHOLD
 
@@ -467,7 +472,7 @@ export default function CompareView() {
 
       {/* Summary */}
       {resultA && resultB && (
-        <ComparisonSummary tA={runA} tB={runB} rA={resultA} rB={resultB} />
+        <ComparisonSummary tA={runA} tB={runB} rA={resultA} rB={resultB} swA={swA} swB={swB} />
       )}
 
       {/* Columns */}
@@ -478,13 +483,13 @@ export default function CompareView() {
             <div style={{padding:'10px 0 6px',fontFamily:'var(--mono)',fontSize:16,
               fontWeight:800,color:'var(--txt)',letterSpacing:'0.04em'}}>{runA||'—'}</div>
             <TickerColumn ticker={runA} result={resultA} loading={loadingA}
-              otherResult={resultB} ltEdge={ltEdgeA} timingEdge={timingEdgeA} />
+              otherResult={resultB} ltEdge={ltEdgeA} timingEdge={timingEdgeA} swingResult={swA} />
           </div>
           <div style={{background:'var(--surface)',padding:'0 14px 14px'}}>
             <div style={{padding:'10px 0 6px',fontFamily:'var(--mono)',fontSize:16,
               fontWeight:800,color:'var(--txt)',letterSpacing:'0.04em'}}>{runB||'—'}</div>
             <TickerColumn ticker={runB} result={resultB} loading={loadingB}
-              otherResult={resultA} ltEdge={ltEdgeB} timingEdge={timingEdgeB} />
+              otherResult={resultA} ltEdge={ltEdgeB} timingEdge={timingEdgeB} swingResult={swB} />
           </div>
         </div>
       )}
