@@ -274,16 +274,24 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
     } catch (e) { console.error('[D1 OHLCV read]', e.message) }
   }
 
-  // If D1 has recent data (last bar within 8 days), serve it
-  const lastStored = storedBars.length > 0 ? storedBars[storedBars.length - 1] : null
+  const lastStored   = storedBars.length > 0 ? storedBars[storedBars.length - 1] : null
+  const oldestStored = storedBars.length > 0 ? storedBars[0].bar_date : null
   const daysSinceLast = lastStored
     ? (Date.now() - new Date(lastStored.bar_date + 'T12:00:00Z').getTime()) / 86_400_000
     : Infinity
 
+  // TWO independent reasons to fetch from Alpaca:
+  //  1. needsHistory: D1 doesn't cover the full requested range
+  //  2. needsRecent:  last bar is older than 8 days
+  // Bug fix: previously wrapping BOTH in `if (daysSinceLast > 8)` meant
+  // tickers with recent-but-short D1 history (e.g. NVDA with 1Y of bars)
+  // never fetched the older segments for 2Y/5Y/ALL ranges.
+  const needsHistory = !oldestStored || oldestStored > rangeStart
+  const needsRecent  = daysSinceLast > 8
+
   let allBars = [...storedBars]
 
-  if (daysSinceLast > 8) {
-    // Need to fetch — use Alpaca daily bars, year by year
+  if (needsHistory || needsRecent) {
     if (!keys.alpacaKey || !keys.alpacaSecret) {
       if (storedBars.length) {
         const data = storedBars.map(b => ({
@@ -302,17 +310,16 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
     const segYears  = range === '2Y' ? 2 : range === '5Y' ? 5 : 10
     const allNewBars = []
 
-    // Already have data starting from oldestStored — only fetch older segments
-    const oldestStored = storedBars.length > 0 ? storedBars[0].bar_date : null
-
     for (let i = segYears - 1; i >= 0; i--) {
       const segEndMs   = nowMs - i * 365 * 86_400_000
       const segStartMs = nowMs - (i + 1) * 365 * 86_400_000
       const segEnd   = new Date(segEndMs).toISOString().split('T')[0]
       const segStart = new Date(segStartMs).toISOString().split('T')[0]
 
-      // Skip if we already have this period in D1
-      if (oldestStored && segStart >= oldestStored) continue
+      // Skip historical segments already in D1 — but always fetch most recent segment
+      const isRecentSegment = i === 0
+      if (!isRecentSegment && oldestStored && segStart >= oldestStored) continue
+      if (isRecentSegment && !needsRecent && oldestStored && segStart >= oldestStored) continue
 
       const raw = await fetchJSON(
         `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${segStart}&end=${segEnd}&limit=300&feed=iex&adjustment=split`,
@@ -325,20 +332,6 @@ async function handleLongRangeOHLCV(ticker, range, keys, kv, db) {
           close: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
         })))
       }
-    }
-
-    // Always fetch most recent bars (last 8 days of the newest segment)
-    const recentEnd   = new Date(nowMs).toISOString().split('T')[0]
-    const recentStart = new Date(nowMs - 10 * 86_400_000).toISOString().split('T')[0]
-    const recentRaw = await fetchJSON(
-      `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=1Day&start=${recentStart}&end=${recentEnd}&limit=15&feed=iex&adjustment=split`,
-      { headers: alpacaHdr }
-    ).catch(() => null)
-    if (recentRaw?.bars?.length > 0) {
-      allNewBars.push(...recentRaw.bars.map(bar => ({
-        bar_date: new Date(bar.t).toISOString().split('T')[0],
-        close: parseFloat(bar.c.toFixed(2)), open: bar.o, high: bar.h, low: bar.l, volume: bar.v,
-      })))
     }
 
     if (allNewBars.length > 0) {
