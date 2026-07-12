@@ -53,25 +53,11 @@ export function useAllConvictions(positions = [], prices = {}) {
               spyOhlcv,
               prices,
             })
-            // If upside is null, retry with forceRefresh — bypasses 90d KV cache
-            // Yahoo Finance fallback in worker provides targetMean for free tier
-            let finalConviction = conviction
-            if (conviction.wallStreet?.upside == null) {
-              try {
-                const freshFund = await workerAPI.fundamentals(pos.ticker, true)
-                if (freshFund?.data?.targetMean) {
-                  finalConviction = runConviction({
-                    fundamentals: freshFund.data,
-                    ohlcv:        ohlcvResult?.data ?? [],
-                    spyOhlcv,
-                    prices,
-                  })
-                }
-              } catch { /* keep conviction as fallback */ }
-            }
             // Always attach earnings date from fundamentals
+            // Note: forceRefresh for null upside was removed — it caused KV write limit
+            // The 48h analyst cache (analyst:TICKER) handles target refresh automatically
             newResults[pos.ticker] = {
-              ...finalConviction,
+              ...conviction,
               nextEarningsDate:   fundResult?.data?.nextEarningsDate   ?? null,
               earningsDateSource: fundResult?.data?.earningsDateSource ?? null,
             }

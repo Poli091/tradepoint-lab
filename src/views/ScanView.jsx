@@ -118,18 +118,19 @@ export default function ScanView() {
 
   // Auto-seed scan history from portfolio conviction results
   // so grade filter pills appear without needing to manually scan each ticker
+  const cvKeys = Object.keys(convictionResults)
   useEffect(() => {
+    if (cvKeys.length === 0) return
     const existing = loadScanHistory()
-    // Only skip if we already have entries WITH grades — blank history should be seeded
     if (existing.some(h => h.grade)) return
-    const seeded = Object.entries(convictionResults)
-      .filter(([, r]) => r?.finalScore != null && r?.grade)
-      .map(([ticker, r]) => ({ ticker, score: r.finalScore, grade: r.grade }))
+    const seeded = cvKeys
+      .filter(t => convictionResults[t]?.finalScore != null && convictionResults[t]?.grade)
+      .map(t => ({ ticker: t, score: convictionResults[t].finalScore, grade: convictionResults[t].grade }))
     if (seeded.length > 0) {
       setScanHistory(seeded)
       saveScanHistory(seeded)
     }
-  }, [Object.keys(convictionResults).length]) // eslint-disable-line
+  }, [cvKeys.length]) // eslint-disable-line
 
   const updateHistory = (ticker, score, grade) => {
     setScanHistory(prev => {
