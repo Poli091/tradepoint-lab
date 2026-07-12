@@ -152,6 +152,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
   // Build payload from current convictionResults and positions
   // Fetch macro context on mount (24h cached in KV)
   useEffect(() => {
+    if (typeof workerAPI.macro !== 'function') return
     workerAPI.macro()
       .then(r => { if (r?.data) setMacro(r.data) })
       .catch(() => {})
