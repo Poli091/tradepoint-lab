@@ -123,19 +123,30 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme, onPos
           const ticker = p[tickerIdx]?.trim().toUpperCase()
           if (!ticker || ticker.length > 6 || ticker === 'TICKER') return null
 
+          // Yahoo Finance sometimes exports avg cost with multi-dot European format:
+          // e.g. "1.841.529.841" = $1,841.53 but parseFloat gives 1.841 (wrong!)
+          // Fix: if parsed value is < 10% of current price, try x1000
+          const parseDotted = (str, ref = 0) => {
+            const raw = parseFloat(str) || 0
+            if (ref > 0 && raw > 0 && raw < ref * 0.1) {
+              const scaled = raw * 1000
+              if (Math.abs(scaled - ref) < Math.abs(raw - ref)) return scaled
+            }
+            return raw
+          }
+
+          const currentPriceRaw = priceColIdx >= 0 ? parseFloat(p[priceColIdx]) || 0 : 0
           const qty      = isYahoo
             ? (sharesIdx  >= 0 ? parseFloat(p[sharesIdx])  || 0 : 0)
             : (qtyIdx     >= 0 ? parseFloat(p[qtyIdx])     || 0 : 0)
           const avgPrice = isYahoo
-            ? (avgCostIdx >= 0 ? parseFloat(p[avgCostIdx]) || 0 : 0)
+            ? (avgCostIdx >= 0 ? parseDotted(p[avgCostIdx], currentPriceRaw) : 0)
             : (priceIdx   >= 0 ? parseFloat(p[priceIdx])   || 0 : 0)
           // Current market price — use Price column, fallback to Market Value / qty
           const currentPrice = isYahoo
-            ? (priceColIdx >= 0 && parseFloat(p[priceColIdx]) > 0
-                ? parseFloat(p[priceColIdx])
-                : mktValIdx >= 0 && qty > 0
-                  ? parseFloat(p[mktValIdx]) / qty
-                  : avgPrice)
+            ? (currentPriceRaw > 0 ? currentPriceRaw
+                : mktValIdx >= 0 && qty > 0 ? parseFloat(p[mktValIdx]) / qty
+                : avgPrice)
             : avgPrice
           // Account: Yahoo has none → use importAccount state; TradePoint may have it
           const account  = isYahoo
@@ -149,8 +160,9 @@ export default function SettingsPanel({ open, onClose, theme, toggleTheme, onPos
         if (!imported.length) { setImportError('No valid tickers found'); return }
 
         const existing = loadOverrides() ?? []
-        const existingTickers = new Set(existing.map(p => p.ticker))
-        const newItems = imported.filter(i => !existingTickers.has(i.ticker))
+        // Check by ticker+account — same ticker can exist in both Brokerage and Roth IRA
+        const existingKeys = new Set(existing.map(p => `${p.ticker}::${p.account}`))
+        const newItems = imported.filter(i => !existingKeys.has(`${i.ticker}::${i.account}`))
         saveOverrides([...existing, ...newItems])
         onPositionChange?.()   // refresh App state without page reload
         const fmt = isYahoo ? 'Yahoo Finance' : 'TradePoint'
