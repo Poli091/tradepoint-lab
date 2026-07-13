@@ -45,7 +45,7 @@ function LiveBadge({ loading, lastUpdated, error }) {
 
 /* ── Main app ──────────────────────────────────────────── */
 function AppInner() {
-  // App-level state (previously from useTradepoint — now inline useState)
+  // App-level state (view routing, theme, sorting, account selection)
   const [theme,       setThemeRaw]   = useState(() => localStorage.getItem('tp_theme') ?? 'dark')
   const toggleTheme = () => setThemeRaw(t => { const n = t==='dark'?'light':'dark'; localStorage.setItem('tp_theme',n); return n })
   const [view,        setView]        = useState('dashboard')
@@ -57,9 +57,8 @@ function AppInner() {
   const [sortBy,      setSortBy]      = useState('conviction')
   const [sortDir,     setSortDir]     = useState('desc')
   const handleSort = (col) => { setSortBy(col); setSortDir(d => col === sortBy ? (d==='desc'?'asc':'desc') : 'desc') }
-  const [side,        setSide]        = useState('buy')
 
-    const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
+  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
 
   // State declarations must come BEFORE useMemos that reference them
   const [settingsOpen,  setSettingsOpen]  = useState(false)
