@@ -164,7 +164,7 @@ function TickerColumn({ ticker, result, loading, otherResult, ltEdge, timingEdge
                   {otherResult && delta !== 0 && (
                     <span style={{fontSize:9,fontFamily:'var(--mono)',fontWeight:700,
                       color:win?'var(--green)':'var(--red)',minWidth:22,textAlign:'right'}}>
-                      {delta>0?'+':''}{delta}
+                      {delta>0?'+':''}{Number.isInteger(delta) ? delta : delta.toFixed(1)}
                     </span>
                   )}
                 </div>
@@ -260,7 +260,7 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
   const swingValidB = (rB?.ohlcv?.length ?? 0) >= 50
 
   // LT Edge
-  const ltDelta = rA.finalScore - rB.finalScore
+  const ltDelta = Math.round((rA.finalScore - rB.finalScore) * 10) / 10
   const ltEdgeTicker  = ltDelta > 0 ? tA : ltDelta < 0 ? tB : null
   const ltEdgeMargin  = Math.abs(ltDelta)
 
@@ -299,19 +299,19 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
     ltEdgeTicker && {
       label: 'Long-Term Edge',
       ticker: ltEdgeTicker,
-      detail: `+${ltEdgeMargin} pts · ${ltEdgeTicker === tA ? rA.grade : rB.grade}`,
+      detail: `+${Math.round(ltEdgeMargin * 10) / 10} pts · ${ltEdgeTicker === tA ? rA.grade : rB.grade}`,
       color: 'var(--green)',
     },
     timingEdgeTicker && {
       label: 'Timing Edge',
       ticker: timingEdgeTicker,
-      detail: `Swing +${timingMargin} pts · ${timingEdgeTicker === tA ? swA?.grade : swB?.grade}`,
+      detail: `Swing +${Math.round(timingMargin * 10) / 10} pts · ${timingEdgeTicker === tA ? swA?.grade : swB?.grade}`,
       color: 'var(--accent)',
     },
     valEdgeTicker && {
       label: 'Valuation Edge',
       ticker: valEdgeTicker,
-      detail: `+${Math.abs(valDelta)} valuation pts`,
+      detail: `+${Math.round(Math.abs(valDelta) * 10) / 10} valuation pts`,
       color: 'var(--amber)',
     },
     riskEdgeTicker && {
