@@ -1313,8 +1313,8 @@ async function handlePortfolioReview(request, keys, kv, db) {
       const roicStr    = roicVal != null ? `${roicVal.toFixed(1)}%` : (roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : null)
       const marginStr  = marginVal != null ? `${marginVal.toFixed(1)}%` : (mrgCheck?.value != null ? `${mrgCheck.value.toFixed(1)}%` : null)
       const parts = []
-      if (failedRoic)   parts.push(`ROIC/ROE ${roicStr ?? 'unavailable'} (minimum: 8%)`)
-      if (failedMargin) parts.push(`Operating margin ${marginStr ?? 'unavailable'} (must be positive)`)
+      if (failedRoic)   parts.push(`Best of ROIC/ROE: ${roicStr ?? 'unavailable'} (minimum 8% — at least one must qualify)`)
+      if (failedMargin) parts.push(`Operating margin: ${marginStr ?? 'unavailable'} (must be positive)`)
       const cause = parts.length ? parts.join(' and ') + ' failed' : 'Quality threshold not met'
       gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, failedRoic, failedMargin, label: cause }
     } else if (cv.gate === 'gate1') {
@@ -1484,12 +1484,23 @@ Rules:
   const validTickers = new Set(positions.map(p => p.ticker))
   const allowedSeverities = new Set(['low', 'medium', 'high'])
 
-  // 1. Spotlight: max 3, valid tickers only
+  // 1. Spotlight: max 3, valid tickers only, deterministic order
+  const SEV_RANK = { high: 3, medium: 2, low: 1 }
+  const spotlightByTicker = {}
+  positions.forEach(p => { spotlightByTicker[p.ticker] = p })
   if (Array.isArray(parsed.spotlight)) {
     parsed.spotlight = parsed.spotlight
       .filter(s => s?.ticker && validTickers.has(s.ticker))
-      .slice(0, 3)
       .map(s => ({ ...s, severity: allowedSeverities.has(s.severity?.toLowerCase()) ? s.severity.toLowerCase() : 'medium' }))
+      .sort((a, b) => {
+        const sevDiff = (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0)
+        if (sevDiff !== 0) return sevDiff
+        const gateA = gateDetails[a.ticker] ? 1 : 0, gateB = gateDetails[b.ticker] ? 1 : 0
+        if (gateB !== gateA) return gateB - gateA
+        const wA = spotlightByTicker[a.ticker]?.weight ?? 0, wB = spotlightByTicker[b.ticker]?.weight ?? 0
+        return wB - wA
+      })
+      .slice(0, 3)
   }
 
   // 2. Watch Zone: must NOT repeat Spotlight tickers, max 5, valid tickers only
@@ -1532,7 +1543,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.8',
+      prompt_version: 'pr-v2.9',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },

@@ -211,7 +211,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.8', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.9', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
