@@ -273,7 +273,10 @@ function RotationView({ industries, onSelectIndustry }) {
    PORTFOLIO BALANCE VIEW
 ══════════════════════════════════════════ */
 function BalanceView({ industries }) {
-  const positions = useMemo(() => loadOverrides() ?? [], [])
+  // loadOverrides reads from localStorage — re-read on mount only
+  // (positionSeed from App would require prop drilling; direct read is fine here)
+  const [positionsTick, setPositionsTick] = useState(0)
+  const positions = useMemo(() => loadOverrides() ?? [], [positionsTick]) // eslint-disable-line
 
   // Map each position to its industry
   const tickerToIndustry = useMemo(() => {
@@ -645,6 +648,19 @@ export default function SectorTrendsView({ onSelectTicker }) {
             TradePoint Universe only · RS vs SPY · No impact on Conviction or Swing scores
           </div>
         </div>
+
+        {/* Refresh button */}
+        <button onClick={() => {
+          setRaw([]); setLoading(true); setError(null)
+          workerAPI.get('/api/sector-trends?refresh=1')
+            .then(r => { setRaw(r?.tickers ?? []); setError(null) })
+            .catch(e => setError(e.message))
+            .finally(() => setLoading(false))
+        }} title="Refresh market data from D1" style={{
+          padding:'5px 10px', borderRadius:'var(--radius)', border:'1px solid var(--border)',
+          background:'transparent', color:'var(--txt-muted)', cursor:'pointer', fontSize:10,
+          display:'flex', alignItems:'center', gap:4,
+        }}>↺ Refresh</button>
 
         {/* View selector */}
         <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,

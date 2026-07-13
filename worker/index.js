@@ -2207,12 +2207,14 @@ async function handleSymbolSearch(query, keys, kv) {
    computes RS multi-horizon averages and EMA breadth.
    Cached 1h in KV.
 ─────────────────────────────────────────────────────────────────── */
-async function handleSectorTrends(db, kv) {
+async function handleSectorTrends(db, kv, forceRefresh = false) {
   if (!db) return json({ error: 'D1 not configured' }, 503)
 
   const kvKey  = 'sector:trends:v1'
-  const { value } = await kvGet(kv, kvKey)
-  if (value) return json({ tickers: value, fromCache: true })
+  if (!forceRefresh) {
+    const { value } = await kvGet(kv, kvKey)
+    if (value) return json({ tickers: value, fromCache: true })
+  }
 
   try {
     // Latest analysis per ticker (last 60 days)
@@ -3192,7 +3194,7 @@ export default {
           const macroCtx = await handleMacroContext(kv, keys.fred)
           return json(macroCtx)
         case 'sector-trends':
-          return await handleSectorTrends(db, kv)
+          return await handleSectorTrends(db, kv, url.searchParams.get('refresh') === '1')
         case 'search':
           return await handleSymbolSearch(param1, keys, kv)
         case 'insider':
