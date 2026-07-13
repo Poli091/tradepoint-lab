@@ -1522,7 +1522,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.3',
+      prompt_version: 'pr-v2.4',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },
