@@ -444,9 +444,12 @@ async function handleBatchPrices(url, keys, kv) {
         source: 'finnhub', asOf: new Date().toISOString(),
       }
 
-      // Yahoo Finance for extended-hours (best-effort, don't fail batch)
+      // Yahoo Finance for extended-hours — 1000ms timeout, don't block regular price
       try {
-        const yhFull = await yahooQuoteSummary(ticker)
+        const yhFull = await Promise.race([
+          yahooQuoteSummary(ticker),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('yahoo_timeout')), 1000))
+        ])
         const yh = yhFull?.extHours
         if (yh) {
           data.phase = yh.phase
@@ -487,6 +490,8 @@ async function handleBatchPrices(url, keys, kv) {
     finnhub_calls: providerCalls,
     yahoo_fallbacks: yahooFallbacks,
     errors: providerFailures,
+    // cache_ms ≈ total - provider time (can be derived from logs)
+    has_errors: providerFailures > 0,
   }))
 
   return json({

@@ -42,10 +42,12 @@ export function useMarketData() {
   const fetchPrices = useCallback(async () => {
     if (!getWorkerUrl()) return
 
-    // Cancel any previous in-flight request
+    // Cancel any previous in-flight request, then create a new controller
+    // Capture in closure — cleanup aborts THIS execution's controller, not a later one
     abortRef.current?.abort()
-    abortRef.current = new AbortController()
-    const { signal } = abortRef.current
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
 
     setLoading(true)
     setError(null)
@@ -79,13 +81,15 @@ export function useMarketData() {
 
         // Log client-side telemetry
         console.log(JSON.stringify({
-          event:        'batch_prices_client',
-          duration_ms:  durationMs,
-          requested:    result.meta?.requested,
-          returned:     result.meta?.returned,
-          cache_hits:   result.meta?.cacheHits,
+          event:          'batch_prices_client',
+          duration_ms:    durationMs,
+          requested:      result.meta?.requested,
+          returned:       result.meta?.returned,
+          cache_hits:     result.meta?.cacheHits,
+          cache_misses:   toFetch.length,
           provider_calls: result.meta?.providerCalls,
-          errors:       Object.keys(result.errors ?? {}).length,
+          errors:         Object.keys(result.errors ?? {}).length,
+          aborted:        false,
         }))
 
         // Merge results — single state update below
@@ -95,11 +99,15 @@ export function useMarketData() {
         }
       }
 
-      // Single setState → single re-render (no partial updates)
-      setPrices(newPrices)
+      // Merge with previous state — preserves last known price for failed tickers
+      // (don't wipe a ticker's price just because it errored this cycle)
+      setPrices(prev => ({ ...prev, ...newPrices }))
       setLastUpdated(new Date())
     } catch (err) {
-      if (err.name === 'AbortError') return   // stale request cancelled — not an error
+      if (err.name === 'AbortError') {
+        console.log(JSON.stringify({ event: 'batch_prices_client', aborted: true }))
+        return   // stale request cancelled — not an error
+      }
       setError(err.message)
       console.warn('[useMarketData]', err.message)
     } finally {
