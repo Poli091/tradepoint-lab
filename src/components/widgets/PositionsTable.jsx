@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo }    from 'react'
+import { useBreakpoint } from '../../hooks/useBreakpoint.js'
 import { RotateCcw }             from 'lucide-react'
 import ConvictionRing             from '../ui/ConvictionRing.jsx'
 import { calcPnL }               from '../../utils/finance.js'

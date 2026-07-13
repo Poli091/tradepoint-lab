@@ -12,6 +12,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
+import { useBreakpoint } from '../hooks/useBreakpoint.js'
 import { getUserId } from '../auth/webauthn.js'
 import { Search, X, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'

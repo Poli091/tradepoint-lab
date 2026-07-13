@@ -4,6 +4,7 @@
  */
 
 import { useMemo, useState, useEffect } from 'react'
+import { useBreakpoint } from '../hooks/useBreakpoint.js'
 import LiveMiniChart   from '../components/widgets/LiveMiniChart.jsx'
 import Badge           from '../components/ui/Badge.jsx'
 import ConvictionRing  from '../components/ui/ConvictionRing.jsx'
