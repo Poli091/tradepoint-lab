@@ -1296,6 +1296,35 @@ async function handlePortfolioReview(request, keys, kv, db) {
   })
 
   // Gate details
+  const gateDetails = {}
+  for (const p of gatePositions) {
+    const cv = p.conviction ?? {}
+    const gf = cv.gateFundamentals ?? {}  // actual ROIC, operatingMargin values
+    const gc = cv.gateChecks ?? {}
+    if (cv.gate === 'gate2') {
+      // Gate2: ROIC/ROE >= 8% AND operating margin > 0%
+      // Use actual fundamentals values when available, fall back to check pass/fail
+      const roicVal    = gf.roic != null ? parseFloat(gf.roic) : null
+      const marginVal  = gf.operatingMargin != null ? parseFloat(gf.operatingMargin) : null
+      const roicCheck  = gc.gate2roic
+      const mrgCheck   = gc.gate2operatingMargin
+      const failedRoic   = roicVal != null ? roicVal < 8  : (roicCheck  && !roicCheck.pass)
+      const failedMargin = marginVal != null ? marginVal <= 0 : (mrgCheck && !mrgCheck.pass)
+      const roicStr    = roicVal != null ? `${roicVal.toFixed(1)}%` : (roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : null)
+      const marginStr  = marginVal != null ? `${marginVal.toFixed(1)}%` : (mrgCheck?.value != null ? `${mrgCheck.value.toFixed(1)}%` : null)
+      const parts = []
+      if (failedRoic)   parts.push(`ROIC/ROE ${roicStr ?? 'unavailable'} (minimum: 8%)`)
+      if (failedMargin) parts.push(`Operating margin ${marginStr ?? 'unavailable'} (must be positive)`)
+      const cause = parts.length ? parts.join(' and ') + ' failed' : 'Quality threshold not met'
+      gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, failedRoic, failedMargin, label: cause }
+    } else if (cv.gate === 'gate1') {
+      const revVal = gf.revenueGrowth, revCheck = gc.gate1revenue
+      const failedRev = revCheck && !revCheck.pass
+      const causes = failedRev ? [`revenue growth ${revVal != null ? revVal.toFixed(1)+'%' : 'negative'}`] : ['financial condition']
+      gateDetails[p.ticker] = { gate: 'Gate1', cap: 35, label: `${causes.join(' and ')} failed` }
+    }
+  }
+
   const gateRich = gatePositions.map(p => {
     const ticker = p.ticker
     const det    = gateDetails[ticker]
@@ -1491,34 +1520,7 @@ Rules:
   }
 
   // Build gate details map for UI to display deterministically
-  const gateDetails = {}
-  for (const p of gatePositions) {
-    const cv = p.conviction ?? {}
-    const gf = cv.gateFundamentals ?? {}  // actual ROIC, operatingMargin values
-    const gc = cv.gateChecks ?? {}
-    if (cv.gate === 'gate2') {
-      // Gate2: ROIC/ROE >= 8% AND operating margin > 0%
-      // Use actual fundamentals values when available, fall back to check pass/fail
-      const roicVal    = gf.roic != null ? parseFloat(gf.roic) : null
-      const marginVal  = gf.operatingMargin != null ? parseFloat(gf.operatingMargin) : null
-      const roicCheck  = gc.gate2roic
-      const mrgCheck   = gc.gate2operatingMargin
-      const failedRoic   = roicVal != null ? roicVal < 8  : (roicCheck  && !roicCheck.pass)
-      const failedMargin = marginVal != null ? marginVal <= 0 : (mrgCheck && !mrgCheck.pass)
-      const roicStr    = roicVal != null ? `${roicVal.toFixed(1)}%` : (roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : null)
-      const marginStr  = marginVal != null ? `${marginVal.toFixed(1)}%` : (mrgCheck?.value != null ? `${mrgCheck.value.toFixed(1)}%` : null)
-      const parts = []
-      if (failedRoic)   parts.push(`ROIC/ROE ${roicStr ?? 'unavailable'} (minimum: 8%)`)
-      if (failedMargin) parts.push(`Operating margin ${marginStr ?? 'unavailable'} (must be positive)`)
-      const cause = parts.length ? parts.join(' and ') + ' failed' : 'Quality threshold not met'
-      gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, failedRoic, failedMargin, label: cause }
-    } else if (cv.gate === 'gate1') {
-      const revVal = gf.revenueGrowth, revCheck = gc.gate1revenue
-      const failedRev = revCheck && !revCheck.pass
-      const causes = failedRev ? [`revenue growth ${revVal != null ? revVal.toFixed(1)+'%' : 'negative'}`] : ['financial condition']
-      gateDetails[p.ticker] = { gate: 'Gate1', cap: 35, label: `${causes.join(' and ')} failed` }
-    }
-  }
+
 
   const data = { ...parsed,
     macro: macroResult?.data ?? null,
