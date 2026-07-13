@@ -192,10 +192,16 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
             },
             // Real gate check results — used for accurate gate explanations
             gateChecks: {
-              gate2roic:          cv.breakdown?.gate2?.checks?.roicOrRoe,
+              gate2roic:            cv.breakdown?.gate2?.checks?.roicOrRoe,
               gate2operatingMargin: cv.breakdown?.gate2?.checks?.operatingMargin,
-              gate1revenue:       cv.breakdown?.gate1?.checks?.revenueGrowth,
+              gate1revenue:         cv.breakdown?.gate1?.checks?.revenueGrowth,
               gate1operatingMargin: cv.breakdown?.gate1?.checks?.operatingMargin,
+            },
+            // Raw fundamentals values for gate explanation accuracy
+            gateFundamentals: {
+              roic:            cv.fundamentalsData?.roic ?? cv.fundamentalsData?.roi ?? cv.fundamentalsData?.roe ?? null,
+              operatingMargin: cv.fundamentalsData?.operatingMargin ?? null,
+              revenueGrowth:   cv.fundamentalsData?.revenueGrowthYoY ?? null,
             },
             riskPenalty: cv.riskPenalty,
           } : null,
@@ -205,7 +211,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.6', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.8', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
@@ -574,8 +580,9 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                         {/* Gate cause — shown deterministically from Worker data, not from Groq */}
                         {isGated && review.gateDetails?.[s.ticker] && (
                           <div style={{ fontSize:9, color:'var(--amber)', fontFamily:'var(--mono)',
-                            marginBottom:4, opacity:0.9 }}>
+                            marginBottom:4, lineHeight:1.5 }}>
                             {review.gateDetails[s.ticker].label}
+                            {' · '}Effective score capped at {review.gateDetails[s.ticker].cap}
                           </div>
                         )}
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{s.reason}</div>

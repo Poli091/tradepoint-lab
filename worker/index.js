@@ -1297,20 +1297,12 @@ async function handlePortfolioReview(request, keys, kv, db) {
 
   // Gate details
   const gateRich = gatePositions.map(p => {
-    const cv = p.conviction ?? {}
-    let gType, explanation = ''
-    if (cv.gate === 'gate1') {
-      gType = 'Gate1(capped-at-35)'
-      explanation = `Financial condition failed; effective score capped at 35`
-    } else if (cv.gate === 'gate2') {
-      gType = 'Gate2(capped-at-58)'
-      const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
-      explanation = `Quality ${q}/20 and Strength ${s}/15 both failed minimum requirements; effective score capped at 58`
-    } else {
-      gType = cv.gate
-      explanation = 'Gate active'
-    }
-    return `${p.ticker}(${cv.score} ${cv.grade} ${gType} explanation:"${explanation}")`
+    const ticker = p.ticker
+    const det    = gateDetails[ticker]
+    const cv     = p.conviction ?? {}
+    const gType  = cv.gate === 'gate2' ? 'Gate2(capped-at-58)' : cv.gate === 'gate1' ? 'Gate1(capped-at-35)' : cv.gate
+    const reason = det ? `${det.label} · score capped at ${det.cap}` : 'Gate active'
+    return `${ticker}(${cv.score} ${cv.grade} ${gType} reason:"${reason}")`
   })
 
   // Portfolio status factors
@@ -1502,33 +1494,29 @@ Rules:
   const gateDetails = {}
   for (const p of gatePositions) {
     const cv = p.conviction ?? {}
+    const gf = cv.gateFundamentals ?? {}  // actual ROIC, operatingMargin values
     const gc = cv.gateChecks ?? {}
     if (cv.gate === 'gate2') {
-      // Gate2 checks: ROIC/ROE >= 8% AND operating margin > 0%
+      // Gate2: ROIC/ROE >= 8% AND operating margin > 0%
+      // Use actual fundamentals values when available, fall back to check pass/fail
+      const roicVal    = gf.roic != null ? parseFloat(gf.roic) : null
+      const marginVal  = gf.operatingMargin != null ? parseFloat(gf.operatingMargin) : null
       const roicCheck  = gc.gate2roic
-      const marginCheck = gc.gate2operatingMargin
-      const failedRoic   = roicCheck  && !roicCheck.pass
-      const failedMargin = marginCheck && !marginCheck.pass
-      const roicVal      = roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : 'n/a'
-      const marginVal    = marginCheck?.value != null ? `${marginCheck.value.toFixed(1)}%` : 'n/a'
-      let cause = ''
-      if (failedRoic && failedMargin) {
-        cause = `ROIC/ROE ${roicVal} (min 8%) and operating margin ${marginVal} (must be >0%) both failed`
-      } else if (failedRoic) {
-        cause = `ROIC/ROE ${roicVal} below minimum 8% requirement`
-      } else if (failedMargin) {
-        cause = `Operating margin ${marginVal} — must be positive`
-      } else {
-        cause = `Quality requirement not met — effective score capped at 58`
-      }
-      gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, label: `${cause} · Effective score capped at 58` }
+      const mrgCheck   = gc.gate2operatingMargin
+      const failedRoic   = roicVal != null ? roicVal < 8  : (roicCheck  && !roicCheck.pass)
+      const failedMargin = marginVal != null ? marginVal <= 0 : (mrgCheck && !mrgCheck.pass)
+      const roicStr    = roicVal != null ? `${roicVal.toFixed(1)}%` : (roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : null)
+      const marginStr  = marginVal != null ? `${marginVal.toFixed(1)}%` : (mrgCheck?.value != null ? `${mrgCheck.value.toFixed(1)}%` : null)
+      const parts = []
+      if (failedRoic)   parts.push(`ROIC/ROE ${roicStr ?? 'unavailable'} (minimum: 8%)`)
+      if (failedMargin) parts.push(`Operating margin ${marginStr ?? 'unavailable'} (must be positive)`)
+      const cause = parts.length ? parts.join(' and ') + ' failed' : 'Quality threshold not met'
+      gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, failedRoic, failedMargin, label: cause }
     } else if (cv.gate === 'gate1') {
-      const revCheck = gc.gate1revenue, mrgCheck = gc.gate1operatingMargin
-      const causes = []
-      if (revCheck && !revCheck.pass)  causes.push(`revenue growth ${revCheck.value != null ? revCheck.value.toFixed(1)+'%' : 'negative or missing'}`)
-      if (mrgCheck && !mrgCheck.pass)  causes.push(`operating margin ${mrgCheck.value != null ? mrgCheck.value.toFixed(1)+'%' : 'below -25%'}`)
-      gateDetails[p.ticker] = { gate: 'Gate1', cap: 35,
-        label: `${causes.length ? causes.join(' and ') + ' failed' : 'Financial condition failed'} · Effective score capped at 35` }
+      const revVal = gf.revenueGrowth, revCheck = gc.gate1revenue
+      const failedRev = revCheck && !revCheck.pass
+      const causes = failedRev ? [`revenue growth ${revVal != null ? revVal.toFixed(1)+'%' : 'negative'}`] : ['financial condition']
+      gateDetails[p.ticker] = { gate: 'Gate1', cap: 35, label: `${causes.join(' and ')} failed` }
     }
   }
 
@@ -1542,7 +1530,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.6',
+      prompt_version: 'pr-v2.8',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },
