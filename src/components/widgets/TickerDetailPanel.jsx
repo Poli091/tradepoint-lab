@@ -336,7 +336,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         flex:1, display:'flex', flexDirection:'column', minWidth:0,
       } : {
         position:'fixed', top:0, right:0,
-        width: isMobile ? '100vw' : 440,
+        width: isMobile ? '100vw' : Math.min(480, window.innerWidth * 0.95),
         height:'100vh',
         background:'var(--surface)',
         borderLeft: isMobile ? 'none' : '1px solid var(--border)',
@@ -345,9 +345,10 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
       }}>
 
         {/* Header */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'14px 16px', borderBottom:'1px solid var(--border)',
-          flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10 }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between',
+          padding:'10px 14px', borderBottom:'1px solid var(--border)',
+          flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10,
+          flexWrap:'wrap', gap:6 }}>
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
@@ -361,7 +362,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </div>
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{isETF ? universeInfo?.name : pos?.name}</div>
           </div>
-          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {swingResult && result && (() => {
               const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
@@ -894,7 +895,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
                     {/* Pure SVG score history chart — no recharts */}
                     {pts.length >= 2 && (() => {
-                      const W = 320, H = 130, PAD = { t:8, r:8, b:20, l:28 }
+                      const W = 320, H = 100, PAD = { t:14, r:8, b:18, l:26 }
                       const scores  = pts.map(p => p.final_score ?? 0)
                       const minS    = Math.max(0,  Math.min(...scores) - 8)
                       const maxS    = Math.min(100, Math.max(...scores) + 8)
@@ -936,7 +937,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                               const showLabel = i === 0 || i === pts.length-1 || pts.length <= 6
                               return (
                                 <g key={i}>
-                                  <circle cx={cx} cy={cy} r={3.5} fill={col}
+                                  <circle cx={cx} cy={cy} r={3} fill={col}
                                     stroke="var(--surface)" strokeWidth={1.5} />
                                   {showLabel && (
                                     <text x={cx} y={H - 4} textAnchor="middle"
@@ -944,11 +945,13 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                                       {new Date(p.analysis_date).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
                                     </text>
                                   )}
-                                  {/* Score label on dot */}
-                                  <text x={cx} y={cy - 6} textAnchor="middle"
-                                    fill={col} fontSize={8} fontWeight="700" fontFamily="var(--mono)">
-                                    {p.final_score}
-                                  </text>
+                                  {/* Score label on dot — only show for first/last/grade changes */}
+                                  {(i === 0 || i === pts.length - 1 || (i > 0 && pts[i].grade !== pts[i-1].grade)) && (
+                                    <text x={cx} y={cy - 7} textAnchor="middle"
+                                      fill={col} fontSize={6.5} fontWeight="700" fontFamily="var(--mono)">
+                                      {p.final_score}
+                                    </text>
+                                  )}
                                 </g>
                               )
                             })}

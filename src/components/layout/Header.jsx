@@ -297,7 +297,7 @@ export default function Header({
         </div>
         <div style={{ fontFamily:'var(--mono)', fontSize:11, fontWeight:600,
           color: isUp ? 'var(--green)' : 'var(--red)', marginTop:2 }}>
-          <span className="pv">{isUp ? '+' : '-'}{fUSD(Math.abs(dayChange))} ({isUp ? '+' : '-'}{fPct(Math.abs(dayPct))}) today</span>
+          <span className="pv">{fSignedUSD(dayChange)} ({fPct(dayPct)}) today</span>
         </div>
       </div>
 
