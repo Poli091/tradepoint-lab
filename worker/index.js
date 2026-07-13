@@ -25,6 +25,27 @@ const TTL = {
   CATALYSTS:    7  * 24 * 60 * 60,
 }
 
+/* ── Concurrency pool — reusable for batch prices & conviction ─────────
+   Processes items with bounded parallelism, never failing the whole batch.
+   Returns array of { status:'fulfilled', value } | { status:'rejected', reason }
+──────────────────────────────────────────────────────────────────────── */
+async function mapWithConcurrency(items, limit, task) {
+  const results = new Array(items.length)
+  let cursor = 0
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++
+      try {
+        results[index] = { status: 'fulfilled', value: await task(items[index]) }
+      } catch (err) {
+        results[index] = { status: 'rejected', reason: err }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -368,6 +389,115 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     buildMeta(t, 'analyst', TTL.ANALYST_TARGET, false))
 
   return json({ data, meta: meta2 })
+}
+
+/* ── Batch price endpoint: GET /api/prices?tickers=NVDA,AVGO,... ──────
+   1. Validate & deduplicate tickers (max 50)
+   2. Check KV cache per ticker
+   3. Fetch only misses with concurrency=3
+   4. Return prices + errors + telemetry meta
+   5. Never fail the whole batch for one bad ticker
+──────────────────────────────────────────────────────────────────────── */
+async function handleBatchPrices(url, keys, kv) {
+  const t0 = Date.now()
+  if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
+
+  // Parse & validate tickers
+  const raw = (url.searchParams.get('tickers') ?? '').toUpperCase()
+  const requested = [...new Set(
+    raw.split(',').map(t => t.trim()).filter(t => /^[A-Z]{1,10}$/.test(t))
+  )].slice(0, 50)
+
+  if (!requested.length) return json({ error: 'No valid tickers provided' }, 400)
+
+  const prices = {}
+  const errors = {}
+  let cacheHits = 0, providerCalls = 0, providerFailures = 0, yahooFallbacks = 0
+
+  // Phase 1: KV cache reads (all in parallel — reads are free)
+  const cacheResults = await Promise.all(
+    requested.map(ticker => kvGet(kv, `price:${ticker}`).then(r => ({ ticker, ...r })))
+  )
+  const misses = []
+  for (const { ticker, value } of cacheResults) {
+    if (value) {
+      prices[ticker] = { ...value, stale: false }
+      cacheHits++
+    } else {
+      misses.push(ticker)
+    }
+  }
+
+  // Phase 2: fetch misses with bounded concurrency (3 at a time)
+  if (misses.length > 0) {
+    const fetchResults = await mapWithConcurrency(misses, 3, async (ticker) => {
+      providerCalls++
+      const raw = await fhGet(`/quote?symbol=${ticker}`, keys.finnhub)
+      if (!raw?.c) throw new Error('quote_unavailable')
+
+      const data = {
+        ticker, price: raw.c, change: raw.d, changePct: raw.dp,
+        high: raw.h, low: raw.l, open: raw.o, prevClose: raw.pc,
+        preMarketPrice: null, preMarketChangePct: null,
+        postMarketPrice: null, postMarketChangePct: null,
+        phase: null, extSource: null,
+        source: 'finnhub', asOf: new Date().toISOString(),
+      }
+
+      // Yahoo Finance for extended-hours (best-effort, don't fail batch)
+      try {
+        const yhFull = await yahooQuoteSummary(ticker)
+        const yh = yhFull?.extHours
+        if (yh) {
+          data.phase = yh.phase
+          if (yh.preMarketPrice  != null) { data.preMarketPrice  = yh.preMarketPrice;  data.preMarketChangePct  = yh.preMarketChangePct }
+          if (yh.postMarketPrice != null) { data.postMarketPrice = yh.postMarketPrice; data.postMarketChangePct = yh.postMarketChangePct }
+          if (!data.prevClose && yh.prevClose) data.prevClose = yh.prevClose
+          data.extSource = 'yahoo'
+          yahooFallbacks++
+        }
+      } catch { /* extended hours unavailable — not a failure */ }
+
+      // Write individual KV key (per-ticker, avoids consolidation problems)
+      const meta = buildMeta(ticker, 'price', TTL.PRICE, false)
+      await kvSet(kv, `price:${ticker}`, data, TTL.PRICE, meta)
+      return data
+    })
+
+    for (let i = 0; i < misses.length; i++) {
+      const r = fetchResults[i]
+      if (r.status === 'fulfilled') {
+        prices[misses[i]] = { ...r.value, stale: false }
+      } else {
+        errors[misses[i]] = r.reason?.message ?? 'fetch_error'
+        providerFailures++
+      }
+    }
+  }
+
+  const durationMs = Date.now() - t0
+
+  // Structured telemetry log
+  console.log(JSON.stringify({
+    event: 'batch_prices',
+    duration_ms: durationMs,
+    tickers: requested.length,
+    cache_hits: cacheHits,
+    cache_misses: misses.length,
+    finnhub_calls: providerCalls,
+    yahoo_fallbacks: yahooFallbacks,
+    errors: providerFailures,
+  }))
+
+  return json({
+    prices,
+    errors: Object.keys(errors).length ? errors : undefined,
+    meta: {
+      requested: requested.length,
+      returned:  Object.keys(prices).length,
+      cacheHits, providerCalls, durationMs,
+    },
+  })
 }
 
 async function handlePrice(ticker, keys, kv) {
@@ -3157,6 +3287,8 @@ export default {
           return json({ ok: true, kv: !!kv, version: '1.1.0', keys: { finnhub: !!keys.finnhub, alpaca: !!(keys.alpacaKey && keys.alpacaSecret), groq: !!keys.groq } })
         case 'fundamentals':
           return await handleFundamentals(param1, keys, kv, refresh)
+        case 'prices':
+          return await handleBatchPrices(url, keys, kv)
         case 'price':
           return await handlePrice(param1, keys, kv)
         case 'ohlcv':
