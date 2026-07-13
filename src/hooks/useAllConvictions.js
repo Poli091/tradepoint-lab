@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
+import { cache } from '../utils/cache.js'
 import { runConviction }           from '../conviction/index.js'
 
 const TICKER_DELAY_MS = 250   // delay between tickers on first cold run
@@ -41,6 +42,13 @@ export function useAllConvictions(positions = [], prices = {}) {
       for (let i = 0; i < positions.length; i++) {
         const pos = positions[i]
         try {
+          // Bust stale localStorage fund_ cache if targetMean is null
+          // (was written before Yahoo Finance fallback was added for analyst targets)
+          const cachedFund = cache.getFund(pos.ticker)
+          if (cachedFund && cachedFund.targetMean == null) {
+            cache.deleteFund(pos.ticker)
+          }
+
           const [fundResult, ohlcvResult] = await Promise.all([
             workerAPI.fundamentals(pos.ticker),
             workerAPI.ohlcv(pos.ticker, '1Y'),

@@ -914,8 +914,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                       const thresholds = [{v:85,c:'#22C55E'},{v:70,c:'#86EFAC'},{v:55,c:'#FBBF24'},{v:40,c:'#F97316'}]
 
                       return (
-                        <div style={{ marginBottom:10, overflowX:'auto' }}>
-                          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
+                        <div style={{ marginBottom:10, overflowX:'auto', maxWidth:520 }}>
+                          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block', maxHeight:120 }}>
                             {/* Grid lines at grade thresholds */}
                             {thresholds.filter(t => t.v >= minS && t.v <= maxS).map(t => (
                               <g key={t.v}>
