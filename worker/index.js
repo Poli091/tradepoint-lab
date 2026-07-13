@@ -441,13 +441,19 @@ async function handleBatchPrices(url, keys, kv) {
         if (!snap) continue
 
         // Deterministic price cascade: last trade → minute bar → daily bar
-        let latestPrice = null, priceType = null
-        if (snap.latestTrade?.p > 0) {
-          latestPrice = snap.latestTrade.p; priceType = 'last_trade'
+        // latestTrade must be reasonably fresh (within 24h for any session)
+        const tradeAge = snap.latestTrade?.t
+          ? (Date.now() - new Date(snap.latestTrade.t).getTime()) / 1000
+          : Infinity
+        const tradeIsFresh = tradeAge < 86400  // within 24h (covers after-hours, weekends)
+
+        let latestPrice = null, priceType = null, priceAsOf = null
+        if (snap.latestTrade?.p > 0 && tradeIsFresh) {
+          latestPrice = snap.latestTrade.p; priceType = 'last_trade';  priceAsOf = snap.latestTrade.t
         } else if (snap.minuteBar?.c > 0) {
-          latestPrice = snap.minuteBar.c;  priceType = 'minute_bar'
+          latestPrice = snap.minuteBar.c;  priceType = 'minute_bar';  priceAsOf = snap.minuteBar.t
         } else if (snap.dailyBar?.c > 0) {
-          latestPrice = snap.dailyBar.c;   priceType = 'daily_bar'
+          latestPrice = snap.dailyBar.c;   priceType = 'daily_bar';   priceAsOf = snap.dailyBar.t
         }
         if (!latestPrice) continue
 
@@ -463,7 +469,7 @@ async function handleBatchPrices(url, keys, kv) {
           priceType,             // last_trade | minute_bar | daily_bar
           source: 'alpaca',
           feed: 'iex',           // IEX = subset of market, not consolidated SIP
-          asOf: snap.latestTrade?.t ?? new Date().toISOString(),
+          asOf: priceAsOf ?? new Date().toISOString(),
           preMarketPrice: null, preMarketChangePct: null,
           postMarketPrice: null, postMarketChangePct: null,
           phase: null, extSource: null,
@@ -530,6 +536,20 @@ async function handleBatchPrices(url, keys, kv) {
   const durationMs = Date.now() - t0
   const alpacaReturned   = misses.filter(t => prices[t]?.source === 'alpaca').length
   const alpacaMissing    = misses.filter(t => !prices[t]).length + stillMissing.filter(t => !prices[t]).length
+
+  // price_type_counts: how often each cascade level was used
+  const priceTypeCounts = { last_trade: 0, minute_bar: 0, daily_bar: 0, other: 0 }
+  for (const p of Object.values(prices)) {
+    const k = p.priceType ?? 'other'
+    priceTypeCounts[k] = (priceTypeCounts[k] ?? 0) + 1
+  }
+  // oldest_as_of_age_seconds: worst-case data age in the batch
+  const now = Date.now()
+  const ages = Object.values(prices)
+    .map(p => p.asOf ? (now - new Date(p.asOf).getTime()) / 1000 : null)
+    .filter(Boolean)
+  const oldestAge = ages.length ? Math.round(Math.max(...ages)) : null
+
   console.log(JSON.stringify({
     event: 'batch_prices',
     duration_ms: durationMs,
@@ -543,6 +563,8 @@ async function handleBatchPrices(url, keys, kv) {
     finnhub_fallbacks: finnhubFallbacks,
     yahoo_extended_calls: yahooFallbacks,
     errors: providerFailures,
+    price_type_counts: priceTypeCounts,
+    oldest_as_of_age_seconds: oldestAge,
     has_errors: providerFailures > 0,
   }))
 
