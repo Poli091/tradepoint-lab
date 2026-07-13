@@ -581,8 +581,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                         {isGated && review.gateDetails?.[s.ticker] && (
                           <div style={{ fontSize:9, color:'var(--amber)', fontFamily:'var(--mono)',
                             marginBottom:4, lineHeight:1.7 }}>
-                            {review.gateDetails[s.ticker].label.split(' and ').join('
-').split('. ').map((line, i) => (
+                            {review.gateDetails[s.ticker].label.split(' and ').join(' · ').split('. ').map((line, i) => (
                               <div key={i}>{line}</div>
                             ))}
                             <div>Effective score capped at {review.gateDetails[s.ticker].cap}</div>

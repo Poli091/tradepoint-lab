@@ -380,7 +380,7 @@ export function runSwingConviction(fund, ohlcv, spyOhlcv) {
 
   return {
     mode:'swing', finalScore:final, rawScore:Math.round(raw),
-    grade:g.label, gradeColor:g.color, riskPenalty:risk.penalty,
+    grade:grade.label, gradeColor:grade.color, riskPenalty:risk.penalty,
     setup, setupConfidence:setupConf, setupReasons:setupWhy,
     exhaustion, levels,
     breakdown:{ema,rs,macd:mac,rvol,adx,atrQuality:atrQ,businessMomentum:biz,setupBonus:{score:setupB,max:10},earnings:earn,risk},

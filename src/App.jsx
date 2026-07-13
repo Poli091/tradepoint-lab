@@ -20,7 +20,6 @@ import CompareView                from './views/CompareView.jsx'
 import PortfolioInsightsView       from './views/PortfolioInsightsView.jsx'
 import ScanView                   from './views/ScanView.jsx'
 import SectorTrendsView           from './views/SectorTrendsView.jsx'
-import { useTradepoint }          from './hooks/useTradepoint.js'
 import { loadOverrides }          from './utils/positionsStorage.js'
 import { loadWatchlist }          from './utils/watchlistStorage.js'
 import TickerDetailPanel from './components/widgets/TickerDetailPanel.jsx'
@@ -46,21 +45,21 @@ function LiveBadge({ loading, lastUpdated, error }) {
 
 /* ── Main app ──────────────────────────────────────────── */
 function AppInner() {
-  const {
-    theme, toggleTheme,
-    view, setView,
-    account, setAccount,
-    privacyMode, togglePrivacy,
-    ticker, setTicker,
-    range, setRange,
-    sortBy, sortDir, handleSort,
-    side, setSide,
-    orderType, setOrderType,
-    qty, incQty, decQty,
-    limitPrice, setLimitPrice,
-  } = useTradepoint()
+  // App-level state (previously from useTradepoint — now inline useState)
+  const [theme,       setThemeRaw]   = useState(() => localStorage.getItem('tp_theme') ?? 'dark')
+  const toggleTheme = () => setThemeRaw(t => { const n = t==='dark'?'light':'dark'; localStorage.setItem('tp_theme',n); return n })
+  const [view,        setView]        = useState('dashboard')
+  const [account,     setAccount]     = useState('combined')
+  const [privacyMode, setPrivacyMode] = useState(false)
+  const togglePrivacy = () => setPrivacyMode(p => !p)
+  const [ticker,      setTicker]      = useState('')
+  const [range,       setRange]       = useState('1Y')
+  const [sortBy,      setSortBy]      = useState('conviction')
+  const [sortDir,     setSortDir]     = useState('desc')
+  const handleSort = (col) => { setSortBy(col); setSortDir(d => col === sortBy ? (d==='desc'?'asc':'desc') : 'desc') }
+  const [side,        setSide]        = useState('buy')
 
-  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
+    const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
 
   // State declarations must come BEFORE useMemos that reference them
   const [settingsOpen,  setSettingsOpen]  = useState(false)
