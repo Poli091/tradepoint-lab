@@ -580,9 +580,12 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                         {/* Gate cause — shown deterministically from Worker data, not from Groq */}
                         {isGated && review.gateDetails?.[s.ticker] && (
                           <div style={{ fontSize:9, color:'var(--amber)', fontFamily:'var(--mono)',
-                            marginBottom:4, lineHeight:1.5 }}>
-                            {review.gateDetails[s.ticker].label}
-                            {' · '}Effective score capped at {review.gateDetails[s.ticker].cap}
+                            marginBottom:4, lineHeight:1.7 }}>
+                            {review.gateDetails[s.ticker].label.split(' and ').join('
+').split('. ').map((line, i) => (
+                              <div key={i}>{line}</div>
+                            ))}
+                            <div>Effective score capped at {review.gateDetails[s.ticker].cap}</div>
                           </div>
                         )}
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{s.reason}</div>
