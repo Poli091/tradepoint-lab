@@ -94,8 +94,15 @@ export function useMarketData() {
 
         // Merge results — single state update below
         for (const [ticker, data] of Object.entries(result.prices ?? {})) {
-          newPrices[ticker] = data
+          newPrices[ticker] = { ...data, stale: false }
           cache.setPrice(ticker, data)
+        }
+        // Tickers in errors: carry forward previous price marked as stale
+        // so the UI can show "last known price · stale" instead of disappearing
+        for (const ticker of Object.keys(result.errors ?? {})) {
+          // newPrices[ticker] is already set from localStorage cache above if it existed
+          // If not in newPrices yet, it'll be picked up from prev state via the merge
+          if (newPrices[ticker]) newPrices[ticker] = { ...newPrices[ticker], stale: true }
         }
       }
 
