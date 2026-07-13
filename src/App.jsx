@@ -152,6 +152,10 @@ function AppInner() {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('privacy-mode', privacyMode)
+  }, [privacyMode])
+
   const renderView = () => {
     switch (view) {
       case 'dashboard':
