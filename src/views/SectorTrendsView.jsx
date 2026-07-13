@@ -222,6 +222,16 @@ function RotationView({ industries, onSelectIndustry }) {
           </tr>
         </thead>
         <tbody>
+          {sorted.every(ind => ind.rs1M == null && ind.rs3M == null && ind.rs6M == null) && (
+            <tr><td colSpan={8} style={{ padding:'32px 20px', textAlign:'center', color:'var(--txt-muted)' }}>
+              <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>Rotation data not yet available</div>
+              <div style={{ fontSize:11, lineHeight:1.8 }}>
+                Rotation requires RS 1M, 3M and 6M for each industry.<br/>
+                Trend Map may show scores from the latest available snapshot.<br/>
+                Click ↺ Refresh after more OHLCV history has been collected.
+              </div>
+            </td></tr>
+          )}
           {sorted.map((ind, i) => {
             const rot = classifyRotation(ind.rs1M, ind.rs3M, ind.rs6M)
             return (
@@ -415,7 +425,7 @@ function BalanceView({ industries }) {
                   </div>
                   <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:1 }}>
                     {heldPct > 0 ? `${heldPct.toFixed(0)}% held · ` : 'Not in portfolio · '}
-                    {rot.label} · RS {sign(d.trendScore)}
+                    {rot.label === 'No data' ? 'Rotation unavailable' : rot.label} · RS {sign(d.trendScore)}
                   </div>
                 </div>
                 <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:3, flexShrink:0,
