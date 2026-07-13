@@ -177,6 +177,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         return {
           ticker:   p.ticker,
           weight:   totalVal > 0 ? (val/totalVal)*100 : 0,
+          weightMateriality: totalVal > 0 && (val/totalVal)*100 >= 10 ? 'high' : totalVal > 0 && (val/totalVal)*100 >= 5 ? 'moderate' : 'low',
           value:    val,
           sector:   SECTOR_MAP[p.ticker] ?? 'Other',
           conviction: cv ? {
@@ -197,7 +198,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.2', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.3', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)
@@ -561,7 +562,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                             {s.severity??'low'}
                           </span>
                           {isGated && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700, background:'var(--amber-dim)', color:'var(--amber)' }}>Gate active</span>}
-                          {ndEntry && <span style={{ fontSize:9, fontFamily:'var(--mono)', color:ndSev==='high'?'var(--red)':'var(--amber)' }}>{ndEntry.distanceToDowngrade}pts to {ndEntry.grade==='HOLD'?'SELL':'lower'}</span>}
+                          {ndEntry && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:ndSev==='high'?'var(--red)':'var(--amber)' }}>{Math.round(ndEntry.distanceToDowngrade*10)/10}pts to {NEXT_G[ndEntry.grade]??'lower'}</span>; })()}
                         </div>
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{s.reason}</div>
                       </div>
@@ -581,7 +582,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                         borderBottom:i<review.watchZone.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
                           <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color:'var(--txt)' }}>{w.ticker}</span>
-                          {nd && <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--amber)' }}>{nd.score} · {nd.distanceToDowngrade}pts to next</span>}
+                          {nd && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--amber)' }}>{nd.score} · {Math.round(nd.distanceToDowngrade*10)/10}pts to {NEXT_G[nd.grade]??'lower'}</span>; })()}
                         </div>
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{w.reason}</div>
                         {w.trigger && <div style={{ fontSize:10, color:'var(--accent)', marginTop:3, fontWeight:600 }}>→ {w.trigger}</div>}

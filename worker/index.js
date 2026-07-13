@@ -1327,11 +1327,20 @@ async function handlePortfolioReview(request, keys, kv, db) {
   const lowSevTickers  = nearDowngrade.filter(d => nearDowngradeSeverity[d.ticker] === 'Low').map(d=>d.ticker)
   const highSevCount   = highSevTickers.length
   // Deterministic posture facts — Groq must quote these, not recalculate
+  // Gate causes per ticker — do NOT merge into one combined statement
+  const gateSentences = gatePositions.map(p => {
+    const cv = p.conviction ?? {}
+    if (cv.gate === 'gate2') {
+      const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
+      return `${p.ticker}: Gate2 active — Quality ${q}/20 and Strength ${s}/15 below minimums, capped at 58`
+    }
+    return `${p.ticker}: Gate1 active — financial condition failed, capped at 35`
+  })
   const postureFactsSentence = [
     sellCount > 0 ? `${sellCount} position${sellCount>1?'s':''} rated SELL or STRONG SELL (${sellWeight.toFixed(1)}% of portfolio weight)` : null,
-    gatePositions.length > 0 ? `${gatePositions.length} active Gate${gatePositions.length>1?'s':''} (${gatePositions.map(p=>p.ticker).join(', ')})` : null,
-    highSevCount > 0 ? `${highSevCount} position${highSevCount>1?'s':''} close to a SELL threshold (${highSevTickers.join(', ')})` : null,
-  ].filter(Boolean).join('; ')
+    gateSentences.length > 0 ? gateSentences.join('; ') : null,
+    highSevCount > 0 ? `${highSevCount} position${highSevCount>1?'s':''} close to SELL threshold (${highSevTickers.join(', ')})` : null,
+  ].filter(Boolean).join('. ')
 
   const metricsText = `GRADE DISTRIBUTION: ${Object.entries(gradeCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(', ')}
 
@@ -1408,6 +1417,7 @@ Rules:
 - DIVERSITY: Spotlight and Watch Zone must not repeat the same ticker. Spotlight = most material. Watch Zone = additional positions not in Spotlight.
 - PORTFOLIO STATUS: cite the exact numbers from PORTFOLIO STATUS FACTORS when explaining the posture choice.
 - LANGUAGE: avoid dramatic phrases like "significant decline in its rating". Instead use: "crosses from HOLD to SELL threshold" or "LT score falls below 55".
+- WEIGHT: use the weightMateriality field (high/moderate/low) from each position. Never describe a 'low' weight position as "significant".
 - CONCLUSION: end narratives with a specific risk summary, not generic phrases like "careful monitoring". Name the actual risks.
 - GATES: explain the specific condition that triggered each gate (use cause: from the payload), not just the gate name.
 - spotlight max 3. weeklyPriority is not a trade order. Use only provided data. Raw JSON only.`
@@ -1497,7 +1507,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.2',
+      prompt_version: 'pr-v2.3',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },
