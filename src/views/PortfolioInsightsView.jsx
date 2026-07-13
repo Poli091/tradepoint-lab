@@ -541,36 +541,53 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                 <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'12px 14px' }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
                     textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>🔦 Spotlight</div>
-                  {review.spotlight.map((s, i) => (
-                    <div key={i} style={{ marginBottom:i<review.spotlight.length-1?8:0 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                        <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700,
-                          color:s.severity==='high'?'var(--red)':s.severity==='medium'?'var(--amber)':'var(--txt)' }}>
-                          {s.ticker}
-                        </span>
-                        <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700,
-                          background:s.severity==='high'?'var(--red-dim)':s.severity==='medium'?'var(--amber-dim)':'var(--surface)',
-                          color:s.severity==='high'?'var(--red)':s.severity==='medium'?'var(--amber)':'var(--txt-muted)' }}>
-                          {s.severity??'low'}
-                        </span>
+                  {review.spotlight.map((s, i) => {
+                    const ndEntry  = review.metrics?.nearDowngrade?.find(d => d.ticker === s.ticker)
+                    const isGated  = review.metrics?.gatePositions?.includes(s.ticker)
+                    const ndGroups = review.nearDowngradeGroups ?? {}
+                    const ndSev    = Object.entries(ndGroups).find(([,tickers]) => tickers?.includes(s.ticker))?.[0]
+                    return (
+                      <div key={i} style={{ marginBottom:i<review.spotlight.length-1?10:0,
+                        paddingBottom:i<review.spotlight.length-1?10:0,
+                        borderBottom:i<review.spotlight.length-1?'1px solid var(--border)':'none' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap', marginBottom:4 }}>
+                          <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700,
+                            color:s.severity==='high'?'var(--red)':s.severity==='medium'?'var(--amber)':'var(--txt)' }}>
+                            {s.ticker}
+                          </span>
+                          <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700,
+                            background:s.severity==='high'?'var(--red-dim)':s.severity==='medium'?'var(--amber-dim)':'var(--surface)',
+                            color:s.severity==='high'?'var(--red)':s.severity==='medium'?'var(--amber)':'var(--txt-muted)' }}>
+                            {s.severity??'low'}
+                          </span>
+                          {isGated && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700, background:'var(--amber-dim)', color:'var(--amber)' }}>Gate active</span>}
+                          {ndEntry && <span style={{ fontSize:9, fontFamily:'var(--mono)', color:ndSev==='high'?'var(--red)':'var(--amber)' }}>{ndEntry.distanceToDowngrade}pts to {ndEntry.grade==='HOLD'?'SELL':'lower'}</span>}
+                        </div>
+                        <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{s.reason}</div>
                       </div>
-                      <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.4 }}>{s.reason}</div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
               {review.watchZone?.length > 0 && (
                 <div style={{ background:'var(--surface-up)', borderRadius:'var(--radius-lg)', padding:'12px 14px' }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
                     textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>👁 Watch Zone</div>
-                  {review.watchZone.map((w, i) => (
-                    <div key={i} style={{ marginBottom:i<review.watchZone.length-1?8:0 }}>
-                      <div style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:700,
-                        color:'var(--txt)', marginBottom:2 }}>{w.ticker}</div>
-                      <div style={{ fontSize:11, color:'var(--txt-muted)', lineHeight:1.4 }}>{w.reason}</div>
-                      {w.trigger && <div style={{ fontSize:10, color:'var(--accent)', marginTop:2 }}>→ {w.trigger}</div>}
-                    </div>
-                  ))}
+                  {review.watchZone.map((w, i) => {
+                    const nd = review.metrics?.nearDowngrade?.find(d => d.ticker === w.ticker)
+                    return (
+                      <div key={i} style={{ marginBottom:i<review.watchZone.length-1?10:0,
+                        paddingBottom:i<review.watchZone.length-1?10:0,
+                        borderBottom:i<review.watchZone.length-1?'1px solid var(--border)':'none' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                          <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color:'var(--txt)' }}>{w.ticker}</span>
+                          {nd && <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--amber)' }}>{nd.score} · {nd.distanceToDowngrade}pts to next</span>}
+                        </div>
+                        <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{w.reason}</div>
+                        {w.trigger && <div style={{ fontSize:10, color:'var(--accent)', marginTop:3, fontWeight:600 }}>→ {w.trigger}</div>}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -591,11 +608,19 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize:12, color:'var(--txt)', fontWeight:600 }}>
+                  <div style={{ fontSize:12, color:'var(--txt)', fontWeight:600, marginBottom:4 }}>
                     {review.weeklyPriority.action}
                   </div>
+                  {review.weeklyPriority.ticker && (() => {
+                    const nd = review.metrics?.nearDowngrade?.find(d => d.ticker === review.weeklyPriority.ticker)
+                    return nd ? (
+                      <div style={{ fontSize:10, fontFamily:'var(--mono)', color:'var(--amber)', marginBottom:4 }}>
+                        {nd.score}/100 · {nd.distanceToDowngrade}pts above {nd.grade === 'HOLD' ? 'SELL' : nd.grade === 'BUY' ? 'HOLD' : 'lower'} threshold
+                      </div>
+                    ) : null
+                  })()}
                   {review.weeklyPriority.reason && (
-                    <div style={{ fontSize:11, color:'var(--txt-muted)', marginTop:2, lineHeight:1.4 }}>
+                    <div style={{ fontSize:11, color:'var(--txt)', marginTop:2, lineHeight:1.5 }}>
                       {review.weeklyPriority.reason}
                     </div>
                   )}
@@ -625,21 +650,18 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                   <div style={{ fontSize:10, background:'var(--surface-up)',
                     padding:'6px 10px', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
                     <span style={{ fontWeight:700, color:'var(--txt-muted)', marginRight:6 }}>↓ Near grade boundary:</span>
-                    {review.nearDowngradeGroups.high?.length > 0 && (
-                      <span style={{ color:'var(--red)', marginRight:8 }}>
-                        High · {review.nearDowngradeGroups.high.join(', ')}
+                    {[
+                      { sev: 'High', color: 'var(--red)', bg: 'var(--red-dim)', tickers: review.nearDowngradeGroups.high },
+                      { sev: 'Medium', color: 'var(--amber)', bg: 'var(--amber-dim)', tickers: review.nearDowngradeGroups.medium },
+                      { sev: 'Low', color: 'var(--txt-muted)', bg: 'var(--surface-up)', tickers: review.nearDowngradeGroups.low },
+                    ].filter(g => g.tickers?.length > 0).map(g => (
+                      <span key={g.sev} style={{ display:'inline-flex', alignItems:'center', gap:4,
+                        padding:'2px 8px', borderRadius:'var(--radius)', background:g.bg,
+                        border:`1px solid ${g.color}44`, marginRight:6 }}>
+                        <span style={{ fontSize:9, fontWeight:700, color:g.color }}>{g.sev}</span>
+                        <span style={{ fontSize:9, color:g.color, fontFamily:'var(--mono)' }}>{g.tickers.join(', ')}</span>
                       </span>
-                    )}
-                    {review.nearDowngradeGroups.medium?.length > 0 && (
-                      <span style={{ color:'var(--amber)', marginRight:8 }}>
-                        Medium · {review.nearDowngradeGroups.medium.join(', ')}
-                      </span>
-                    )}
-                    {review.nearDowngradeGroups.low?.length > 0 && (
-                      <span style={{ color:'var(--txt-muted)' }}>
-                        Low · {review.nearDowngradeGroups.low.join(', ')}
-                      </span>
-                    )}
+                    ))}
                   </div>
                 )}
               </div>
