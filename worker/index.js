@@ -392,61 +392,110 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
 }
 
 /* ── Batch price endpoint: GET /api/prices?tickers=NVDA,AVGO,... ──────
-   1. Validate & deduplicate tickers (max 50)
-   2. Check KV cache per ticker
-   3. Fetch only misses with concurrency=3
-   4. Return prices + errors + telemetry meta
+   Architecture (Finnhub rate-limit aware):
+   1. KV cache reads in parallel (free, fast)
+   2. Misses → Alpaca multi-symbol snapshot (1 API call for all misses)
+   3. Yahoo extended-hours complement (best-effort, 1s timeout)
+   4. Finnhub fallback only for tickers Alpaca can't serve
    5. Never fail the whole batch for one bad ticker
 ──────────────────────────────────────────────────────────────────────── */
 async function handleBatchPrices(url, keys, kv) {
   const t0 = Date.now()
-  if (!keys.finnhub) return json({ error: 'Finnhub key not configured' }, 401)
 
   // Parse & validate tickers
-  const raw = (url.searchParams.get('tickers') ?? '').toUpperCase()
+  const rawParam = (url.searchParams.get('tickers') ?? '').toUpperCase()
   const requested = [...new Set(
-    raw.split(',').map(t => t.trim()).filter(t => /^[A-Z]{1,10}$/.test(t))
+    rawParam.split(',').map(t => t.trim()).filter(t => /^[A-Z]{1,10}$/.test(t))
   )].slice(0, 50)
 
   if (!requested.length) return json({ error: 'No valid tickers provided' }, 400)
 
   const prices = {}
   const errors = {}
-  let cacheHits = 0, providerCalls = 0, providerFailures = 0, yahooFallbacks = 0
+  let cacheHits = 0, alpacaCalls = 0, finnhubFallbacks = 0, yahooFallbacks = 0, providerFailures = 0
 
-  // Phase 1: KV cache reads (all in parallel — reads are free)
+  // Phase 1: KV cache reads — all in parallel (reads are free)
   const cacheResults = await Promise.all(
     requested.map(ticker => kvGet(kv, `price:${ticker}`).then(r => ({ ticker, ...r })))
   )
   const misses = []
   for (const { ticker, value } of cacheResults) {
-    if (value) {
-      prices[ticker] = { ...value, stale: false }
-      cacheHits++
-    } else {
-      misses.push(ticker)
+    if (value) { prices[ticker] = { ...value, stale: false }; cacheHits++ }
+    else misses.push(ticker)
+  }
+
+  // Phase 2: Alpaca multi-symbol snapshot — ONE API call for all misses
+  // Alpaca IEX free: no per-ticker rate limit, supports multi-symbol in one request
+  if (misses.length > 0 && keys.alpacaKey && keys.alpacaSecret) {
+    alpacaCalls++
+    const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+    const symbolsParam = misses.join(',')
+    const alpacaData = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${symbolsParam}&feed=iex`,
+      { headers: alpacaHdr }
+    ).catch(e => { console.error('[Alpaca snapshots]', e.message); return null })
+
+    if (alpacaData) {
+      for (const ticker of misses) {
+        const snap = alpacaData[ticker]
+        if (!snap) continue
+        const latestPrice = snap.latestTrade?.p ?? snap.minuteBar?.c ?? snap.dailyBar?.c
+        const prevClose   = snap.prevDailyBar?.c
+        const change      = latestPrice != null && prevClose != null ? latestPrice - prevClose : null
+        const changePct   = change != null && prevClose ? (change / prevClose) * 100 : null
+        if (!latestPrice) continue
+
+        const data = {
+          ticker, price: latestPrice, change, changePct,
+          high: snap.dailyBar?.h, low: snap.dailyBar?.l,
+          open: snap.dailyBar?.o, prevClose,
+          preMarketPrice: null, preMarketChangePct: null,
+          postMarketPrice: null, postMarketChangePct: null,
+          phase: null, extSource: null,
+          source: 'alpaca', asOf: new Date().toISOString(),
+        }
+        prices[ticker] = { ...data, stale: false }
+        const meta = buildMeta(ticker, 'price', TTL.PRICE, false)
+        await kvSet(kv, `price:${ticker}`, data, TTL.PRICE, meta)
+      }
     }
   }
 
-  // Phase 2: fetch misses sequentially with delay — Finnhub free = 60 req/min
-  // Sequential (limit=1) + 150ms delay keeps us well under the rate limit
-  if (misses.length > 0) {
-    const fetchResults = await mapWithConcurrency(misses, 1, async (ticker) => {
-      await delay(150) // ~6-7 req/s, stays under 60/min limit
-      providerCalls++
-      const raw = await fhGet(`/quote?symbol=${ticker}`, keys.finnhub)
-      if (!raw?.c) throw new Error('quote_unavailable')
-
-      const data = {
-        ticker, price: raw.c, change: raw.d, changePct: raw.dp,
-        high: raw.h, low: raw.l, open: raw.o, prevClose: raw.pc,
-        preMarketPrice: null, preMarketChangePct: null,
-        postMarketPrice: null, postMarketChangePct: null,
-        phase: null, extSource: null,
-        source: 'finnhub', asOf: new Date().toISOString(),
+  // Phase 3: Finnhub fallback for any tickers still missing after Alpaca
+  // Rate limit aware: sequential with delay, only for remaining misses
+  const stillMissing = misses.filter(t => !prices[t])
+  if (stillMissing.length > 0 && keys.finnhub) {
+    for (const ticker of stillMissing) {
+      try {
+        finnhubFallbacks++
+        const raw = await fhGet(`/quote?symbol=${ticker}`, keys.finnhub)
+        if (!raw?.c) throw new Error('quote_unavailable')
+        const data = {
+          ticker, price: raw.c, change: raw.d, changePct: raw.dp,
+          high: raw.h, low: raw.l, open: raw.o, prevClose: raw.pc,
+          preMarketPrice: null, preMarketChangePct: null,
+          postMarketPrice: null, postMarketChangePct: null,
+          phase: null, extSource: null,
+          source: 'finnhub', asOf: new Date().toISOString(),
+        }
+        prices[ticker] = { ...data, stale: false }
+        const meta = buildMeta(ticker, 'price', TTL.PRICE, false)
+        await kvSet(kv, `price:${ticker}`, data, TTL.PRICE, meta)
+        await delay(1100)  // respect 60 req/min on fallback path
+      } catch(e) {
+        errors[ticker] = e.message ?? 'fetch_error'
+        providerFailures++
       }
+    }
+  }
 
-      // Yahoo Finance for extended-hours — 1000ms timeout, don't block regular price
+  // Phase 4: Yahoo extended-hours complement (best-effort, 1s timeout)
+  // Only run during pre/post market — skip during regular hours to save quota
+  const nyHour = new Date().toLocaleString('en-US', { timeZone:'America/New_York', hour:'numeric', hour12:false })
+  const isRegularHours = parseInt(nyHour) >= 9 && parseInt(nyHour) < 16
+  if (!isRegularHours) {
+    const freshTickers = Object.keys(prices).filter(t => misses.includes(t))
+    for (const ticker of freshTickers.slice(0, 5)) {  // limit Yahoo calls too
       try {
         const yhFull = await Promise.race([
           yahooQuoteSummary(ticker),
@@ -454,45 +503,27 @@ async function handleBatchPrices(url, keys, kv) {
         ])
         const yh = yhFull?.extHours
         if (yh) {
-          data.phase = yh.phase
-          if (yh.preMarketPrice  != null) { data.preMarketPrice  = yh.preMarketPrice;  data.preMarketChangePct  = yh.preMarketChangePct }
-          if (yh.postMarketPrice != null) { data.postMarketPrice = yh.postMarketPrice; data.postMarketChangePct = yh.postMarketChangePct }
-          if (!data.prevClose && yh.prevClose) data.prevClose = yh.prevClose
-          data.extSource = 'yahoo'
+          const p = prices[ticker]
+          if (yh.preMarketPrice  != null) { p.preMarketPrice  = yh.preMarketPrice;  p.preMarketChangePct  = yh.preMarketChangePct; p.phase = 'pre' }
+          if (yh.postMarketPrice != null) { p.postMarketPrice = yh.postMarketPrice; p.postMarketChangePct = yh.postMarketChangePct; p.phase = 'post' }
+          p.extSource = 'yahoo'
           yahooFallbacks++
         }
-      } catch { /* extended hours unavailable — not a failure */ }
-
-      // Write individual KV key (per-ticker, avoids consolidation problems)
-      const meta = buildMeta(ticker, 'price', TTL.PRICE, false)
-      await kvSet(kv, `price:${ticker}`, data, TTL.PRICE, meta)
-      return data
-    })
-
-    for (let i = 0; i < misses.length; i++) {
-      const r = fetchResults[i]
-      if (r.status === 'fulfilled') {
-        prices[misses[i]] = { ...r.value, stale: false }
-      } else {
-        errors[misses[i]] = r.reason?.message ?? 'fetch_error'
-        providerFailures++
-      }
+      } catch { /* skip */ }
     }
   }
 
   const durationMs = Date.now() - t0
-
-  // Structured telemetry log
   console.log(JSON.stringify({
     event: 'batch_prices',
     duration_ms: durationMs,
     tickers: requested.length,
     cache_hits: cacheHits,
     cache_misses: misses.length,
-    finnhub_calls: providerCalls,
+    alpaca_calls: alpacaCalls,
+    finnhub_fallbacks: finnhubFallbacks,
     yahoo_fallbacks: yahooFallbacks,
     errors: providerFailures,
-    // cache_ms ≈ total - provider time (can be derived from logs)
     has_errors: providerFailures > 0,
   }))
 
@@ -502,7 +533,7 @@ async function handleBatchPrices(url, keys, kv) {
     meta: {
       requested: requested.length,
       returned:  Object.keys(prices).length,
-      cacheHits, providerCalls, durationMs,
+      cacheHits, alpacaCalls, finnhubFallbacks, durationMs,
     },
   })
 }
