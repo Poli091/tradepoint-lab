@@ -286,7 +286,17 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                   {tickers.map(t => {
                     const h = scanHistory.find(s => s.ticker === t)
-                    const gradeInfo = h?.score != null ? getGrade(h.score) : null
+                    // Also check convictionResults for portfolio tickers
+                    const cv = convictionResults[t]
+                    const score = h?.score ?? (cv?.finalScore != null ? Math.round(cv.finalScore * 10) / 10 : null)
+                    const grade = h?.grade ?? cv?.grade ?? null
+                    const gradeInfo = score != null ? getGrade(score) : null
+                    // Apply grade filter to sector tickers too
+                    const GRADE_RANK = { 'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0 }
+                    if (gradeFilter !== 'ALL' && grade) {
+                      if (gradeFilter === 'HOLD' && GRADE_RANK[grade] < GRADE_RANK['HOLD']) return null
+                      if (gradeFilter !== 'HOLD' && gradeFilter !== 'ALL' && grade !== gradeFilter) return null
+                    }
                     return (
                       <button key={t} onClick={() => handleScan(t)} style={{
                         padding:'3px 8px', borderRadius:5, cursor:'pointer',
@@ -296,7 +306,7 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
                         color: activeTicker === t ? color : gradeInfo ? gradeInfo.color : 'var(--txt-sec)',
                         transition:'all 0.11s',
                       }}>
-                        {t}{h?.score != null ? ` ${h.score}` : ''}
+                        {t}{score != null ? ` ${score}` : ''}
                       </button>
                     )
                   })}

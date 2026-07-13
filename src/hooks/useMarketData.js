@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { getWorkerUrl }  from '../utils/api/worker.js'
+import { getWorkerUrl, buildHeaders } from '../utils/api/worker.js'
 import { cache }         from '../utils/cache.js'
 import { POSITIONS }     from '../data/positions.js'
 import { loadWatchlist } from '../utils/watchlistStorage.js'
@@ -26,7 +26,7 @@ async function fetchBatch(tickers, signal) {
   const base    = getWorkerUrl()?.replace(/\/$/, '')
   const joined  = tickers.join(',')
   const url     = `${base}/api/prices?tickers=${joined}`
-  const res     = await fetch(url, { signal })
+  const res     = await fetch(url, { signal, headers: buildHeaders() })
   if (!res.ok) throw new Error(`batch_prices HTTP ${res.status}`)
   return res.json()           // { prices, errors, meta }
 }

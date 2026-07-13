@@ -3339,6 +3339,14 @@ export default {
         case 'history':
           if (!param1) return await handleGetAllHistory(db)
           return await handleGetHistory(param1, db)
+        case 'analyst-refresh': {
+          const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+          if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+          const body2 = await request.json().catch(() => ({}))
+          const tks = (body2.tickers ?? []).filter(t => /^[A-Z]{1,10}$/.test(t)).slice(0, 50)
+          for (const tk of tks) { await kv.delete(`analyst:${tk}`).catch(() => {}) }
+          return json({ ok: true, refreshed: tks.length, tickers: tks })
+        }
         case 'cache':
           if (param1 === 'info')  return await handleCacheInfo(param2, kv)
           if (param1 === 'clear') {

@@ -31,7 +31,7 @@ export function setWorkerUrl(url) {
 }
 
 /* ── Request builder ────────────────────────────────────── */
-function buildHeaders() {
+export function buildHeaders() {
   const k = getApiKeys()
   const h = {}
   if (k.finnhub)      h['X-Finnhub-Key']    = k.finnhub
