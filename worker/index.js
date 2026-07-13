@@ -428,9 +428,11 @@ async function handleBatchPrices(url, keys, kv) {
     }
   }
 
-  // Phase 2: fetch misses with bounded concurrency (3 at a time)
+  // Phase 2: fetch misses sequentially with delay — Finnhub free = 60 req/min
+  // Sequential (limit=1) + 150ms delay keeps us well under the rate limit
   if (misses.length > 0) {
-    const fetchResults = await mapWithConcurrency(misses, 3, async (ticker) => {
+    const fetchResults = await mapWithConcurrency(misses, 1, async (ticker) => {
+      await delay(150) // ~6-7 req/s, stays under 60/min limit
       providerCalls++
       const raw = await fhGet(`/quote?symbol=${ticker}`, keys.finnhub)
       if (!raw?.c) throw new Error('quote_unavailable')
