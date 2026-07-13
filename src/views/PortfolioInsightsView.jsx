@@ -190,6 +190,13 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
               valuation: cv.breakdown?.valuation?.score,
               technical: cv.breakdown?.technical?.score,
             },
+            // Real gate check results — used for accurate gate explanations
+            gateChecks: {
+              gate2roic:          cv.breakdown?.gate2?.checks?.roicOrRoe,
+              gate2operatingMargin: cv.breakdown?.gate2?.checks?.operatingMargin,
+              gate1revenue:       cv.breakdown?.gate1?.checks?.revenueGrowth,
+              gate1operatingMargin: cv.breakdown?.gate1?.checks?.operatingMargin,
+            },
             riskPenalty: cv.riskPenalty,
           } : null,
           swing:    cv ? { score: null, grade: null } : null,
@@ -198,7 +205,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
         }
       })
 
-      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.4', macro })
+      const res = await workerAPI.portfolioReview({ positions, modelVersion:'conviction-v2.5', macro })
       if (res?.data) {
         setReview(res.data)
         setReviewKey(res.meta?.cacheKey ?? null)

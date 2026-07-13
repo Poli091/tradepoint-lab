@@ -1502,13 +1502,33 @@ Rules:
   const gateDetails = {}
   for (const p of gatePositions) {
     const cv = p.conviction ?? {}
+    const gc = cv.gateChecks ?? {}
     if (cv.gate === 'gate2') {
-      const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
-      gateDetails[p.ticker] = { gate: 'Gate2', quality: q, strength: s, cap: 58,
-        label: `Quality ${q}/20 · Strength ${s}/15 · Effective score capped at 58` }
+      // Gate2 checks: ROIC/ROE >= 8% AND operating margin > 0%
+      const roicCheck  = gc.gate2roic
+      const marginCheck = gc.gate2operatingMargin
+      const failedRoic   = roicCheck  && !roicCheck.pass
+      const failedMargin = marginCheck && !marginCheck.pass
+      const roicVal      = roicCheck?.value != null ? `${roicCheck.value.toFixed(1)}%` : 'n/a'
+      const marginVal    = marginCheck?.value != null ? `${marginCheck.value.toFixed(1)}%` : 'n/a'
+      let cause = ''
+      if (failedRoic && failedMargin) {
+        cause = `ROIC/ROE ${roicVal} (min 8%) and operating margin ${marginVal} (must be >0%) both failed`
+      } else if (failedRoic) {
+        cause = `ROIC/ROE ${roicVal} below minimum 8% requirement`
+      } else if (failedMargin) {
+        cause = `Operating margin ${marginVal} — must be positive`
+      } else {
+        cause = `Quality requirement not met — effective score capped at 58`
+      }
+      gateDetails[p.ticker] = { gate: 'Gate2', cap: 58, label: `${cause} · Effective score capped at 58` }
     } else if (cv.gate === 'gate1') {
+      const revCheck = gc.gate1revenue, mrgCheck = gc.gate1operatingMargin
+      const causes = []
+      if (revCheck && !revCheck.pass)  causes.push(`revenue growth ${revCheck.value != null ? revCheck.value.toFixed(1)+'%' : 'negative or missing'}`)
+      if (mrgCheck && !mrgCheck.pass)  causes.push(`operating margin ${mrgCheck.value != null ? mrgCheck.value.toFixed(1)+'%' : 'below -25%'}`)
       gateDetails[p.ticker] = { gate: 'Gate1', cap: 35,
-        label: `Financial condition failed · Effective score capped at 35` }
+        label: `${causes.length ? causes.join(' and ') + ' failed' : 'Financial condition failed'} · Effective score capped at 35` }
     }
   }
 
@@ -1522,7 +1542,7 @@ Rules:
       upcomingEarnings, deltas },
     generatedAt:Date.now(), week, modelVersion,
     _meta: {
-      prompt_version: 'pr-v2.4',
+      prompt_version: 'pr-v2.5',
       llm_model:      'llama-3.1-70b-versatile',
       fallback_used:  !!parsed._fallback,
     },
