@@ -439,20 +439,34 @@ async function handleBatchPrices(url, keys, kv) {
       for (const ticker of misses) {
         const snap = alpacaData[ticker]
         if (!snap) continue
-        const latestPrice = snap.latestTrade?.p ?? snap.minuteBar?.c ?? snap.dailyBar?.c
-        const prevClose   = snap.prevDailyBar?.c
-        const change      = latestPrice != null && prevClose != null ? latestPrice - prevClose : null
-        const changePct   = change != null && prevClose ? (change / prevClose) * 100 : null
+
+        // Deterministic price cascade: last trade → minute bar → daily bar
+        let latestPrice = null, priceType = null
+        if (snap.latestTrade?.p > 0) {
+          latestPrice = snap.latestTrade.p; priceType = 'last_trade'
+        } else if (snap.minuteBar?.c > 0) {
+          latestPrice = snap.minuteBar.c;  priceType = 'minute_bar'
+        } else if (snap.dailyBar?.c > 0) {
+          latestPrice = snap.dailyBar.c;   priceType = 'daily_bar'
+        }
         if (!latestPrice) continue
+
+        const prevClose = snap.prevDailyBar?.c
+        // Change vs IEX prevDailyBar close (not consolidated SIP)
+        const change    = prevClose ? latestPrice - prevClose : null
+        const changePct = change != null && prevClose ? (change / prevClose) * 100 : null
 
         const data = {
           ticker, price: latestPrice, change, changePct,
           high: snap.dailyBar?.h, low: snap.dailyBar?.l,
           open: snap.dailyBar?.o, prevClose,
+          priceType,             // last_trade | minute_bar | daily_bar
+          source: 'alpaca',
+          feed: 'iex',           // IEX = subset of market, not consolidated SIP
+          asOf: snap.latestTrade?.t ?? new Date().toISOString(),
           preMarketPrice: null, preMarketChangePct: null,
           postMarketPrice: null, postMarketChangePct: null,
           phase: null, extSource: null,
-          source: 'alpaca', asOf: new Date().toISOString(),
         }
         prices[ticker] = { ...data, stale: false }
         const meta = buildMeta(ticker, 'price', TTL.PRICE, false)
@@ -514,6 +528,8 @@ async function handleBatchPrices(url, keys, kv) {
   }
 
   const durationMs = Date.now() - t0
+  const alpacaReturned   = misses.filter(t => prices[t]?.source === 'alpaca').length
+  const alpacaMissing    = misses.filter(t => !prices[t]).length + stillMissing.filter(t => !prices[t]).length
   console.log(JSON.stringify({
     event: 'batch_prices',
     duration_ms: durationMs,
@@ -521,8 +537,11 @@ async function handleBatchPrices(url, keys, kv) {
     cache_hits: cacheHits,
     cache_misses: misses.length,
     alpaca_calls: alpacaCalls,
+    alpaca_symbols_requested: misses.length,
+    alpaca_symbols_returned: alpacaReturned,
+    alpaca_missing: alpacaMissing,
     finnhub_fallbacks: finnhubFallbacks,
-    yahoo_fallbacks: yahooFallbacks,
+    yahoo_extended_calls: yahooFallbacks,
     errors: providerFailures,
     has_errors: providerFailures > 0,
   }))
