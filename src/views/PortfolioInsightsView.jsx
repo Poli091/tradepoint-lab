@@ -562,8 +562,15 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                             {s.severity??'low'}
                           </span>
                           {isGated && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700, background:'var(--amber-dim)', color:'var(--amber)' }}>Gate active</span>}
-                          {ndEntry && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:ndSev==='high'?'var(--red)':'var(--amber)' }}>{Math.round(ndEntry.distanceToDowngrade*10)/10}pts to {NEXT_G[ndEntry.grade]??'lower'}</span>; })()}
+                          {ndEntry && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:ndSev==='high'?'var(--red)':'var(--amber)' }}>{Math.round(ndEntry.distanceToDowngrade*10)/10} pts to {NEXT_G[ndEntry.grade]??'lower'}</span>; })()}
                         </div>
+                        {/* Gate cause — shown deterministically from Worker data, not from Groq */}
+                        {isGated && review.gateDetails?.[s.ticker] && (
+                          <div style={{ fontSize:9, color:'var(--amber)', fontFamily:'var(--mono)',
+                            marginBottom:4, opacity:0.9 }}>
+                            {review.gateDetails[s.ticker].label}
+                          </div>
+                        )}
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{s.reason}</div>
                       </div>
                     )
@@ -582,7 +589,7 @@ export default function PortfolioInsightsView({ visiblePositions = [], convictio
                         borderBottom:i<review.watchZone.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
                           <span style={{ fontFamily:'var(--mono)', fontSize:13, fontWeight:700, color:'var(--txt)' }}>{w.ticker}</span>
-                          {nd && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--amber)' }}>{nd.score} · {Math.round(nd.distanceToDowngrade*10)/10}pts to {NEXT_G[nd.grade]??'lower'}</span>; })()}
+                          {nd && (() => { const NEXT_G={'STRONG BUY':'BUY','BUY':'HOLD','HOLD':'SELL','SELL':'STRONG SELL'}; return <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--amber)' }}>{nd.score} · {Math.round(nd.distanceToDowngrade*10)/10} pts to {NEXT_G[nd.grade]??'lower'}</span>; })()}
                         </div>
                         <div style={{ fontSize:11, color:'var(--txt)', lineHeight:1.5 }}>{w.reason}</div>
                         {w.trigger && <div style={{ fontSize:10, color:'var(--accent)', marginTop:3, fontWeight:600 }}>→ {w.trigger}</div>}

@@ -1498,9 +1498,24 @@ Rules:
     })
   }
 
+  // Build gate details map for UI to display deterministically
+  const gateDetails = {}
+  for (const p of gatePositions) {
+    const cv = p.conviction ?? {}
+    if (cv.gate === 'gate2') {
+      const q = cv.components?.quality ?? 0, s = cv.components?.strength ?? 0
+      gateDetails[p.ticker] = { gate: 'Gate2', quality: q, strength: s, cap: 58,
+        label: `Quality ${q}/20 · Strength ${s}/15 · Effective score capped at 58` }
+    } else if (cv.gate === 'gate1') {
+      gateDetails[p.ticker] = { gate: 'Gate1', cap: 35,
+        label: `Financial condition failed · Effective score capped at 35` }
+    }
+  }
+
   const data = { ...parsed,
     macro: macroResult?.data ?? null,
     nearDowngradeGroups: { high: highSevTickers, medium: medSevTickers, low: lowSevTickers },
+    gateDetails,
     postureFactsSentence,
     metrics:{ gradeCounts, gatePositions:gatePositions.map(p=>p.ticker),
       nearDowngrade, topSector, concLevel, concRule, top3Pct,
