@@ -74,6 +74,7 @@ export default function PositionsView({
   ticker, setTicker,
   convictionResults = {}, convictionLoading = false,
   prices = {},
+  privacyMode = false,
   onManagePositions,
 }) {
   const [detailOpen, setDetailOpen] = useState(false)

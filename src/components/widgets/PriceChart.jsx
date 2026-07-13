@@ -371,7 +371,12 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
   const first      = realPoints[0]?.price ?? 0
   const last       = livePrice || (realPoints[realPoints.length - 1]?.price ?? 0)
   const isUp       = last >= first
-  const pct        = first > 0 ? ((last - first) / first) * 100 : 0
+  // For 1D range: use live changePct from Finnhub (accurate day change)
+  // For other ranges: compute from OHLCV first/last bar
+  const liveDayPct = prices[ticker]?.changePct ?? null
+  const pct        = range === '1D' && liveDayPct != null
+    ? liveDayPct
+    : first > 0 ? ((last - first) / first) * 100 : 0
   const lineColor  = 'var(--chart-line)'
   const showRSI    = ind.rsi
   const showMACD   = ind.macd

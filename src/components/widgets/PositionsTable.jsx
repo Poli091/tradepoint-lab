@@ -183,7 +183,7 @@ export default function PositionsTable({
                       {fUSD(pos.currentPrice * pos.qty)}
                     </div>
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--txt-muted)' }}>
-                      {pos.qty} sh
+                      {parseFloat(pos.qty.toFixed(4))} sh
                     </div>
                   </td>
 

@@ -131,6 +131,7 @@ export default function DashboardView({
   sortBy, sortDir, handleSort,
   convictionResults = {}, convictionLoading = false,
   watchlistResults = {},
+  privacyMode = false,
 }) {
   const { isMobile } = useBreakpoint()
   const { totalValue, totalGain, gainPct } = portfolioStats
@@ -191,7 +192,7 @@ export default function DashboardView({
           value={fUSD(totalValue)}
           sub={`${totalGain >= 0 ? '+' : ''}${fUSD(totalGain)} all-time`}
           subColor={totalGain >= 0 ? 'var(--green)' : 'var(--red)'}
-          privacy />
+          privacy={privacyMode} />
 
         <StatCard icon={TrendingUp} label="Day P&L"
           value={dayPnL ? fSignedUSD(dayPnL.dollar) : '—'}
@@ -201,7 +202,7 @@ export default function DashboardView({
           subColor={dayPnL
             ? dayPnL.dollar >= 0 ? 'var(--green)' : 'var(--red)'
             : 'var(--txt-muted)'}
-          privacy />
+          privacy={privacyMode} />
 
         <StatCard icon={TrendingUp} label="Total return"
           value={fPct(gainPct)}

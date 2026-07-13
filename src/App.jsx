@@ -166,6 +166,7 @@ function AppInner() {
             convictionResults={convictionResults}
             convictionLoading={convictionLoading}
             watchlistResults={watchlistResults}
+            privacyMode={privacyMode}
           />
         )
       case 'positions':
@@ -178,6 +179,7 @@ function AppInner() {
               convictionResults={convictionResults}
               convictionLoading={convictionLoading}
               prices={prices}
+              privacyMode={privacyMode}
               onManagePositions={() => setEditorOpen(true)}
             />
             {editorOpen && (
