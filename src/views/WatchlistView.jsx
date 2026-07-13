@@ -19,6 +19,7 @@ import { workerAPI } from '../utils/api/worker.js'
 import { runConviction } from '../conviction/index.js'
 
 export default function WatchlistView({ convictionResults = {}, prices = {} }) {
+  const { isMobile } = useBreakpoint()
   const [items,       setItems]       = useState(() => loadWatchlist() ?? WATCHLIST)
   const [editorOpen,  setEditorOpen]  = useState(false)
   const [activeTicker, setActiveTicker] = useState(null)

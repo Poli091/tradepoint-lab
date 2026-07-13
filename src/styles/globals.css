@@ -103,6 +103,16 @@ a      { color: var(--accent); text-decoration: none; }
   overflow-x: hidden;
 }
 
+/* Mobile: add bottom padding so bottom nav doesn't cover content */
+@media (max-width: 768px) {
+  .app-content {
+    padding-bottom: 68px; /* 58px nav + 10px breathing room */
+  }
+  .app-shell {
+    flex-direction: column;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    INTERACTIVE UTILITIES
 ═══════════════════════════════════════════════════════════ */

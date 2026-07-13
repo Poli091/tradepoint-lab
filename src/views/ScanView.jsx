@@ -94,6 +94,7 @@ function ScanBadge({ ticker, score, grade, onClick, active }) {
 
 /* ── Main view ─────────────────────────────────────────────── */
 export default function ScanView({ onSelectTicker, convictionResults = {} }) {
+  const { isMobile } = useBreakpoint()
   const [inputValue,   setInputValue]   = useState('')
   const [activeTicker, setActiveTicker] = useState(null)
   const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
@@ -141,12 +142,15 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
   }
 
   return (
-    <div style={{ display:'flex', height:'100%', overflow:'hidden' }}>
+    <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', height:'100%', overflow:'hidden' }}>
 
       {/* ── LEFT PANEL: search + history + sectors ── */}
       <div style={{
-        width: 280, flexShrink:0,
-        borderRight:'1px solid var(--border)',
+        width: isMobile ? '100%' : 280,
+        maxHeight: isMobile ? '45vh' : 'none',
+        flexShrink:0,
+        borderRight: isMobile ? 'none' : '1px solid var(--border)',
+        borderBottom: isMobile ? '1px solid var(--border)' : 'none',
         display:'flex', flexDirection:'column',
         overflow:'hidden',
         background:'var(--surface)',

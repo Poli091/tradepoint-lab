@@ -63,7 +63,8 @@ export default function PositionsTable({
   convictionLoading = false,
   prices = {},
 }) {
-  const [refreshTick, setRefreshTick] = useState(0)
+  const { isMobile } = useBreakpoint()
+    const [refreshTick, setRefreshTick] = useState(0)
 
   const sorted = useMemo(() => {
     return [...positions].sort((a, b) => {
@@ -110,10 +111,12 @@ export default function PositionsTable({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 0 : 800 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
+                // Hide less critical columns on mobile
+                if (isMobile && ['chart', 'upside'].includes(col.key)) return null
                 const active = sortBy === col.key
                 return (
                   <th key={col.key} onClick={() => { if (col.noSort) return; onSort(col.key) }} style={{ minWidth: col.minW,
@@ -187,10 +190,12 @@ export default function PositionsTable({
                     </div>
                   </td>
 
-                  {/* Today sparkline — BEFORE P&L so they're visually distinct */}
-                  <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderRight: '1px solid var(--border)' }}>
-                    <LiveMiniChart ticker={pos.ticker} prices={prices} width={60} height={26} compact />
-                  </td>
+                  {/* Today sparkline — hidden on mobile */}
+                  {!isMobile && (
+                    <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderRight: '1px solid var(--border)' }}>
+                      <LiveMiniChart ticker={pos.ticker} prices={prices} width={60} height={26} compact />
+                    </td>
+                  )}
 
                   {/* All-time P&L */}
                   <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 130 }}>

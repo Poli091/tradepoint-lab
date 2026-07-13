@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo }     from 'react'
+import { useBreakpoint }         from '../hooks/useBreakpoint.js'
 import { ArrowLeftRight }        from 'lucide-react'
 import { useConviction }         from '../hooks/useConviction.js'
 import { runSwingConviction }    from '../conviction/index.js'
@@ -402,6 +403,7 @@ function ComparisonSummary({ tA, tB, rA, rB, swA, swB }) {
 
 /* ── Main view ───────────────────────────────────────────────── */
 export default function CompareView() {
+  const { isMobile } = useBreakpoint()
   const [tickerA, setTickerA] = useState('')
   const [tickerB, setTickerB] = useState('')
   const [runA, setRunA]       = useState('')
@@ -489,7 +491,7 @@ export default function CompareView() {
 
       {/* Columns */}
       {(runA || runB) && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1,
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:1,
           background:'var(--border)',borderRadius:'var(--radius-lg)',overflow:'hidden'}}>
           <div style={{background:'var(--surface)',padding:'0 14px 14px'}}>
             <div style={{padding:'10px 0 6px',fontFamily:'var(--mono)',fontSize:16,

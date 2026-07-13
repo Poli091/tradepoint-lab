@@ -11,7 +11,8 @@ import EarningsEditor from '../components/widgets/EarningsEditor.jsx'
 import { EARNINGS } from '../data/earnings.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
 import { loadEarnings } from '../utils/earningsStorage.js'
-import { useLang } from '../context/LanguageContext.jsx'
+import { useLang }       from '../context/LanguageContext.jsx'
+import { useBreakpoint } from '../hooks/useBreakpoint.js'
 import { getGradeColor } from '../conviction/grade/index.js'
 
 const TYPE_LABELS = {
@@ -23,6 +24,7 @@ const TYPE_LABELS = {
 
 export default function CalendarView({ convictionResults = {}, prices = {} }) {
   const { t } = useLang()
+  const { isMobile } = useBreakpoint()
   const [events,        setEvents]        = useState(() => loadEarnings() ?? EARNINGS)
   const [editorOpen,    setEditorOpen]    = useState(false)
   const [earningsDates, setEarningsDates] = useState({})
