@@ -1789,11 +1789,13 @@ async function handleDailyRS(env) {
 
   // Get SPY baseline first
   const spyData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&limit=260&feed=iex`,
+    `https://data.alpaca.markets/v2/stocks/bars/SPY?timeframe=1Day&limit=260&feed=iex`,
     { headers: alpacaHdr }
   ).catch(e => { console.error('[DailyRS] SPY fetch failed:', e.message); return null })
 
-  const spyClose = (spyData?.bars?.SPY ?? []).map(b => b.c)
+  const spyBarsRaw2 = spyData?.bars
+  const spyBarsArr2 = Array.isArray(spyBarsRaw2) ? spyBarsRaw2 : (spyBarsRaw2?.SPY ?? [])
+  const spyClose = spyBarsArr2.map(b => b.c)
   if (spyClose.length < 22) {
     console.log('[DailyRS] Insufficient SPY data — skipping')
     return
@@ -3831,13 +3833,19 @@ async function handleBackfillRS(request, db, kv, keys) {
 
   const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
 
-  // Fetch SPY bars for RS baseline (260 sessions = ~13 months)
+  // Fetch SPY baseline using single-symbol endpoint (more reliable format)
   const spyBars = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&limit=260&feed=iex`,
+    `https://data.alpaca.markets/v2/stocks/bars/SPY?timeframe=1Day&limit=260&feed=iex`,
     { headers: alpacaHdr }
   ).catch(() => null)
-  const spyClose = (spyBars?.bars?.SPY ?? []).map(b => b.c)
-  if (spyClose.length < 22) return json({ error: 'Insufficient SPY data for RS calculation' }, 503)
+  // Handle both response formats: {bars:[...]} or {bars:{SPY:[...]}}
+  const spyBarsRaw = spyBars?.bars
+  const spyClose = (Array.isArray(spyBarsRaw) ? spyBarsRaw : (spyBarsRaw?.SPY ?? [])).map(b => b.c)
+  if (spyClose.length < 22) return json({
+    error: 'Insufficient SPY data for RS calculation',
+    barsReceived: spyClose.length,
+    hint: 'Check ALPACA_KEY and ALPACA_SECRET secrets: npx wrangler secret list'
+  }, 503)
 
   const spyRet = (n) => {
     if (spyClose.length < n+1) return null
