@@ -4336,7 +4336,7 @@ export default {
             // GET /api/analyses/grades — latest grade per ticker, joined with constituent_master
             // Uses ROW_NUMBER for deterministic latest-per-ticker selection
             const today = new Date().toISOString().split('T')[0]
-            const rows = await db.prepare(`
+            const gradesSQL = `
               WITH latest AS (
                 SELECT ticker, grade, final_score, analysis_date, model_version,
                   ROW_NUMBER() OVER (
@@ -4344,7 +4344,7 @@ export default {
                     ORDER BY analysis_date DESC, rowid DESC
                   ) AS rn
                 FROM analyses
-                WHERE model_version = '` + CURRENT_MODEL_VERSION + `''
+                WHERE model_version = '${CURRENT_MODEL_VERSION}'
               )
               SELECT
                 l.ticker, l.grade, l.final_score, l.analysis_date, l.model_version,
@@ -4355,7 +4355,8 @@ export default {
                 ON c.symbol = l.ticker AND c.active_to IS NULL
               WHERE l.rn = 1
               ORDER BY l.final_score DESC
-            `.replace('${today}', today)).all().then(r => r.results ?? []).catch(() => [])
+            `.replace('${CURRENT_MODEL_VERSION}', CURRENT_MODEL_VERSION).replace('${today}', today)
+            const rows = await db.prepare(gradesSQL).all().then(r => r.results ?? []).catch(() => [])
 
             // Count unique tickers vs SPY universe
             const spyTotal = await db.prepare(
