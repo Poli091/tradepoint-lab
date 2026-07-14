@@ -3928,12 +3928,26 @@ async function handleBackfillRS(request, db, kv, keys) {
     } catch(e) { errors.push(`${symbol}: ${e.message}`) }
   }
 
-  // After RS calculation, aggregate industries for this date
+  // Aggregate industries for this date
   await aggregateIndustries(db, targetDate)
-  // Invalidate cache
-  await kv.delete('market-map:latest:v2').catch(() => {})
 
-  return json({ ok: true, date: targetDate, processed, insufficient, errors: errors.length ? errors : undefined })
+  // Write run status to market_map_runs so /api/market-map/latest can find it
+  const total = symbols.length
+  const coveragePct = total > 0 ? Math.round((processed / total) * 100) : 0
+  const status = coveragePct >= 95 ? 'complete' : coveragePct >= 85 ? 'partial' : 'failed'
+  await db.prepare(`
+    INSERT INTO market_map_runs
+      (analysis_date, status, symbols_expected, symbols_processed, symbols_insufficient, coverage_pct, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(analysis_date) DO UPDATE SET
+      status=excluded.status, symbols_processed=excluded.symbols_processed,
+      coverage_pct=excluded.coverage_pct, completed_at=excluded.completed_at
+  `).bind(targetDate, status, total, processed, insufficient, coveragePct, new Date().toISOString()).run().catch(() => {})
+
+  // Invalidate KV cache only for complete snapshots
+  if (status === 'complete') await kv.delete('market-map:latest:v2').catch(() => {})
+
+  return json({ ok: true, date: targetDate, status, coveragePct, processed, insufficient, errors: errors.length ? errors : undefined })
 }
 
 /* ── Aggregate market_rs_daily → industry_trend_daily ── */
