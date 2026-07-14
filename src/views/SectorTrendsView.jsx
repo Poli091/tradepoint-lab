@@ -592,7 +592,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
   const [error,    setError]    = useState(null)
   const [selected, setSelected] = useState(null)
   const [viewMode, setViewMode] = useState('trend')   // 'trend'|'rotation'|'balance'
-  const [sizeMode, setSizeMode] = useState('count')
+  const [sizeMode, setSizeMode] = useState('weight')  // SPY weight default — reflects economic importance
 
   const [snapshotMeta, setSnapshotMeta] = useState(null)
 
