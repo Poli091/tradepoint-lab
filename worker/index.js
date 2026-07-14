@@ -3833,18 +3833,17 @@ async function handleBackfillRS(request, db, kv, keys) {
 
   const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
 
-  // Fetch SPY baseline using single-symbol endpoint (more reliable format)
-  const spyBars = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars/SPY?timeframe=1Day&limit=260&feed=iex`,
-    { headers: alpacaHdr }
+  // Fetch SPY baseline from Yahoo Finance (reliable for daily bars, no plan restriction)
+  const spyYahoo = await fetchJSON(
+    `https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=13mo`
   ).catch(() => null)
-  // Handle both response formats: {bars:[...]} or {bars:{SPY:[...]}}
-  const spyBarsRaw = spyBars?.bars
-  const spyClose = (Array.isArray(spyBarsRaw) ? spyBarsRaw : (spyBarsRaw?.SPY ?? [])).map(b => b.c)
+  const spyTimestamps = spyYahoo?.chart?.result?.[0]?.timestamp ?? []
+  const spyCloseRaw   = spyYahoo?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
+  const spyClose      = spyCloseRaw.filter(v => v != null && v > 0)
   if (spyClose.length < 22) return json({
     error: 'Insufficient SPY data for RS calculation',
     barsReceived: spyClose.length,
-    hint: 'Check ALPACA_KEY and ALPACA_SECRET secrets: npx wrangler secret list'
+    hint: 'Yahoo Finance SPY fetch failed or returned insufficient bars'
   }, 503)
 
   const spyRet = (n) => {
@@ -3855,12 +3854,12 @@ async function handleBackfillRS(request, db, kv, keys) {
   }
   const spyRs1m = spyRet(21), spyRs3m = spyRet(63), spyRs6m = spyRet(126)
 
-  // Fetch multi-symbol bars in one Alpaca call
-  const symbolsParam = symbols.join(',')
+  // Fetch multi-symbol bars from Alpaca — use no feed param to get best available
+  const symbolsParam = encodeURIComponent(symbols.join(','))
   const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=260&feed=iex`,
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300&adjustment=split`,
     { headers: alpacaHdr }
-  ).catch(() => null)
+  ).catch(e => { console.error('[BackfillRS] Alpaca multi-bar fetch error:', e.message); return null })
 
   let processed = 0, insufficient = 0, errors = []
 
