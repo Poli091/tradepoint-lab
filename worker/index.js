@@ -3833,17 +3833,22 @@ async function handleBackfillRS(request, db, kv, keys) {
 
   const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
 
-  // Fetch SPY baseline from Yahoo Finance (reliable for daily bars, no plan restriction)
-  const spyYahoo = await fetchJSON(
-    `https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=13mo`
-  ).catch(() => null)
-  const spyTimestamps = spyYahoo?.chart?.result?.[0]?.timestamp ?? []
-  const spyCloseRaw   = spyYahoo?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
-  const spyClose      = spyCloseRaw.filter(v => v != null && v > 0)
+  // Fetch SPY + all symbols in ONE Alpaca call (avoids Yahoo Finance Cloudflare block)
+  // SPY is included in the batch to get the baseline in the same request
+  const allSymbols = ['SPY', ...symbols.filter(s => s !== 'SPY')]
+  const symbolsParam = allSymbols.join(',')
+  const barsData = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300&adjustment=split`,
+    { headers: alpacaHdr }
+  ).catch(e => { console.error('[BackfillRS] Alpaca multi-bar fetch error:', e.message); return null })
+
+  // Extract SPY baseline from the same batch response
+  const spyClose = (barsData?.bars?.SPY ?? []).map(b => b.c).filter(v => v > 0)
   if (spyClose.length < 22) return json({
     error: 'Insufficient SPY data for RS calculation',
     barsReceived: spyClose.length,
-    hint: 'Yahoo Finance SPY fetch failed or returned insufficient bars'
+    hint: 'Alpaca returned insufficient SPY bars — check if SPY is accessible on this plan',
+    alpacaResponse: barsData ? Object.keys(barsData.bars ?? {}).length + ' symbols returned' : 'null response'
   }, 503)
 
   const spyRet = (n) => {
@@ -3853,13 +3858,6 @@ async function handleBackfillRS(request, db, kv, keys) {
     return past > 0 ? ((latest - past) / past) * 100 : null
   }
   const spyRs1m = spyRet(21), spyRs3m = spyRet(63), spyRs6m = spyRet(126)
-
-  // Fetch multi-symbol bars from Alpaca — use no feed param to get best available
-  const symbolsParam = encodeURIComponent(symbols.join(','))
-  const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300&adjustment=split`,
-    { headers: alpacaHdr }
-  ).catch(e => { console.error('[BackfillRS] Alpaca multi-bar fetch error:', e.message); return null })
 
   let processed = 0, insufficient = 0, errors = []
 
