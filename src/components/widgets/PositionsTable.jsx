@@ -12,7 +12,7 @@ import ConvictionRing             from '../ui/ConvictionRing.jsx'
 import { calcPnL }               from '../../utils/finance.js'
 import { fUSD, fPct, fSignedUSD } from '../../utils/format.js'
 import LiveMiniChart from './LiveMiniChart.jsx'
-import { getFundamentalsInfo, clearFundamentals } from '../../utils/api/index.js'
+import { getFundamentalsInfo, clearFundamentals } from '../../utils/cache.js'
 import { getGradeColor } from '../../conviction/grade/index.js'
 
 const SORT_COLS = [

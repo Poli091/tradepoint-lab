@@ -123,3 +123,13 @@ export const cache = {
   setCatalysts: (t, d) => cacheSet(`catalysts_${t}`, d, TTL.CATALYSTS),
   getCatalysts: (t)    => cacheGet(`catalysts_${t}`),
 }
+
+/** Check cache status for a ticker's fundamentals (used by RefreshBtn) */
+export function getFundamentalsInfo(ticker) {
+  return cache.infoFund(ticker)
+}
+
+/** Force-clear fundamentals cache for one ticker (used by RefreshBtn) */
+export function clearFundamentals(ticker) {
+  cache.deleteFund(ticker)
+}

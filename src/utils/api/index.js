@@ -7,6 +7,5 @@
 
 export { getQuote, getAnalystTarget, calcUpside, getEarningsCalendar, getNews } from './finnhub.js'
 export { getOHLCV } from './alpaca.js'
-export { getFundamentals, getFundamentalsInfo, clearFundamentals } from './fmp.js'
 export { analyzeTickerAI } from './groq.js'
 export { getApiStatus } from './config.js'
