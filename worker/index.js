@@ -3523,7 +3523,9 @@ async function handleMarketMapLatest(request, db, kv) {
 
   const url    = new URL(request.url)
   const date   = url.searchParams.get('date')  // optional override
-  const refresh = url.searchParams.get('refresh') === '1'
+  // refresh=1 requires admin key — prevents public cache invalidation abuse
+  const adminOk = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  const refresh = url.searchParams.get('refresh') === '1' && adminOk
 
   const cacheKey = `market-map:latest:v2`
   if (!refresh) {
@@ -3943,7 +3945,9 @@ async function handleBackfillRS(request, db, kv, keys) {
   ).bind(targetDate).first().then(r => r?.n ?? 0).catch(() => 0)
 
   const universeExpected = Math.max(uniTot, uniOk + uniInsuf)
-  const coveragePct = universeExpected > 0 ? Math.round((uniOk / universeExpected) * 100) : 0
+  const coveragePct = universeExpected > 0
+    ? Math.round((uniOk / universeExpected) * 1000) / 10  // one decimal: 99.4 not 99
+    : 0
   const status = coveragePct >= 95 ? 'complete' : coveragePct >= 85 ? 'partial' : 'failed'
 
   // Write universe-level coverage — ON CONFLICT upserts accumulate across batches
@@ -3964,11 +3968,30 @@ async function handleBackfillRS(request, db, kv, keys) {
   // Invalidate KV only when universe-level snapshot is complete
   if (status === 'complete') await kv.delete('market-map:latest:v2').catch(() => {})
 
+  // Identify missing symbols for diagnostics
+  const missingRows = await db.prepare(`
+    SELECT symbol, data_quality FROM market_rs_daily
+    WHERE analysis_date=? AND data_quality != 'ok'
+  `).bind(targetDate).all().then(r => r.results ?? []).catch(() => [])
+
+  // Also find any active constituents with no row at all
+  const notProcessed = await db.prepare(`
+    SELECT c.symbol FROM constituent_master c
+    WHERE c.active_to IS NULL
+    AND NOT EXISTS (SELECT 1 FROM market_rs_daily r WHERE r.symbol=c.symbol AND r.analysis_date=?)
+  `).bind(targetDate).all().then(r => r.results ?? []).catch(() => [])
+
+  const missingSymbols = [
+    ...missingRows.map(r => ({ symbol: r.symbol, reason: r.data_quality })),
+    ...notProcessed.map(r => ({ symbol: r.symbol, reason: 'not_attempted' })),
+  ]
+
   return json({
     ok: true, date: targetDate, status,
     universeExpected, universeProcessed: uniOk,
     coveragePct,
     batchProcessed: processed, batchInsufficient: insufficient,
+    missingSymbols: missingSymbols.length ? missingSymbols : undefined,
     errors: errors.length ? errors : undefined
   })
 }
