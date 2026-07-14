@@ -3848,10 +3848,14 @@ async function handleBackfillRS(request, db, kv, keys) {
   // Fetch all symbols from Alpaca (without SPY if D1 had it)
   const batchSymbols = spyClose.length >= 22 ? symbols : ['SPY', ...symbols.filter(s => s !== 'SPY')]
   const symbolsParam = batchSymbols.join(',')
+  // Date range required — without it Alpaca returns only the latest bar
+  const endDate   = new Date().toISOString().split('T')[0]
+  const startDate = new Date(Date.now() - 400*24*60*60*1000).toISOString().split('T')[0]
   const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300`,
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&start=${startDate}&end=${endDate}&limit=300`,
     { headers: alpacaHdr }
   ).catch(e => { console.error('[BackfillRS] Alpaca fetch error:', e.message); return null })
+  console.log(`[BackfillRS] Alpaca returned ${Object.keys(barsData?.bars ?? {}).length} symbols, first ticker bars: ${(Object.values(barsData?.bars ?? {})[0] ?? []).length}`)
 
   // If D1 didn't have SPY, extract from Alpaca response
   if (spyClose.length < 22) {
