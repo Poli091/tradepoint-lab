@@ -11,9 +11,10 @@
  * Results are auto-saved to D1 via useConviction.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useBreakpoint } from '../hooks/useBreakpoint.js'
 import { getUserId } from '../auth/webauthn.js'
+import { getWorkerUrl } from '../utils/api/worker.js'
 import { Search, X, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import TickerDetailPanel from '../components/widgets/TickerDetailPanel.jsx'
 import { getGrade }       from '../conviction/grade/index.js'
@@ -116,6 +117,23 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
   const [activeTicker, setActiveTicker] = useState(null)
   const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
   const [gradeFilter,  setGradeFilter]  = useState('ALL')
+  const [d1Grades,     setD1Grades]     = useState({})  // { TICKER: { grade, score } } from D1
+
+  // Load all grades from D1 on mount
+  useEffect(() => {
+    const base = getWorkerUrl()?.replace(/\/$/, '')
+    if (!base) return
+    fetch(`${base}/api/analyses/grades`)
+      .then(r => r.json())
+      .then(data => {
+        const map = {}
+        for (const row of (data.grades ?? [])) {
+          map[row.ticker] = { grade: row.grade, score: row.final_score }
+        }
+        setD1Grades(map)
+      })
+      .catch(() => {})
+  }, [])
   const inputRef = useRef(null)
 
   const handleScan = (ticker) => {
@@ -302,16 +320,20 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                   {tickers.map(t => {
                     const h = scanHistory.find(s => s.ticker === t)
-                    // Also check convictionResults for portfolio tickers
+                    // Priority: scanHistory → convictionResults → D1 grades
                     const cv = convictionResults[t]
-                    const score = h?.score ?? (cv?.finalScore != null ? Math.round(cv.finalScore * 10) / 10 : null)
-                    const grade = h?.grade ?? cv?.grade ?? null
+                    const d1 = d1Grades[t]
+                    const score = h?.score
+                      ?? (cv?.finalScore != null ? Math.round(cv.finalScore * 10) / 10 : null)
+                      ?? d1?.score ?? null
+                    const grade = h?.grade ?? cv?.grade ?? d1?.grade ?? null
                     const gradeInfo = score != null ? getGrade(score) : null
-                    // Apply grade filter to sector tickers too
+                    // Apply grade filter — when active, hide tickers with no grade data
                     const GRADE_RANK = { 'STRONG BUY':4,'BUY':3,'HOLD':2,'SELL':1,'STRONG SELL':0 }
-                    if (gradeFilter !== 'ALL' && grade) {
+                    if (gradeFilter !== 'ALL') {
+                      if (!grade) return null  // hide unanalyzed tickers when filter is active
                       if (gradeFilter === 'HOLD' && GRADE_RANK[grade] < GRADE_RANK['HOLD']) return null
-                      if (gradeFilter !== 'HOLD' && gradeFilter !== 'ALL' && grade !== gradeFilter) return null
+                      if (gradeFilter !== 'HOLD' && grade !== gradeFilter) return null
                     }
                     return (
                       <button key={t} onClick={() => handleScan(t)} style={{

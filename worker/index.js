@@ -4067,6 +4067,49 @@ async function aggregateIndustries(db, date) {
   }
 }
 
+
+/* ── POST /api/admin/set-targets — manually set analyst targets in KV ──
+   Used when Finnhub (403 on free plan) and Yahoo Finance (blocked) can't
+   provide price targets. Targets verified manually via Investing.com.
+   Body: { targets: { NVDA: { targetMean: 200.5, buy: 40, hold: 4, sell: 1 }, ... } }
+──────────────────────────────────────────────────────────────────────── */
+async function handleSetTargets(request, kv, keys) {
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const body = await request.json().catch(() => ({}))
+  const targets = body.targets ?? {}
+
+  if (!Object.keys(targets).length) return json({ error: 'targets object required' }, 400)
+
+  let stored = 0
+  const now = Date.now()
+
+  for (const [ticker, data] of Object.entries(targets)) {
+    const t = ticker.toUpperCase()
+    const analystData = {
+      targetMean:       data.targetMean       ?? null,
+      targetHigh:       data.targetHigh       ?? null,
+      targetLow:        data.targetLow        ?? null,
+      targetMedian:     data.targetMedian     ?? null,
+      strongBuy:        data.strongBuy        ?? null,
+      buy:              data.buy              ?? null,
+      hold:             data.hold             ?? null,
+      sell:             data.sell             ?? null,
+      strongSell:       data.strongSell       ?? null,
+      targetSource:     'manual-investing-com',
+      targetFetchedAt:  now,
+    }
+    // Store in analyst:TICKER with 7-day TTL (manual targets last longer)
+    await kv.put(`analyst:${t}`, JSON.stringify(analystData), { expirationTtl: 7 * 24 * 60 * 60 })
+    // Also bust the fund:TICKER cache so next request merges fresh analyst data
+    await kv.delete(`fund:${t}`).catch(() => {})
+    stored++
+  }
+
+  return json({ ok: true, stored, tickers: Object.keys(targets) })
+}
+
 /* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
@@ -4134,6 +4177,20 @@ export default {
           return await handleMarketIntelligence(param1, keys, kv)
         case 'groq-debug':
           return await handleGroqDebug(param1, param2, keys, kv)
+        case 'analyses':
+          if (param1 === 'grades') {
+            // GET /api/analyses/grades — latest grade per ticker from D1
+            const rows = await db.prepare(`
+              SELECT ticker, grade, final_score
+              FROM analyses a1
+              WHERE analysis_date = (
+                SELECT MAX(a2.analysis_date) FROM analyses a2 WHERE a2.ticker = a1.ticker
+              )
+              ORDER BY final_score DESC
+            `).all().then(r => r.results ?? []).catch(() => [])
+            return json({ grades: rows, count: rows.length })
+          }
+          return json({ error: 'Unknown analyses endpoint' }, 404)
         case 'snapshots':
           if (!param1) return await handleSnapshotStats(db)
           return await handleGetSnapshots(param1, db)
@@ -4166,6 +4223,8 @@ export default {
           return await handleConstituentImport(request, db, keys)
         case 'backfill-rs':
           return await handleBackfillRS(request, db, kv, keys)
+        case 'set-targets':
+          return await handleSetTargets(request, kv, keys)
         case 'analyst-refresh': {
           const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
           if (!isAdmin) return json({ error: 'Admin key required' }, 401)
