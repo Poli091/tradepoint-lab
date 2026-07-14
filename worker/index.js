@@ -1935,6 +1935,133 @@ async function handleDailyRS(env) {
   ).run().catch(e => console.error('[DailyRS] Failed to write run status:', e.message))
 }
 
+
+/* ── POST /api/admin/batch-scan ─────────────────────────────────────────
+   Fetches fundamentals + OHLCV for a list of tickers, runs conviction
+   engine, and saves grades to analyses table.
+   Body: { tickers: ["AAPL","MSFT",...], date: "2026-07-14" }
+   Returns: { processed, skipped, errors, results: [{ticker, grade, score}] }
+──────────────────────────────────────────────────────────────────────── */
+async function handleBatchScan(request, env, keys, kv, db) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const body = await request.json().catch(() => ({}))
+  const tickers = (body.tickers ?? []).slice(0, 25).map(t => t.toUpperCase())
+  const today = body.date ?? etDate()
+
+  if (!tickers.length) return json({ error: 'tickers array required (max 25)' }, 400)
+
+  // Get SPY OHLCV baseline from KV (populated by normal app usage)
+  const spyOhlcv = await kv.get('ohlcv:SPY:1Y', 'json') ?? []
+
+  let processed = 0, skipped = 0, errors = []
+  const results = []
+
+  for (const ticker of tickers) {
+    try {
+      // Step 1: Get fundamentals — from KV cache or fetch fresh
+      let fund = await kv.get(`fund:${ticker}`, 'json')
+      if (!fund) {
+        // Fetch from Finnhub (rate limited)
+        const fhMetrics  = await fhGet(`/stock/metric?symbol=${ticker}&metric=all`, keys.finnhub)
+        await delay(300)
+        const fhRecs     = await fhGet(`/stock/recommendation?symbol=${ticker}`, keys.finnhub)
+        await delay(300)
+        const fhEarnings = await fhGet(`/stock/earnings?symbol=${ticker}&limit=8`, keys.finnhub)
+        await delay(300)
+
+        if (!fhMetrics?.metric) { skipped++; continue }
+
+        const m = fhMetrics.metric
+        const rec = fhRecs?.[0] ?? {}
+        const earns = fhEarnings ?? []
+        const consecutiveBeats = earns.filter(e => (e.actual ?? 0) >= (e.estimate ?? 0)).length
+        const epsSurprise = earns[0] ? ((earns[0].actual - earns[0].estimate) / Math.abs(earns[0].estimate || 1)) * 100 : null
+
+        fund = {
+          ticker, revenueGrowthYoY: m['revenueGrowthTTMYoy'] ?? null,
+          revenueGrowth3Y: m['revenueGrowth3Y'] ?? null, revenueGrowth5Y: m['revenueGrowth5Y'] ?? null,
+          epsGrowthYoY: m['epsGrowthTTMYoy'] ?? null, epsGrowth3Y: m['epsGrowth3Y'] ?? null,
+          epsGrowth5Y: m['epsGrowth5Y'] ?? null, fcfTTM: m['fcfMarginTTM'] ?? null,
+          roe: m['roeRfy'] ?? m['roeTTM'] ?? null, roi: m['roiTTM'] ?? null,
+          grossMargin: m['grossMarginTTM'] ?? null, operatingMargin: m['operatingMarginTTM'] ?? null,
+          netMargin: m['netMarginTTM'] ?? null, debtToEquity: m['totalDebt/totalEquityAnnual'] ?? null,
+          currentRatio: m['currentRatioAnnual'] ?? null, interestCoverage: m['interestCoverageAnnual'] ?? null,
+          pe: m['peExclExtraTTM'] ?? null, peg: m['pegAnnual'] ?? null,
+          forwardPE: m['forwardPE'] ?? null, evEbitda: m['ev/ebitdaTTM'] ?? null,
+          beta: m['beta'] ?? null, targetMean: null,
+          strongBuy: rec.strongBuy ?? 0, buy: rec.buy ?? 0, hold: rec.hold ?? 0,
+          sell: rec.sell ?? 0, strongSell: rec.strongSell ?? 0,
+          consecutiveBeats, epsSurprisePct: epsSurprise,
+        }
+        // Save to KV for future use
+        await kv.put(`fund:${ticker}`, JSON.stringify(fund), { expirationTtl: 90 * 24 * 3600 })
+      }
+
+      // Step 2: Get OHLCV — from KV cache or fetch from Alpaca
+      let ohlcv = await kv.get(`ohlcv:${ticker}:1Y`, 'json') ?? []
+      if (!ohlcv.length && keys.alpacaKey) {
+        const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+        const end   = new Date().toISOString().split('T')[0]
+        const start = new Date(Date.now() - 400*86400000).toISOString().split('T')[0]
+        const raw = await fetchJSON(
+          `https://data.alpaca.markets/v2/stocks/${ticker}/bars?timeframe=1Day&start=${start}&end=${end}&limit=300&feed=iex&adjustment=split`,
+          { headers: alpacaHdr }
+        ).catch(() => null)
+        ohlcv = (raw?.bars ?? []).map(b => ({
+          date: b.t.split('T')[0], open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v, price: b.c
+        }))
+        if (ohlcv.length) {
+          await kv.put(`ohlcv:${ticker}:1Y`, JSON.stringify(ohlcv), { expirationTtl: 24 * 3600 })
+        }
+      }
+
+      // Step 3: Run conviction engine
+      const priceData = await kv.get(`price:${ticker}`, 'json')
+      const price = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
+      const result = computeConviction(fund, ohlcv, spyOhlcv, price)
+
+      // Step 4: Save to analyses table
+      const now = Date.now()
+      const bd = result.breakdown ?? {}
+      await db.prepare(`
+        INSERT INTO analyses (
+          ticker, analysis_date, timestamp_ms,
+          raw_score, risk_penalty, final_score, gate_cap, active_gate,
+          grade, confidence, model_version,
+          growth_score, quality_score, strength_score, valuation_score, technical_score,
+          price, target_mean, upside_pct, analysts, rsi, ema200, rs_weighted,
+          sector_profile, null_fields, full_json
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(ticker, analysis_date) DO UPDATE SET
+          final_score=excluded.final_score, grade=excluded.grade,
+          model_version=excluded.model_version, timestamp_ms=excluded.timestamp_ms,
+          full_json=excluded.full_json
+      `).bind(
+        ticker, today, now,
+        result.rawScore, result.riskPenalty, result.finalScore,
+        result.gateCap ?? null, result.activeGate ?? null,
+        result.grade, result.confidence, result.modelVersion ?? CURRENT_MODEL_VERSION,
+        bd.growth?.score ?? null, bd.quality?.score ?? null,
+        bd.strength?.score ?? null, bd.valuation?.score ?? null, bd.technical?.score ?? null,
+        price, fund.targetMean ?? null, result.wallStreet?.upside ?? null,
+        result.wallStreet?.analysts ?? null, result.technical?.rsi ?? null,
+        result.technical?.ema200 ?? null, result.technical?.relStrengthWeighted ?? null,
+        result.sectorProfile ?? null, 0, JSON.stringify(result)
+      ).run()
+
+      results.push({ ticker, grade: result.grade, score: result.finalScore })
+      processed++
+    } catch(e) {
+      errors.push({ ticker, error: e.message })
+    }
+  }
+
+  return json({ ok: true, date: today, processed, skipped, errors: errors.length ? errors : undefined, results })
+}
+
 async function handleWeeklySnapshot(env) {
   const kv = env.TRADEPOINT_KV
   const db = env.TRADEPOINT_DB
@@ -4293,6 +4420,8 @@ export default {
           return await handleBackfillRS(request, db, kv, keys)
         case 'set-targets':
           return await handleSetTargets(request, kv, keys)
+        case 'batch-scan':
+          return await handleBatchScan(request, env, keys, kv, db)
         case 'run-weekly-snapshot': {
           const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
           if (!isAdmin) return json({ error: 'Admin key required' }, 401)
