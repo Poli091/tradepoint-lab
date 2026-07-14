@@ -359,6 +359,18 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   ETF
                 </span>
               )}
+              {/* Live price */}
+              {prices[ticker]?.price && (
+                <span style={{ fontFamily:'var(--mono)', fontSize:14, fontWeight:600,
+                  color: prices[ticker]?.changePct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  ${prices[ticker].price.toFixed(2)}
+                  {prices[ticker]?.changePct != null && (
+                    <span style={{ fontSize:11, marginLeft:4, opacity:0.85 }}>
+                      {prices[ticker].changePct >= 0 ? '+' : ''}{prices[ticker].changePct.toFixed(2)}%
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{isETF ? universeInfo?.name : pos?.name}</div>
           </div>

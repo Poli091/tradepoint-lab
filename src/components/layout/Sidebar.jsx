@@ -1,53 +1,82 @@
 /**
  * MODULE: LAYOUT / Sidebar.jsx
- * Desktop: left rail with nav, settings gear, and theme toggle.
+ * Desktop: left rail with nav — collapsible (icon only) or expanded (icon + label).
  * Mobile:  fixed bottom navigation bar.
+ * Preference saved to localStorage key 'sidebarExpanded'.
  */
 
-import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Search, Settings, Sun, Moon, PieChart, GitCompare, Globe } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { LayoutDashboard, Briefcase, Eye, CalendarDays, BarChart3, Search, Settings, Sun, Moon, PieChart, GitCompare, Globe, ChevronRight, ChevronLeft } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint.js'
 import { useLang }        from '../../context/LanguageContext.jsx'
 
-function NavButton({ label, Icon, active, onClick }) {
+function NavButton({ label, Icon, active, onClick, expanded }) {
   return (
     <button
       onClick={onClick}
-      title={label}
+      title={expanded ? undefined : label}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       style={{
-        width: 44, height: 44, borderRadius:'var(--radius-lg)', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: expanded ? '100%' : 44,
+        height: 44,
+        borderRadius: 'var(--radius-lg)',
+        border: 'none',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: expanded ? 'flex-start' : 'center',
+        gap: expanded ? 10 : 0,
+        padding: expanded ? '0 12px' : 0,
         background: active ? 'var(--accent-dim)' : 'transparent',
         color:      active ? 'var(--accent)'     : 'var(--txt-muted)',
         boxShadow: active ? 'inset 0 0 0 1px var(--accent-glow)' : 'none',
         transition: 'all 0.14s',
+        textAlign: 'left',
+        flexShrink: 0,
       }}
       onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface-up)'; e.currentTarget.style.color = 'var(--txt-sec)' }}}
       onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent';       e.currentTarget.style.color = 'var(--txt-muted)' }}}
     >
-      <Icon size={19} />
+      <Icon size={19} style={{ flexShrink: 0 }} />
+      {expanded && (
+        <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {label}
+        </span>
+      )}
     </button>
   )
 }
 
-function IconBtn({ label, Icon, onClick, color, bg }) {
+function IconBtn({ label, Icon, onClick, color, bg, expanded }) {
   return (
     <button
       onClick={onClick}
-      title={label}
+      title={expanded ? undefined : label}
       aria-label={label}
       style={{
-        width: 44, height: 44, borderRadius:'var(--radius-lg)', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: bg || 'var(--surface-up)',
+        width: expanded ? '100%' : 44,
+        height: 44,
+        borderRadius: 'var(--radius-lg)',
+        border: 'none',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: expanded ? 'flex-start' : 'center',
+        gap: expanded ? 10 : 0,
+        padding: expanded ? '0 12px' : 0,
+        background: bg || 'transparent',
         color: color || 'var(--txt-muted)',
         transition: 'all 0.14s',
+        flexShrink: 0,
       }}
-      onMouseEnter={e => { e.currentTarget.style.color = color || 'var(--accent)' }}
-      onMouseLeave={e => { e.currentTarget.style.color = color || 'var(--txt-muted)' }}
+      onMouseEnter={e => { e.currentTarget.style.color = color || 'var(--accent)'; e.currentTarget.style.background = 'var(--surface-up)' }}
+      onMouseLeave={e => { e.currentTarget.style.color = color || 'var(--txt-muted)'; e.currentTarget.style.background = bg || 'transparent' }}
     >
-      <Icon size={18} />
+      <Icon size={18} style={{ flexShrink: 0 }} />
+      {expanded && (
+        <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</span>
+      )}
     </button>
   )
 }
@@ -57,17 +86,26 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
   const { t }        = useLang()
   const isLight      = theme === 'light'
 
-  // Desktop shows all — mobile shows 5 core views
+  // Persist expanded state — default collapsed
+  const [expanded, setExpanded] = useState(
+    () => localStorage.getItem('sidebarExpanded') === 'true'
+  )
+  useEffect(() => {
+    localStorage.setItem('sidebarExpanded', expanded)
+    // Update CSS variable so content area adjusts
+    document.documentElement.style.setProperty('--sidebar-w', expanded ? '160px' : '64px')
+  }, [expanded])
+
   const NAV_ITEMS = [
-    { id: 'dashboard',   label: t.navDashboard,      Icon: LayoutDashboard },
-    { id: 'positions',   label: t.navPositions,      Icon: Briefcase       },
-    { id: 'watchlist',   label: t.navWatchlist,      Icon: Eye             },
-    { id: 'scan',        label: t.navScanner,          Icon: Search          },
-    { id: 'market',      label: 'Market Map',              Icon: Globe, desktopOnly: true },
-    { id: 'compare',     label: t.navCompare,           Icon: GitCompare, desktopOnly: true },
-    { id: 'calendar',    label: t.navCalendar,        Icon: CalendarDays    },
-    { id: 'insights',    label: t.navInsights,         Icon: PieChart,   desktopOnly: true },
-  { id: 'diagnostics', label: t.navDiag,             Icon: BarChart3,  desktopOnly: true },
+    { id: 'dashboard',   label: t.navDashboard,   Icon: LayoutDashboard },
+    { id: 'positions',   label: t.navPositions,   Icon: Briefcase       },
+    { id: 'watchlist',   label: t.navWatchlist,   Icon: Eye             },
+    { id: 'scan',        label: t.navScanner,     Icon: Search          },
+    { id: 'market',      label: 'Market Map',     Icon: Globe,  desktopOnly: true },
+    { id: 'compare',     label: t.navCompare,     Icon: GitCompare, desktopOnly: true },
+    { id: 'calendar',    label: t.navCalendar,    Icon: CalendarDays    },
+    { id: 'insights',    label: t.navInsights,    Icon: PieChart,   desktopOnly: true },
+    { id: 'diagnostics', label: t.navDiag,        Icon: BarChart3,  desktopOnly: true },
   ]
   const MOBILE_NAV = NAV_ITEMS.filter(n => !n.desktopOnly)
 
@@ -81,53 +119,90 @@ export default function Sidebar({ view, setView, theme, toggleTheme, onOpenSetti
         padding: '0 8px',
       }}>
         {MOBILE_NAV.map(({ id, label, Icon }) => (
-          <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
+          <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} expanded={false} />
         ))}
         <IconBtn
           label={isLight ? 'Dark mode' : 'Light mode'}
           Icon={isLight ? Sun : Moon}
           color={isLight ? 'var(--amber)' : undefined}
           onClick={toggleTheme}
+          expanded={false}
         />
       </nav>
     )
   }
 
   /* ── Desktop: left sidebar ── */
+  const sidebarW = expanded ? 160 : 64
+
   return (
     <aside style={{
-      width: 'var(--sidebar-w)', height: '100vh',
+      width: sidebarW, minWidth: sidebarW, height: '100vh',
       background: 'var(--surface)', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column',
-      alignItems: 'center', paddingTop: 14, paddingBottom: 14,
-      gap: 4, flexShrink: 0,
+      alignItems: expanded ? 'stretch' : 'center',
+      paddingTop: 14, paddingBottom: 14,
+      gap: 2, flexShrink: 0,
+      transition: 'width 0.18s ease, min-width 0.18s ease',
+      overflow: 'hidden',
     }}>
-      {/* Logo */}
+      {/* Logo + toggle */}
       <div style={{
-        width: 36, height: 36, borderRadius:'var(--radius-lg)',
-        background: 'linear-gradient(135deg, var(--accent), var(--purple))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
-        marginBottom: 18,
-      }}>TP</div>
+        display: 'flex', alignItems: 'center',
+        justifyContent: expanded ? 'space-between' : 'center',
+        padding: expanded ? '0 10px 14px' : '0 0 14px',
+        gap: 8,
+      }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 'var(--radius-lg)', flexShrink: 0,
+          background: 'linear-gradient(135deg, var(--accent), var(--purple))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color: '#fff',
+        }}>TP</div>
+        {expanded && (
+          <button onClick={() => setExpanded(false)} title="Collapse sidebar"
+            style={{ background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--txt-muted)', padding: 4, borderRadius: 6,
+              display: 'flex', alignItems: 'center' }}>
+            <ChevronLeft size={16} />
+          </button>
+        )}
+      </div>
 
-      {/* Nav */}
-      {NAV_ITEMS.map(({ id, label, Icon }) => (
-        <NavButton key={id} label={label} Icon={Icon} active={view === id} onClick={() => setView(id)} />
-      ))}
+      {/* Nav items */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%',
+        padding: expanded ? '0 8px' : 0, alignItems: expanded ? 'stretch' : 'center' }}>
+        {NAV_ITEMS.map(({ id, label, Icon }) => (
+          <NavButton key={id} label={label} Icon={Icon} active={view === id}
+            onClick={() => setView(id)} expanded={expanded} />
+        ))}
+      </div>
 
       <div style={{ flex: 1 }} />
 
-      {/* Settings */}
-      <IconBtn label={t.navSettings} Icon={Settings} onClick={onOpenSettings} />
-
-      {/* Theme toggle */}
-      <IconBtn
-        label={isLight ? 'Dark mode' : 'Light mode'}
-        Icon={isLight ? Sun : Moon}
-        color={isLight ? 'var(--amber)' : undefined}
-        onClick={toggleTheme}
-      />
+      {/* Bottom controls */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%',
+        padding: expanded ? '0 8px' : 0, alignItems: expanded ? 'stretch' : 'center' }}>
+        <IconBtn label={t.navSettings} Icon={Settings} onClick={onOpenSettings} expanded={expanded} />
+        <IconBtn
+          label={isLight ? 'Dark mode' : 'Light mode'}
+          Icon={isLight ? Sun : Moon}
+          color={isLight ? 'var(--amber)' : undefined}
+          onClick={toggleTheme}
+          expanded={expanded}
+        />
+        {/* Expand button when collapsed */}
+        {!expanded && (
+          <button onClick={() => setExpanded(true)} title="Expand sidebar"
+            style={{ width: 44, height: 44, background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--txt-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 'var(--radius-lg)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'var(--surface-up)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--txt-muted)'; e.currentTarget.style.background = 'none' }}>
+            <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
     </aside>
   )
 }
