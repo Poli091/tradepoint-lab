@@ -4186,19 +4186,20 @@ export default {
               WITH latest AS (
                 SELECT ticker, grade, final_score, analysis_date, model_version,
                   ROW_NUMBER() OVER (
-                    PARTITION BY ticker ORDER BY analysis_date DESC, rowid DESC
+                    PARTITION BY ticker
+                    ORDER BY analysis_date DESC, rowid DESC
                   ) AS rn
                 FROM analyses
+                WHERE model_version = 'v1.0'
               )
               SELECT
                 l.ticker, l.grade, l.final_score, l.analysis_date, l.model_version,
                 c.symbol IS NOT NULL AS in_spy,
                 CAST(julianday('${today}') - julianday(l.analysis_date) AS INTEGER) AS age_days
               FROM latest l
-              LEFT JOIN constituent_master c
+              INNER JOIN constituent_master c
                 ON c.symbol = l.ticker AND c.active_to IS NULL
               WHERE l.rn = 1
-                AND l.ticker NOT IN ('SPY','QQQ','IWM','SMH','XLK','XLF','XLE','XLV','XLI','GLD','TLT')
               ORDER BY l.final_score DESC
             `.replace('${today}', today)).all().then(r => r.results ?? []).catch(() => [])
 
@@ -4222,10 +4223,12 @@ export default {
 
             return json({
               grades,
-              count:      grades.length,
+              count:           grades.length,
               spyTotal,
               spyCovered,
-              coveragePct: spyTotal > 0 ? Math.round(spyCovered / spyTotal * 100) : 0,
+              coveragePct:     spyTotal > 0 ? Math.round(spyCovered / spyTotal * 100) : 0,
+              currentModel:    'v1.0',
+              staleThreshold:  30,
             })
           }
           return json({ error: 'Unknown analyses endpoint' }, 404)

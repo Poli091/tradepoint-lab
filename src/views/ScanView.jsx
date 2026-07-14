@@ -226,7 +226,7 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
           </div>
           {d1Coverage && (
             <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:4 }}>
-              {d1Coverage.spyCovered}/{d1Coverage.spyTotal} SPY scored · {d1Coverage.coveragePct}% coverage
+              {d1Coverage.spyCovered}/{d1Coverage.spyTotal} SPY analyzed (current model) · {d1Coverage.coveragePct}%
             </div>
           )}
         </div>
@@ -349,7 +349,7 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
                         color: activeTicker === t ? color : gradeInfo ? gradeInfo.color : 'var(--txt-sec)',
                         transition:'all 0.11s',
                       }}>
-                        {t}{score != null ? ` ${score}` : ''}{d1?.stale ? ' ·' : ''}
+                        {t}{score != null ? ` ${score}` : ''}{d1?.stale ? ' ⚠' : ''}
                       </button>
                     )
                   })}
