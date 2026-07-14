@@ -33,36 +33,52 @@ function saveScanHistory(items) {
 
 /* ── Quick-access sector groups ──────────────────────────── */
 const SECTOR_GROUPS = [
-  // ── Already scanned ──────────────────────────────────────
-  { label: 'Utilities',       color: 'var(--amber)',  tickers: ['VST','CEG','NEE','DUK','SO','NRG','PCG','ETR'] },
-  { label: 'Semiconductors',  color: 'var(--accent)', tickers: ['NVDA','AVGO','AMD','TSM','MU','ARM','QCOM','INTC'] },
-  { label: 'Software / SaaS', color: 'var(--purple)', tickers: ['NOW','CRM','TEAM','VEEV','SNOW','DDOG','MSFT','ADBE'] },
-  { label: 'Fintech',         color: 'var(--green)',  tickers: ['MELI','V','MA','FICO','PYPL','SQ','SOFI','NU'] },
-  { label: 'MedTech',         color: '#F472B6',       tickers: ['PODD','ISRG','BSX','DXCM','EW','MDT','SYK','VRTX'] },
-  { label: 'Defense',         color: '#94A3B8',       tickers: ['AXON','LMT','NOC','RTX','GD','GE'] },
-  // ── Pending ───────────────────────────────────────────────
-  { label: 'Industrials',     color: '#FB923C',       tickers: ['CAT','HON','DE','ETN','PH','EMR','ITW','MMM','CARR','TT'] },
-  { label: 'Financials',      color: '#60A5FA',       tickers: ['GS','MS','BLK','SCHW','SPGI','MCO','CB','AXP'] },
-  { label: 'Consumer Disc.',  color: '#A78BFA',       tickers: ['AMZN','TSLA','HD','BKNG','MCD','NKE','LOW','SBUX','TJX','LULU'] },
-  { label: 'Comm. Services',  color: '#F87171',       tickers: ['META','GOOGL','GOOG','NFLX','DIS','T','VZ','CHTR','SPOT','PINS'] },
-  { label: 'Consumer Staples',color: '#86EFAC',       tickers: ['WMT','COST','PG','KO','PEP','PM','MO','CL','MDLZ','EL'] },
-  { label: 'Real Estate',     color: '#FCD34D',       tickers: ['AMT','PLD','EQIX','CCI','PSA','WELL','SPG','DLR','O','CSGP'] },
-  { label: 'Energy',          color: '#34D399',       tickers: ['XOM','CVX','COP','EOG','SLB','MPC','VLO','PSX','HAL','OXY'] },
-  { label: 'Materials',       color: '#CBD5E1',       tickers: ['LIN','APD','SHW','FCX','NEM','NUE','ALB','DD','PPG','VMC'] },
-  { label: 'AI / Data',       color: '#818CF8',       tickers: ['PLTR','APP','TTD','CRWD','PANW','ZS','NET','PATH','AI','GTLB'] },
-  { label: 'Health Care',     color: '#FB7185',       tickers: ['LLY','UNH','ABBV','MRK','AMGN','GILD','REGN','ABT'] },
-  { label: 'Semis — Equip.',  color: '#7DD3FC',       tickers: ['AMAT','LRCX','KLAC','MRVL','TXN','MCHP','ON','MPWR','SWKS','WOLF'] },
-  { label: 'Software — Ent.', color: '#C4B5FD',       tickers: ['ORCL','INTU','WDAY','SAP','HUBS','BILL','MDB','ESTC','CFLT','TYL'] },
-  { label: 'Consumer Tech',   color: '#6EE7B7',       tickers: ['AAPL','SHOP','UBER','SE','BABA','GRAB','DASH','ABNB','LYFT'] },
-  { label: 'Banks — Large',   color: '#93C5FD',       tickers: ['JPM','BAC','WFC','C','USB','TFC','RF','FITB','CFG','KEY'] },
-  // ── ETFs ─────────────────────────────────────────────────
-  { label: 'Index ETFs',      color: '#F59E0B',       tickers: ['SPY','QQQ','IWM','DIA','VTI','VOO'] },
-  { label: 'Sector ETFs',     color: '#FBBF24',       tickers: ['XLK','XLF','XLE','XLV','XLI','XLC','XLRE','XLU','XLY','XLP'] },
-  { label: 'Thematic ETFs',   color: '#FCD34D',       tickers: ['ARKK','ARKW','SOXX','EEM','GLD','TLT'] },
-  // ── Argentine ADRs ───────────────────────────────────────
-  { label: 'Argentina — Energy',  color: '#34D399',   tickers: ['YPF','VIST','PAM','TGS','CEPU'] },
-  { label: 'Argentina — Banks',   color: '#60A5FA',   tickers: ['GGAL','BMA','BBAR','SUPV'] },
-  { label: 'Argentina — Other',   color: '#A78BFA',   tickers: ['GLOB','DESP','LOMA','BIOX','CAAP','IRS'] },
+  // ── Comm. Services ──
+  { label: 'Comm. Services', color: '#F97316', tickers: ['CHTR', 'CMCSA', 'DIS', 'EA', 'ECHO', 'FOX', 'FOXA', 'GOOG', 'GOOGL', 'LYV', 'META', 'NFLX', 'NWS', 'NWSA', 'OMC', 'PSKY', 'T', 'TKO', 'TMUS', 'TTWO', 'VZ', 'WBD'] },
+  // ── Consumer Discretionary ──
+  { label: 'Consumer Disc.', color: '#F59E0B', tickers: ['ABNB', 'APTV', 'AZO', 'BBY', 'BKNG', 'CCL', 'CMG', 'CVNA', 'DECK', 'DG', 'DLTR', 'DPZ', 'DRI', 'F', 'GM', 'GPC', 'HAS', 'HD', 'HLT', 'LOW', 'LULU', 'LVS', 'MAR', 'MCD', 'MGM', 'NCLH', 'NKE', 'ORLY', 'RCL', 'RL', 'ROST', 'SBUX', 'TGT', 'TJX', 'TPR', 'TSCO', 'TSLA', 'ULTA', 'WSM', 'WYNN', 'YUM'] },
+  { label: 'Consumer Tech', color: '#F59E0B', tickers: ['AMZN', 'DASH', 'EBAY', 'EXPE', 'UBER'] },
+  { label: 'Homebuilders', color: '#F59E0B', tickers: ['BLDR', 'DHI', 'LEN', 'NVR', 'PHM'] },
+  // ── Consumer Staples ──
+  { label: 'Consumer Staples', color: '#6B7280', tickers: ['ADM', 'BF.B', 'BG', 'CASY', 'CHD', 'CL', 'CLX', 'COST', 'EL', 'GIS', 'HRL', 'HSY', 'KDP', 'KHC', 'KMB', 'KO', 'KR', 'KVUE', 'MDLZ', 'MKC', 'MNST', 'MO', 'PEP', 'PG', 'PM', 'SJM', 'STZ', 'SYY', 'TAP', 'TSN', 'WMT'] },
+  // ── Defense ──
+  { label: 'Defense', color: '#64748B', tickers: ['GD', 'HII', 'LHX', 'LMT', 'NOC', 'RTX'] },
+  { label: 'Defense Tech', color: '#64748B', tickers: ['AXON'] },
+  // ── Energy ──
+  { label: 'Energy', color: '#EF4444', tickers: ['APA', 'BKR', 'COP', 'CVX', 'DVN', 'EOG', 'EQT', 'EXE', 'FANG', 'HAL', 'KMI', 'MPC', 'OKE', 'OXY', 'PSX', 'SLB', 'SW', 'TPL', 'TRGP', 'VLO', 'WMB', 'XOM'] },
+  // ── Financials ──
+  { label: 'Banks - Large', color: '#10B981', tickers: ['BAC', 'C', 'CFG', 'COF', 'FITB', 'GS', 'HBAN', 'JPM', 'KEY', 'MS', 'MTB', 'PNC', 'RF', 'TFC', 'USB', 'WFC'] },
+  { label: 'Financials', color: '#10B981', tickers: ['ACGL', 'AFL', 'AIG', 'AIZ', 'AJG', 'ALL', 'AMP', 'AON', 'APO', 'ARES', 'BEN', 'BLK', 'BNY', 'BRK.B', 'BRO', 'BX', 'CB', 'CINF', 'EFX', 'EG', 'ERIE', 'FDS', 'GL', 'HIG', 'IVZ', 'KKR', 'L', 'MCO', 'MET', 'MRSH', 'MSCI', 'NTRS', 'PFG', 'PGR', 'PRU', 'RJF', 'SCHW', 'SPGI', 'STT', 'TROW', 'TRV', 'WRB', 'WTW'] },
+  { label: 'Fintech', color: '#10B981', tickers: ['AXP', 'BR', 'CBOE', 'CME', 'COIN', 'CPAY', 'FICO', 'FIS', 'FISV', 'GPN', 'HOOD', 'IBKR', 'ICE', 'JKHY', 'MA', 'NDAQ', 'PYPL', 'SYF', 'V', 'XYZ'] },
+  // ── Healthcare ──
+  { label: 'Biotech', color: '#8B5CF6', tickers: ['AMGN', 'BIIB', 'GILD', 'INCY', 'MRNA', 'REGN', 'VRTX'] },
+  { label: 'Healthcare', color: '#8B5CF6', tickers: ['A', 'ABT', 'BAX', 'CAH', 'CI', 'CNC', 'COR', 'CRL', 'CVS', 'DGX', 'DHR', 'DVA', 'ELV', 'GEHC', 'HCA', 'HSIC', 'HUM', 'IQV', 'LH', 'MCK', 'MTD', 'RVTY', 'SOLV', 'STE', 'TECH', 'TMO', 'UHS', 'UNH', 'WAT', 'ZTS'] },
+  { label: 'Medical Devices', color: '#8B5CF6', tickers: ['ALGN', 'BDX', 'BSX', 'COO', 'DXCM', 'EW', 'IDXX', 'ISRG', 'MDT', 'PODD', 'RMD', 'SYK', 'WST', 'ZBH'] },
+  { label: 'Pharmaceuticals', color: '#8B5CF6', tickers: ['ABBV', 'BMY', 'JNJ', 'LLY', 'MRK', 'PFE', 'VTRS'] },
+  // ── Industrials ──
+  { label: 'Airlines', color: '#78716C', tickers: ['DAL', 'LUV', 'UAL'] },
+  { label: 'Clean Energy', color: '#78716C', tickers: ['GEV'] },
+  { label: 'Industrials', color: '#78716C', tickers: ['ALLE', 'AME', 'AOS', 'BA', 'CARR', 'CAT', 'CHRW', 'CMI', 'CPRT', 'CSX', 'CTAS', 'DE', 'DOV', 'EME', 'EMR', 'ETN', 'EXPD', 'FAST', 'FDX', 'FDXF', 'FIX', 'FTV', 'GE', 'GNRC', 'GWW', 'HON', 'HONA', 'HUBB', 'HWM', 'IEX', 'IR', 'ITW', 'J', 'JBHT', 'JCI', 'LII', 'MAS', 'MMM', 'NDSN', 'NSC', 'ODFL', 'OTIS', 'PCAR', 'PH', 'PNR', 'PWR', 'ROK', 'ROL', 'ROP', 'SNA', 'SWK', 'TDG', 'TT', 'TXT', 'UNP', 'UPS', 'URI', 'VLTO', 'WAB', 'XYL'] },
+  { label: 'Waste Management', color: '#78716C', tickers: ['RSG', 'WM'] },
+  // ── Materials ──
+  { label: 'Materials', color: '#D97706', tickers: ['ALB', 'AMCR', 'APD', 'AVY', 'BALL', 'CF', 'CRH', 'CTVA', 'DD', 'DOW', 'ECL', 'FCX', 'IFF', 'IP', 'LIN', 'LYB', 'MLM', 'MOS', 'NEM', 'NUE', 'PKG', 'PPG', 'SHW', 'STLD', 'VMC'] },
+  // ── Real Estate ──
+  { label: 'Real Estate', color: '#EC4899', tickers: ['AMT', 'ARE', 'AVB', 'BXP', 'CBRE', 'CCI', 'CPT', 'CSGP', 'DLR', 'DOC', 'EQIX', 'EQR', 'ESS', 'EXR', 'FRT', 'HST', 'INVH', 'IRM', 'KIM', 'MAA', 'O', 'PLD', 'PSA', 'REG', 'SBAC', 'SPG', 'UDR', 'VICI', 'VTR', 'WELL', 'WY'] },
+  // ── Technology ──
+  { label: 'AI/Data', color: '#3B82F6', tickers: ['APP', 'PLTR', 'TTD'] },
+  { label: 'Clean Energy', color: '#3B82F6', tickers: ['FSLR'] },
+  { label: 'Cybersecurity', color: '#3B82F6', tickers: ['CRWD', 'FTNT', 'GEN', 'PANW'] },
+  { label: 'Data Center Infra', color: '#3B82F6', tickers: ['VRT'] },
+  { label: 'Hardware', color: '#3B82F6', tickers: ['AAPL', 'APH', 'COHR', 'DELL', 'FLEX', 'GLW', 'GRMN', 'HPQ', 'JBL', 'KEYS', 'LITE', 'SMCI', 'TDY', 'TEL', 'ZBRA'] },
+  { label: 'IT Services', color: '#3B82F6', tickers: ['ACN', 'ADP', 'CDW', 'CTSH', 'HPE', 'IBM', 'IT', 'LDOS', 'PAYX', 'VRSK'] },
+  { label: 'Networking', color: '#3B82F6', tickers: ['AKAM', 'ANET', 'CIEN', 'CSCO', 'FFIV', 'MSI', 'VRSN'] },
+  { label: 'Semiconductor Equipment', color: '#3B82F6', tickers: ['AMAT', 'KLAC', 'LRCX', 'TER'] },
+  { label: 'Semiconductors', color: '#3B82F6', tickers: ['ADI', 'AMD', 'AVGO', 'INTC', 'MCHP', 'MPWR', 'MRVL', 'MU', 'NVDA', 'NXPI', 'ON', 'Q', 'QCOM', 'SNDK', 'SWKS', 'TXN'] },
+  { label: 'Software/SaaS', color: '#3B82F6', tickers: ['ADBE', 'ADSK', 'CDNS', 'CRM', 'DDOG', 'GDDY', 'INTU', 'MSFT', 'NOW', 'ORCL', 'PTC', 'SNPS', 'TRMB', 'TYL', 'VEEV', 'WDAY'] },
+  { label: 'Storage', color: '#3B82F6', tickers: ['NTAP', 'STX', 'WDC'] },
+  // ── Utilities ──
+  { label: 'Power Generation/Nuclear', color: '#06B6D4', tickers: ['CEG', 'VST'] },
+  { label: 'Utilities', color: '#06B6D4', tickers: ['AEE', 'AEP', 'AES', 'ATO', 'AWK', 'CMS', 'CNP', 'D', 'DTE', 'DUK', 'ED', 'EIX', 'ES', 'ETR', 'EVRG', 'EXC', 'FE', 'LNT', 'NEE', 'NI', 'NRG', 'PCG', 'PEG', 'PNW', 'PPL', 'SO', 'SRE', 'WEC', 'XEL'] },
 ]
 
 /* ── Single scan result badge ─────────────────────────────── */
