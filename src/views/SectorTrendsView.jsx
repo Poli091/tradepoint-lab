@@ -290,8 +290,20 @@ function BalanceView({ industries }) {
 
   // Map each position to its industry — built from Market Map pre-computed industries
   // industries prop comes from /api/market-map/latest (503 SPY constituents)
+  // Supplementary map for non-SPY portfolio tickers
+  const SUPPLEMENT = {
+    'MELI':'Consumer Tech', 'SHOP':'Consumer Tech', 'SE':'Consumer Tech',
+    'TEAM':'Software/SaaS', 'DDOG':'Software/SaaS', 'SNOW':'Software/SaaS',
+    'NFLX':'Comm. Services', 'SPOT':'Comm. Services',
+    'UBER':'Consumer Tech', 'LYFT':'Consumer Tech', 'DASH':'Consumer Tech',
+    'BABA':'Consumer Tech', 'JD':'Consumer Tech', 'PDD':'Consumer Tech',
+    'APLD':'Technology', 'GTLB':'Cybersecurity',
+    'CSGP':'Real Estate', 'TRMB':'Software/SaaS',
+    'BSX':'Medical Devices', 'ISRG':'Medical Devices', 'EW':'Medical Devices',
+    'VRTX':'Biotech', 'AMGN':'Biotech',
+  }
   const tickerToIndustry = useMemo(() => {
-    const map = {}
+    const map = { ...SUPPLEMENT }
     for (const ind of (industries ?? [])) {
       for (const t of (ind.tickers ?? [])) {
         map[t.ticker] = ind.name
@@ -589,7 +601,12 @@ export default function SectorTrendsView({ onSelectTicker }) {
     workerAPI.get('/api/market-map/latest')
       .then(r => {
         setRaw(r?.tickers ?? [])
-        setSnapshotMeta({ asOf: r?.asOf, status: r?.snapshotStatus, coveragePct: r?.coveragePct })
+        setSnapshotMeta({
+          asOf: r?.asOf, status: r?.snapshotStatus,
+          coveragePct: r?.coveragePct,
+          symbolsProcessed: r?.symbolsProcessed,
+          symbolsExpected:  r?.symbolsExpected,
+        })
         setError(null)
       })
       .catch(e => setError(e.message))
@@ -660,7 +677,9 @@ export default function SectorTrendsView({ onSelectTicker }) {
                 ● {snapshotMeta.status}
               </span>
               {' · as of '}{snapshotMeta.asOf}
-              {snapshotMeta.coveragePct != null && ` · ${snapshotMeta.coveragePct}% coverage`}
+              {snapshotMeta.symbolsProcessed != null
+                ? ` · ${snapshotMeta.symbolsProcessed}/${snapshotMeta.symbolsExpected} · ${snapshotMeta.coveragePct}% coverage`
+                : snapshotMeta.coveragePct != null ? ` · ${snapshotMeta.coveragePct}% coverage` : ''}
             </div>
           )}
         </div>
