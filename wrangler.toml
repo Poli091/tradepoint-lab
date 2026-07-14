@@ -54,7 +54,4 @@ migrations_dir  = "worker/migrations"  # Wrangler tracks applied migrations here
 # Scans all tickers cached in KV and saves conviction scores to D1
 
 [triggers]
-crons = [
-  "0 0 * * 0",
-  "0 22 * * 1-5"
-]
+crons = ["0 0 * * 0"]
