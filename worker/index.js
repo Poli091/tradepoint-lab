@@ -3837,8 +3837,11 @@ async function handleBackfillRS(request, db, kv, keys) {
   // SPY is included in the batch to get the baseline in the same request
   const allSymbols = ['SPY', ...symbols.filter(s => s !== 'SPY')]
   const symbolsParam = allSymbols.join(',')
+  // Explicit date range needed — without it Alpaca returns only the latest bar
+  const endDate   = new Date().toISOString().split('T')[0]
+  const startDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]  // ~400 days back
   const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300&adjustment=split`,
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&start=${startDate}&end=${endDate}&limit=300&adjustment=split`,
     { headers: alpacaHdr }
   ).catch(e => { console.error('[BackfillRS] Alpaca multi-bar fetch error:', e.message); return null })
 
