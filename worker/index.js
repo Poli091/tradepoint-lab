@@ -3836,7 +3836,7 @@ async function handleBackfillRS(request, db, kv, keys) {
   // SPY baseline: try D1 cache first (populated by PriceChart usage), then Alpaca
   let spyClose = []
   const spyD1 = await db.prepare(
-    `SELECT close FROM ohlcv_bars WHERE ticker='SPY' AND res='1D'
+    `SELECT close FROM ohlcv_bars WHERE ticker='SPY' AND res='D'
      ORDER BY bar_date DESC LIMIT 300`
   ).all().catch(() => null)
   if (spyD1?.results?.length >= 22) {
