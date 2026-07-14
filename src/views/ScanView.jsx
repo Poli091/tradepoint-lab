@@ -224,6 +224,11 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
           <div style={{ fontSize:10, color:'var(--txt-muted)', marginTop:6 }}>
             Any US ticker · auto-saves to D1
           </div>
+          {d1Coverage && (
+            <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:4 }}>
+              {d1Coverage.spyCovered}/{d1Coverage.spyTotal} SPY scored · {d1Coverage.coveragePct}% coverage
+            </div>
+          )}
         </div>
 
         {/* Scrollable content */}
@@ -344,7 +349,7 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
                         color: activeTicker === t ? color : gradeInfo ? gradeInfo.color : 'var(--txt-sec)',
                         transition:'all 0.11s',
                       }}>
-                        {t}{score != null ? ` ${score}` : ''}
+                        {t}{score != null ? ` ${score}` : ''}{d1?.stale ? ' ·' : ''}
                       </button>
                     )
                   })}

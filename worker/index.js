@@ -4179,16 +4179,54 @@ export default {
           return await handleGroqDebug(param1, param2, keys, kv)
         case 'analyses':
           if (param1 === 'grades') {
-            // GET /api/analyses/grades — latest grade per ticker from D1
+            // GET /api/analyses/grades — latest grade per ticker, joined with constituent_master
+            // Uses ROW_NUMBER for deterministic latest-per-ticker selection
+            const today = new Date().toISOString().split('T')[0]
             const rows = await db.prepare(`
-              SELECT ticker, grade, final_score
-              FROM analyses a1
-              WHERE analysis_date = (
-                SELECT MAX(a2.analysis_date) FROM analyses a2 WHERE a2.ticker = a1.ticker
+              WITH latest AS (
+                SELECT ticker, grade, final_score, analysis_date, model_version,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY ticker ORDER BY analysis_date DESC, rowid DESC
+                  ) AS rn
+                FROM analyses
               )
-              ORDER BY final_score DESC
-            `).all().then(r => r.results ?? []).catch(() => [])
-            return json({ grades: rows, count: rows.length })
+              SELECT
+                l.ticker, l.grade, l.final_score, l.analysis_date, l.model_version,
+                c.symbol IS NOT NULL AS in_spy,
+                CAST(julianday('${today}') - julianday(l.analysis_date) AS INTEGER) AS age_days
+              FROM latest l
+              LEFT JOIN constituent_master c
+                ON c.symbol = l.ticker AND c.active_to IS NULL
+              WHERE l.rn = 1
+                AND l.ticker NOT IN ('SPY','QQQ','IWM','SMH','XLK','XLF','XLE','XLV','XLI','GLD','TLT')
+              ORDER BY l.final_score DESC
+            `.replace('${today}', today)).all().then(r => r.results ?? []).catch(() => [])
+
+            // Count unique tickers vs SPY universe
+            const spyTotal = await db.prepare(
+              `SELECT COUNT(*) as n FROM constituent_master WHERE active_to IS NULL`
+            ).first().then(r => r?.n ?? 0).catch(() => 0)
+
+            const spyCovered = rows.filter(r => r.in_spy).length
+
+            const grades = rows.map(r => ({
+              ticker:       r.ticker,
+              grade:        r.grade,
+              score:        r.final_score,
+              analysisDate: r.analysis_date,
+              ageDays:      r.age_days ?? 0,
+              stale:        (r.age_days ?? 0) > 30,
+              inSpy:        !!r.in_spy,
+              modelVersion: r.model_version,
+            }))
+
+            return json({
+              grades,
+              count:      grades.length,
+              spyTotal,
+              spyCovered,
+              coveragePct: spyTotal > 0 ? Math.round(spyCovered / spyTotal * 100) : 0,
+            })
           }
           return json({ error: 'Unknown analyses endpoint' }, 404)
         case 'snapshots':
