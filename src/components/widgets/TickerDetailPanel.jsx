@@ -344,11 +344,12 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
         boxShadow:'-8px 0 32px rgba(0,0,0,0.4)',
       }}>
 
-        {/* Header */}
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between',
-          padding:'10px 14px', borderBottom:'1px solid var(--border)',
-          flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10,
-          flexWrap:'wrap', gap:6 }}>
+        {/* Header — 2 rows: ticker+price+close | controls */}
+        <div style={{ display:'flex', flexDirection:'column',
+          padding:'10px 14px 8px', borderBottom:'1px solid var(--border)',
+          flexShrink:0, background:'var(--surface)', position:'sticky', top:0, zIndex:10, gap:6 }}>
+          {/* Row 1: Ticker + price + close button — always visible */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <div style={{ fontFamily:'var(--mono)', fontSize:18, fontWeight:700, color:'var(--txt)' }}>{ticker}</div>
@@ -374,7 +375,18 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </div>
             <div style={{ fontSize:11, color:'var(--txt-muted)' }}>{isETF ? universeInfo?.name : pos?.name}</div>
           </div>
-          <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+          {/* Close button in Row 1 — always accessible */}
+          {!embedded && (
+            <button onClick={onClose}
+              style={{ width:32, height:32, borderRadius:'var(--radius)', border:'1px solid var(--border)',
+                background:'transparent', cursor:'pointer', color:'var(--txt-muted)',
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginLeft:'auto' }}>
+              <X size={14} />
+            </button>
+          )}
+          </div>{/* end Row 1 */}
+          {/* Row 2: alignment score + tabs + action buttons */}
+          <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0, flexWrap:'wrap' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {swingResult && result && (() => {
               const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
@@ -580,14 +592,6 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 animation:loading?'tp-spin 1s linear infinite':'none' }}>
               <RotateCcw size={14} />
             </button>
-            {!embedded && (
-              <button onClick={onClose}
-                style={{ width:32, height:32, borderRadius:'var(--radius)', border:'1px solid var(--border)',
-                  background:'transparent', cursor:'pointer', color:'var(--txt-muted)',
-                  display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <X size={14} />
-              </button>
-            )}
           </div>
         </div>
 
