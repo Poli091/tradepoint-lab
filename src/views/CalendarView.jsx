@@ -57,23 +57,25 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
   // Auto-generate earnings events from:
   // 1. conviction results (if available)
   // 2. direct fundamentals fetch (earningsDates state)
-  const autoEvents = userPositions
-    .map(pos => {
+  const autoEvents = Object.values(
+    userPositions.reduce((acc, pos) => {
+      if (acc[pos.ticker]) return acc  // deduplicate — same ticker in Brokerage + Roth = 1 event
       const cv = convictionResults[pos.ticker]
       const dateFromCV     = cv?.nextEarningsDate
       const dateFromDirect = earningsDates[pos.ticker]?.date
       const date   = dateFromCV ?? dateFromDirect
       const source = dateFromCV ? (cv.earningsDateSource ?? 'auto') : (earningsDates[pos.ticker]?.source ?? 'auto')
-      if (!date) return null
-      return {
+      if (!date) return acc
+      acc[pos.ticker] = {
         ticker: pos.ticker,
         date,
         type:  'monitor',
         note:  `Next earnings · Source: ${source}`,
         _auto: true,
       }
-    })
-    .filter(Boolean)
+      return acc
+    }, {})
+  )
 
   // Merge: manual events take priority over auto (dedup by ticker)
   const manualTickers = new Set(events.map(e => e.ticker))
