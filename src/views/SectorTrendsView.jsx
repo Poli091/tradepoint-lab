@@ -519,10 +519,12 @@ function TreemapContainer({ industries, onSelect }) {
 
 function SVGTreemap({ industries, onSelect, width, height }) {
   const PAD = 2
-  const nodes = squarify(
-    (industries||[]).filter(i => (i.value||0) > 0 && i.name),
-    0, 0, width, height
-  )
+  // squarify works best with items sorted by value (largest first)
+  // trendScore sorting is for the ranking list; treemap uses value for layout
+  const sorted = [...(industries||[])]
+    .filter(i => (i.value||0) > 0 && i.name)
+    .sort((a,b) => (b.value||0) - (a.value||0))
+  const nodes = squarify(sorted, 0, 0, width, height)
   if (!nodes.length) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
       justifyContent:'center', height:'100%', gap:10, color:'var(--txt-muted)' }}>
@@ -733,7 +735,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
           {/* TREND MAP */}
           {viewMode === 'trend' && (
             <>
-              <div style={{ flex:1, padding:12, overflow:'hidden', minWidth:0 }}>
+              <div style={{ flex:1, padding:'8px 8px 8px 12px', overflow:'hidden', minWidth:0 }}>
                 <TreemapContainer industries={industries} onSelect={setSelected} />
               </div>
 
