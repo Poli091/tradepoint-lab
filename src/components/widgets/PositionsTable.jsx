@@ -22,7 +22,6 @@ const SORT_COLS = [
   { key: 'value',        label: 'Mkt Value',  align: 'right',  minW: 100 },
   { key: 'chart',        label: 'Today',      align: 'center', minW: 95, noSort: true },
   { key: 'gain',         label: 'All-time P&L', align: 'right', minW: 130 },
-  { key: 'upside',       label: 'Upside ↑',  align: 'right',  minW: 80  },
   { key: 'conviction',   label: 'Conviction', align: 'right',  minW: 90  },
 ]
 
@@ -117,7 +116,7 @@ export default function PositionsTable({
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
                 // Hide less critical columns on mobile
-                if (isMobile && ['chart', 'upside'].includes(col.key)) return null
+                if (isMobile && ['chart'].includes(col.key)) return null
                 const active = sortBy === col.key
                 return (
                   <th key={col.key} onClick={() => { if (col.noSort) return; onSort(col.key) }} style={{ minWidth: col.minW,
@@ -206,22 +205,6 @@ export default function PositionsTable({
                     <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 10, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fPct(gainPct)}
                     </div>
-                  </td>
-
-                  {/* Upside — prefer engine's Wall Street consensus, fallback to manual */}
-                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {(() => {
-                      const upside = cv?.wallStreet?.upside ?? (pos.upside && pos.upside !== 0 ? pos.upside : null)
-                      if (upside == null || upside === 0) return <span style={{ color:'var(--txt-muted)', fontSize:11 }}>—</span>
-                      return (
-                        <span style={{
-                          fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700,
-                          color: upside >= 50 ? 'var(--green)' : upside >= 35 ? 'var(--amber)' : 'var(--txt-muted)',
-                        }}>
-                          +{upside.toFixed(1)}%
-                        </span>
-                      )
-                    })()}
                   </td>
 
                   {/* Conviction ring + grade */}
