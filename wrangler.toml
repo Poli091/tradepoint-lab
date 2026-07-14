@@ -16,7 +16,7 @@ compatibility_date = "2024-09-23"
 
 [[kv_namespaces]]
 binding    = "TRADEPOINT_KV"
-id         = "b6b9ac8b3fa84c45a396ab2b9f036b72"
+id         = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 # preview_id = "REPLACE_WITH_PREVIEW_ID"   # only needed for `wrangler dev`
 
 # ── API Key Secrets ───────────────────────────────────────────
@@ -44,13 +44,17 @@ id         = "b6b9ac8b3fa84c45a396ab2b9f036b72"
 # 4. Deploy: npx wrangler deploy
 
 [[d1_databases]]
-binding       = "TRADEPOINT_DB"
-database_name = "tradepoint-db"
-database_id   = "ba122b9c-4352-4ec5-8683-8a6999b44dfb"
+binding         = "TRADEPOINT_DB"
+database_name   = "tradepoint-db"
+database_id     = "REPLACE_WITH_D1_ID"
+migrations_dir  = "worker/migrations"  # Wrangler tracks applied migrations here
 
 # ── Cron Trigger — Weekly Snapshots ──────────────────────────
 # Runs every Sunday at 00:00 UTC
 # Scans all tickers cached in KV and saves conviction scores to D1
 
 [triggers]
-crons = ["0 0 * * SUN"]
+crons = [
+  "0 0 * * 0",    # Sunday 00:00 UTC — full weekly conviction snapshot
+  "0 22 * * 1-5"  # Mon-Fri 22:00 UTC (6pm EDT / 5pm EST) — daily RS calculation, guaranteed post-close
+]

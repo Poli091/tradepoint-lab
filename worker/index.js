@@ -803,7 +803,8 @@ async function handleOHLCV(ticker, range, keys, kv, db) {
   let data, cacheTtl
 
   if (r === '1D') {
-    const today = new Date().toISOString().split('T')[0]
+    // Use NY timezone for trading date — cron fires at 22:00 UTC which may be next day UTC
+  const today = new Date().toLocaleString('en-CA', { timeZone: 'America/New_York' }).split(',')[0].trim()
     const raw = await fetchJSON(
       `https://data.alpaca.markets/v2/stocks/${t}/bars?timeframe=5Min&start=${today}&limit=200&feed=iex&adjustment=split`,
       { headers: alpacaHdr }
@@ -1761,6 +1762,148 @@ Rules:
   const meta2 = buildMeta('portfolio','portfolio-review',604800,false)
   await kvSet(kv, cacheKey, data, 604800, meta2)
   return json({ data, meta:meta2 })
+}
+
+/* ── Daily RS Calculation (Mon-Fri 21:00 UTC) ────────────────────────
+   Runs AFTER market close. Processes all active constituents in batches.
+   - Fetches Alpaca multi-symbol bars (50 at a time)
+   - Computes RS vs SPY
+   - Upserts market_rs_daily (idempotent on analysis_date + symbol)
+   - Aggregates industry_trend_daily
+   - Invalidates market-map KV cache only after completion
+   - Uses "partial" status if some batches fail; UI shows last complete snapshot
+──────────────────────────────────────────────────────────────────────── */
+async function handleDailyRS(env) {
+  const db  = env.TRADEPOINT_DB
+  const kv  = env.TRADEPOINT_KV
+  if (!db || !env.ALPACA_KEY || !env.ALPACA_SECRET) {
+    console.log('[DailyRS] Missing D1 or Alpaca credentials — skipping')
+    return
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  console.log(`[DailyRS] Starting for ${today}`)
+
+  const alpacaHdr = { 'APCA-API-KEY-ID': env.ALPACA_KEY, 'APCA-API-SECRET-KEY': env.ALPACA_SECRET }
+  const BATCH_SIZE = 50
+
+  // Get SPY baseline first
+  const spyData = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&limit=260&feed=iex`,
+    { headers: alpacaHdr }
+  ).catch(e => { console.error('[DailyRS] SPY fetch failed:', e.message); return null })
+
+  const spyClose = (spyData?.bars?.SPY ?? []).map(b => b.c)
+  if (spyClose.length < 22) {
+    console.log('[DailyRS] Insufficient SPY data — skipping')
+    return
+  }
+  const spyRet = (n) => {
+    if (spyClose.length < n+1) return null
+    const prev = spyClose[spyClose.length-1-n]
+    return prev > 0 ? ((spyClose[spyClose.length-1] - prev) / prev) * 100 : null
+  }
+  const spyRs1m = spyRet(21), spyRs3m = spyRet(63), spyRs6m = spyRet(126)
+
+  // Get all active constituents
+  const members = await db.prepare(
+    `SELECT symbol, company_id, industry, sector FROM constituent_master WHERE active_to IS NULL ORDER BY symbol`
+  ).all().then(r => r.results ?? []).catch(() => [])
+
+  if (!members.length) { console.log('[DailyRS] No constituents in master — skipping'); return }
+
+  let totalProcessed = 0, totalInsufficient = 0, batchErrors = 0
+  const symbols = members.map(m => m.symbol)
+  const memberMap = Object.fromEntries(members.map(m => [m.symbol, m]))
+
+  // Process in batches of BATCH_SIZE
+  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+    const batch = symbols.slice(i, i + BATCH_SIZE)
+    const barsData = await fetchJSON(
+      `https://data.alpaca.markets/v2/stocks/bars?symbols=${batch.join(',')}&timeframe=1Day&limit=260&feed=iex`,
+      { headers: alpacaHdr }
+    ).catch(e => { console.error(`[DailyRS] Batch ${i} fetch error:`, e.message); batchErrors++; return null })
+
+    if (!barsData) continue
+
+    for (const symbol of batch) {
+      const bars   = barsData?.bars?.[symbol] ?? []
+      const closes = bars.map(b => b.c)
+      const m      = memberMap[symbol]
+
+      if (closes.length < 22) {
+        totalInsufficient++
+        await db.prepare(`
+          INSERT INTO market_rs_daily (analysis_date, symbol, company_id, industry, sector, data_quality)
+          VALUES (?, ?, ?, ?, ?, 'insufficient_history')
+          ON CONFLICT(analysis_date, symbol) DO UPDATE SET data_quality='insufficient_history'
+        `).bind(today, symbol, m.company_id, m.industry, m.sector).run().catch(() => {})
+        continue
+      }
+
+      const ret = (n) => {
+        if (closes.length < n+1) return null
+        const prev = closes[closes.length-1-n]
+        return prev > 0 ? ((closes[closes.length-1] - prev) / prev) * 100 : null
+      }
+      const rs1m = spyRs1m != null ? (ret(21) ?? 0) - spyRs1m : null
+      const rs3m = spyRs3m != null ? (ret(63) ?? 0) - spyRs3m : null
+      const rs6m = spyRs6m != null ? (ret(126) ?? 0) - spyRs6m : null
+      const trend = rs1m != null && rs3m != null && rs6m != null
+        ? rs1m * 0.40 + rs3m * 0.35 + rs6m * 0.25 : null
+
+      await db.prepare(`
+        INSERT INTO market_rs_daily
+          (analysis_date, symbol, company_id, industry, sector, rs_1m, rs_3m, rs_6m, trend_score, data_quality)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok')
+        ON CONFLICT(analysis_date, symbol) DO UPDATE SET
+          rs_1m=excluded.rs_1m, rs_3m=excluded.rs_3m, rs_6m=excluded.rs_6m,
+          trend_score=excluded.trend_score, data_quality='ok'
+      `).bind(today, symbol, m.company_id, m.industry, m.sector, rs1m, rs3m, rs6m, trend).run().catch(() => {})
+      totalProcessed++
+    }
+  }
+
+  // Coverage-based snapshot states
+  const totalAttempted   = totalProcessed + totalInsufficient
+  const coveragePct      = symbols.length > 0
+    ? Math.round((totalProcessed / symbols.length) * 100) : 0
+  const snapshotStatus   = coveragePct >= 95 ? 'complete'
+                         : coveragePct >= 85 ? 'partial'
+                         : 'failed'
+
+  console.log(`[DailyRS] coverage=${coveragePct}% (${totalProcessed}/${symbols.length}) status=${snapshotStatus}`)
+
+  if (snapshotStatus === 'complete') {
+    // Full snapshot: aggregate industries + invalidate KV cache for UI
+    await aggregateIndustries(db, today)
+    await kv.delete('market-map:latest:v2').catch(() => {})
+    console.log(`[DailyRS] Complete snapshot published for ${today}`)
+  } else if (snapshotStatus === 'partial') {
+    // Partial: save to market_rs_daily for diagnostics but DON'T invalidate KV
+    // UI will keep showing last complete snapshot
+    await aggregateIndustries(db, today)  // save partial aggregation for debugging
+    console.log(`[DailyRS] Partial snapshot saved for ${today} — UI keeps last complete`)
+  } else {
+    // Failed: don't touch anything — UI keeps last complete snapshot
+    console.log(`[DailyRS] Failed snapshot for ${today} (${coveragePct}%) — no changes published`)
+  }
+
+  // Record run status in dedicated table (never in industry_trend_daily)
+  await db.prepare(`
+    INSERT INTO market_map_runs
+      (analysis_date, status, symbols_expected, symbols_processed, symbols_insufficient,
+       coverage_pct, batches_total, batches_failed, started_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(analysis_date) DO UPDATE SET
+      status=excluded.status, symbols_processed=excluded.symbols_processed,
+      coverage_pct=excluded.coverage_pct, batches_failed=excluded.batches_failed,
+      completed_at=excluded.completed_at
+  `).bind(
+    today, snapshotStatus, symbols.length, totalProcessed, totalInsufficient,
+    coveragePct, Math.ceil(symbols.length / BATCH_SIZE), batchErrors,
+    new Date().toISOString(), new Date().toISOString()
+  ).run().catch(e => console.error('[DailyRS] Failed to write run status:', e.message))
 }
 
 async function handleWeeklySnapshot(env) {
@@ -3332,14 +3475,520 @@ async function handleStooqTest(ticker, db) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   MODULE: MARKET MAP — Constituent Master + RS Calculation
+   Architecture:
+   - constituent_master: source of truth for S&P 500 universe
+   - market_rs_daily: derived RS per security (no raw OHLCV stored)
+   - industry_trend_daily: pre-aggregated per industry for UI
+   - /api/market-map/latest: UI reads this, never scans raw tables
+════════════════════════════════════════════════════════════ */
+
+/** Get provider-specific symbol for a constituent — avoids ad-hoc string transforms */
+function getProviderSymbol(constituent, provider) {
+  if (!constituent) return null
+  switch (provider) {
+    case 'alpaca':   return constituent.alpaca_symbol  ?? constituent.symbol
+    case 'yahoo':    return constituent.yahoo_symbol   ?? constituent.symbol?.replace(/\./, '-')
+    case 'finnhub':  return constituent.finnhub_symbol ?? constituent.symbol
+    case 'display':  return constituent.display_symbol ?? constituent.symbol
+    case 'source':   return constituent.source_symbol  ?? constituent.symbol
+    default:         return constituent.symbol
+  }
+}
+
+/** Compute median of a sorted array */
+function median(arr) {
+  if (!arr.length) return null
+  const s = [...arr].sort((a,b) => a-b)
+  const m = Math.floor(s.length/2)
+  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2
+}
+
+/** Classify rotation state from RS horizons */
+function classifyRotationState(rs1m, rs3m, rs6m) {
+  if (rs1m == null || rs3m == null || rs6m == null) return null
+  if (rs6m < -2 && rs1m > 0)  return 'Reversing Up'
+  if (rs6m > 2  && rs1m < 0)  return 'Reversing Down'
+  if (Math.abs(rs1m) < 2)     return 'Neutral'
+  if (rs1m > rs3m && rs1m > 0) return 'Strengthening'
+  if (rs1m < rs3m && rs1m < 0) return 'Weakening'
+  return rs1m > 0 ? 'Leading' : 'Lagging'
+}
+
+/* ── GET /api/market-map/latest — pre-computed industry aggregates ── */
+async function handleMarketMapLatest(request, db, kv) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+
+  const url    = new URL(request.url)
+  const date   = url.searchParams.get('date')  // optional override
+  const refresh = url.searchParams.get('refresh') === '1'
+
+  const cacheKey = `market-map:latest:v2`
+  if (!refresh) {
+    const { value } = await kvGet(kv, cacheKey)
+    if (value) return json({ ...value, fromCache: true })
+  }
+
+  // Read only from 'complete' runs — never from partial or failed
+  // This guarantees the UI always shows a consistent, fully-computed snapshot
+  const latestRun = await db.prepare(
+    `SELECT analysis_date, status, coverage_pct, symbols_processed, symbols_expected
+     FROM market_map_runs
+     WHERE status = 'complete'
+     ORDER BY analysis_date DESC LIMIT 1`
+  ).first().catch(() => null)
+
+  const targetDate = date ?? latestRun?.analysis_date
+  if (!targetDate) return json({
+    tickers: [], industries: [], fromCache: false,
+    message: 'No complete snapshot yet — run daily RS calculation first',
+    hint: 'POST /api/admin/backfill-rs to populate initial data',
+  })
+
+  // Load industry aggregates
+  const industries = await db.prepare(
+    `SELECT * FROM industry_trend_daily WHERE analysis_date = ? ORDER BY trend_score DESC`
+  ).bind(targetDate).all().then(r => r.results ?? []).catch(() => [])
+
+  // Load member details for each industry (latest RS)
+  const members = await db.prepare(
+    `SELECT m.symbol, m.company_id, m.company_name, m.industry, m.sector, m.spy_weight,
+            r.rs_1m, r.rs_3m, r.rs_6m, r.trend_score, r.data_quality,
+            a.grade, a.final_score
+     FROM constituent_master m
+     LEFT JOIN market_rs_daily r ON r.symbol = m.symbol AND r.analysis_date = ?
+     LEFT JOIN (
+       SELECT ticker, grade, final_score FROM analyses
+       WHERE analysis_date = (SELECT MAX(analysis_date) FROM analyses WHERE ticker = analyses.ticker)
+     ) a ON a.ticker = m.symbol
+     WHERE m.active_to IS NULL
+     ORDER BY r.trend_score DESC NULLS LAST`
+  ).bind(targetDate).all().then(r => r.results ?? []).catch(() => [])
+
+  // Build response matching existing SectorTrendsView format
+  const industryMap = {}
+  for (const ind of industries) {
+    industryMap[ind.industry] = {
+      name: ind.industry, sector: ind.sector,
+      trendScore: ind.trend_score, rs1M: ind.median_rs_1m,
+      rs3M: ind.median_rs_3m, rs6M: ind.median_rs_6m,
+      rotation: ind.rotation_state,
+      dataCount: ind.eligible_count, tickerCount: ind.member_count,
+      coveragePct: ind.coverage_pct,
+      tickers: [],
+    }
+  }
+  for (const m of members) {
+    if (!industryMap[m.industry]) continue
+    industryMap[m.industry].tickers.push({
+      ticker: m.symbol, company: m.company_name,
+      trendScore: m.trend_score, rs1M: m.rs_1m, rs3M: m.rs_3m, rs6M: m.rs_6m,
+      grade: m.grade, score: m.final_score, spyWeight: m.spy_weight,
+    })
+  }
+
+  const result = {
+    asOf: targetDate,
+    universeVersion: 'v1.0',
+    industryCount: industries.length,
+    tickers: Object.values(industryMap),
+    snapshotStatus: latestRun?.status ?? 'complete',
+    coveragePct: latestRun?.coverage_pct ?? null,
+    symbolsProcessed: latestRun?.symbols_processed ?? null,
+    symbolsExpected: latestRun?.symbols_expected ?? null,
+    fromCache: false,
+  }
+
+  await kvSet(kv, cacheKey, result, 6*60*60, buildMeta('market','market-map',21600,false))
+  return json(result)
+}
+
+/* ── POST /api/admin/constituent-import — load constituent master ── */
+async function handleConstituentImport(request, db, keys) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const body = await request.json().catch(() => ({}))
+  const constituents  = body.constituents ?? []
+  const version       = body.constituentVersion ?? body.version ?? `manual-${new Date().toISOString().split('T')[0]}`
+  const source        = body.source ?? 'manual'
+  const dryRun        = body.dryRun === true
+  const now           = new Date().toISOString().split('T')[0]
+
+  if (!Array.isArray(constituents) || constituents.length < 10)
+    return json({ error: 'constituents array required (minimum 10 entries for safety)' }, 400)
+
+  // ── Validation pass ────────────────────────────────────────────────────
+  const seenSymbols  = new Set()
+  const seenCompanies = {}   // companyId → [symbols]
+  let weightTotal    = 0
+  const invalid      = []
+  const unclassified = []
+  const duplicateSymbols = []
+  const normalizedRows   = []
+
+  for (const c of constituents) {
+    const symbol = (c.symbol ?? c.normalizedSymbol ?? '').toUpperCase().replace(/\./g, '-')
+    if (!symbol) { invalid.push({ raw: c, reason: 'missing symbol' }); continue }
+
+    // Duplicate detection
+    if (seenSymbols.has(symbol)) { duplicateSymbols.push(symbol); continue }
+    seenSymbols.add(symbol)
+
+    // Required field check
+    if (!c.company_name && !c.companyName) { invalid.push({ symbol, reason: 'missing company_name' }); continue }
+
+    const companyId   = c.company_id ?? c.companyId ?? symbol
+    const companyName = c.company_name ?? c.companyName
+    const sector      = c.sector ?? null
+    const industry    = c.industry ?? null
+    const spyWeight   = parseFloat(c.spy_weight ?? c.spyWeight ?? 0) || null
+    const needsReview = !sector || !industry || c.needsReview === true
+
+    if (needsReview) unclassified.push({ symbol, companyName, sector, industry })
+
+    if (spyWeight) weightTotal += spyWeight
+
+    // Track companies with multiple share classes
+    if (!seenCompanies[companyId]) seenCompanies[companyId] = []
+    seenCompanies[companyId].push(symbol)
+
+    // Provider-specific symbol normalization
+    const sourceSymbol   = c.sourceSymbol ?? c.source_symbol ?? c.symbol ?? symbol
+    const alpacaSymbol   = c.alpacaSymbol  ?? c.alpaca_symbol  ?? symbol  // most APIs use same as canonical
+    const yahooSymbol    = c.yahooSymbol   ?? c.yahoo_symbol   ?? symbol.replace(/\./, '-')
+    const finnhubSymbol  = c.finnhubSymbol ?? c.finnhub_symbol ?? symbol
+    const displaySymbol  = c.displaySymbol ?? c.display_symbol ?? sourceSymbol
+
+    // Provider symbol conflict detection
+    const allProviderSymbols = [alpacaSymbol, yahooSymbol, finnhubSymbol]
+
+    // Dual taxonomy
+    const gicsSector   = c.gics_sector   ?? c.gicsSector   ?? null
+    const gicsIndustry = c.gics_industry ?? c.gicsIndustry ?? null
+    const tpSector     = sector   // TradePoint classification (may differ from GICS)
+    const tpIndustry   = industry
+
+    // Classification provenance
+    const classificationSource     = c.classificationSource ?? c.classification_source ?? (needsReview ? 'ai-assisted' : 'manual')
+    const classificationConfidence = c.classificationConfidence ?? c.classification_confidence ?? (needsReview ? 'medium' : 'high')
+    const sedol       = c.sedol ?? null
+    const securityId  = c.security_id ?? c.securityId ?? null
+
+    normalizedRows.push({
+      symbol, companyId, companyName,
+      sector: tpSector ?? 'Unclassified', industry: tpIndustry ?? 'Unclassified',
+      gicsSector, gicsIndustry, spyWeight,
+      activeFrom: c.active_from ?? c.activeFrom ?? now,
+      needsReview,
+      sourceSymbol, alpacaSymbol, yahooSymbol, finnhubSymbol, displaySymbol,
+      sedol, securityId,
+      classificationSource, classificationConfidence,
+    })
+  }
+
+  // Strict validation — equity holdings only (exclude cash/non-equity rows)
+  // State Street files may include cash positions that inflate/distort weight totals
+  const equityRows   = normalizedRows.filter(r => r.spyWeight && r.spyWeight > 0.001)
+  const equityWeight = equityRows.reduce((s, r) => s + (r.spyWeight ?? 0), 0)
+  const equityCount  = seenSymbols.size
+
+  // Strict thresholds: 98-102% equity weight, 490-520 securities
+  const weightOk = weightTotal === 0 || (equityWeight >= 98 && equityWeight <= 102)
+  const countOk  = equityCount >= 490 && equityCount <= 520
+  const duplicateCompanyIds = Object.entries(seenCompanies)
+    .filter(([, syms]) => syms.length > 1).map(([id, syms]) => ({ companyId: id, symbols: syms }))
+
+  // canCommit requires both weight and count within bounds, no invalids
+  const canCommit = invalid.length === 0 && duplicateSymbols.length === 0 && weightOk && countOk
+
+  // Dry-run: return analysis without writing
+  if (dryRun) {
+    // Compare against existing master
+    const existing = await db.prepare(`SELECT symbol FROM constituent_master WHERE active_to IS NULL`)
+      .all().then(r => new Set(r.results.map(x => x.symbol))).catch(() => new Set())
+    const newSymbols = normalizedRows.filter(r => !existing.has(r.symbol)).map(r => r.symbol)
+    const updateSymbols = normalizedRows.filter(r => existing.has(r.symbol)).map(r => r.symbol)
+    const deactivated = [...existing].filter(s => !seenSymbols.has(s))
+    // Detect provider symbol conflicts (two securities map to same provider symbol)
+    const providerSymbolConflicts = []
+    const seenProviderSymbols = { alpaca: {}, yahoo: {}, finnhub: {} }
+    for (const r of normalizedRows) {
+      for (const [prov, sym] of [['alpaca', r.alpacaSymbol], ['yahoo', r.yahooSymbol], ['finnhub', r.finnhubSymbol]]) {
+        if (!sym) continue
+        if (seenProviderSymbols[prov][sym]) providerSymbolConflicts.push({ provider: prov, symbol: sym, securities: [seenProviderSymbols[prov][sym], r.symbol] })
+        else seenProviderSymbols[prov][sym] = r.symbol
+      }
+    }
+
+    // Weight changes (from existing master)
+    const existing = await db.prepare(`SELECT symbol, spy_weight, sector, industry FROM constituent_master WHERE active_to IS NULL`)
+      .all().then(r => Object.fromEntries(r.results.map(x => [x.symbol, x]))).catch(() => ({}))
+    const newSymbols    = normalizedRows.filter(r => !existing[r.symbol]).map(r => r.symbol)
+    const updateSymbols = normalizedRows.filter(r => !!existing[r.symbol])
+    const deactivated   = [...seenSymbols].filter(s => !seenSymbols.has(s))  // symbols leaving index
+    const deactivatedList = Object.keys(existing).filter(s => !seenSymbols.has(s))
+    const materialWeightChanges = updateSymbols.filter(r => existing[r.symbol] && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) >= 0.10)
+    const minorWeightChanges    = updateSymbols.filter(r => existing[r.symbol] && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) > 0 && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) < 0.10)
+
+    return json({
+      dryRun: true, canCommit, constituentVersion: version,
+      received: constituents.length,
+      equityCount, equityWeight: Math.round(equityWeight * 100) / 100,
+      weightOk, countOk,
+      inserted: newSymbols.length, newSecurities: newSymbols,
+      updated: updateSymbols.length,
+      materialWeightChanges: materialWeightChanges.map(r => ({ symbol: r.symbol, old: existing[r.symbol]?.spy_weight, new: r.spyWeight })),
+      minorWeightChangesCount: minorWeightChanges.length,
+      deactivated: deactivatedList.length, deactivatedList,
+      unclassified: unclassified.length, unclassifiedList: unclassified,
+      invalid: invalid.length,
+      duplicateSymbols,
+      duplicateCompanyIds,
+      providerSymbolConflicts,
+      needsReviewCount: normalizedRows.filter(r => r.needsReview).length,
+    })
+  }
+
+  if (!canCommit)
+    return json({ error: 'Validation failed — run dryRun:true first to review issues',
+      invalid: invalid.length, duplicateSymbols, weightOk }, 400)
+
+  // ── Commit pass ────────────────────────────────────────────────────────
+  let inserted = 0, updated = 0, unchanged = 0
+
+  // Get existing records for comparison
+  const existing = await db.prepare(`SELECT symbol, sector, industry, spy_weight FROM constituent_master WHERE active_to IS NULL`)
+    .all().then(r => Object.fromEntries(r.results.map(x => [x.symbol, x]))).catch(() => ({}))
+
+  for (const r of normalizedRows) {
+    const prev = existing[r.symbol]
+    try {
+      await db.prepare(`
+        INSERT INTO constituent_master
+          (symbol, company_id, company_name, sector, industry, spy_weight,
+           display_symbol, source_symbol, alpaca_symbol, yahoo_symbol, finnhub_symbol,
+           sedol, security_id, gics_sector, gics_industry,
+           tradepoint_sector, tradepoint_industry,
+           classification_source, classification_confidence, needs_review,
+           active_from, constituent_version, source, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET
+          company_id=excluded.company_id, company_name=excluded.company_name,
+          sector=excluded.sector, industry=excluded.industry,
+          spy_weight=excluded.spy_weight, display_symbol=excluded.display_symbol,
+          source_symbol=excluded.source_symbol, alpaca_symbol=excluded.alpaca_symbol,
+          yahoo_symbol=excluded.yahoo_symbol, finnhub_symbol=excluded.finnhub_symbol,
+          sedol=excluded.sedol, gics_sector=excluded.gics_sector,
+          gics_industry=excluded.gics_industry,
+          tradepoint_sector=excluded.tradepoint_sector,
+          tradepoint_industry=excluded.tradepoint_industry,
+          classification_source=excluded.classification_source,
+          classification_confidence=excluded.classification_confidence,
+          needs_review=excluded.needs_review,
+          constituent_version=excluded.constituent_version,
+          source=excluded.source, updated_at=excluded.updated_at, active_to=NULL
+      `).bind(
+        r.symbol, r.companyId, r.companyName, r.sector, r.industry, r.spyWeight,
+        r.displaySymbol, r.sourceSymbol, r.alpacaSymbol, r.yahooSymbol, r.finnhubSymbol,
+        r.sedol, r.securityId, r.gicsSector, r.gicsIndustry,
+        r.sector, r.industry,
+        r.classificationSource, r.classificationConfidence, r.needsReview ? 1 : 0,
+        r.activeFrom, version, source, now
+      ).run()
+      if (!prev) inserted++
+      else if (prev.sector !== r.sector || Math.abs((prev.spy_weight??0) - (r.spyWeight??0)) > 0.001) updated++
+      else unchanged++
+    } catch(e) { invalid.push({ symbol: r.symbol, reason: e.message }) }
+  }
+
+  // Mark missing symbols as deactivated (active_to = today) — no physical delete
+  const deactivated = Object.keys(existing).filter(s => !seenSymbols.has(s))
+  for (const s of deactivated) {
+    await db.prepare(`UPDATE constituent_master SET active_to=? WHERE symbol=? AND active_to IS NULL`)
+      .bind(now, s).run().catch(() => {})
+  }
+
+  return json({
+    ok: true, dryRun: false, constituentVersion: version,
+    received: normalizedRows.length, inserted, updated, unchanged,
+    deactivated: deactivated.length, deactivatedList: deactivated,
+    unclassified: unclassified.length, unclassifiedList: unclassified,
+    invalid: invalid.length, duplicateSymbols,
+    duplicateCompanyIds: duplicateCompanyIds.length,
+    weightTotalPct: Math.round(weightTotal * 100) / 100,
+    canCommit,
+  })
+}
+
+/* ── POST /api/admin/backfill-rs — compute RS for a batch of symbols ── */
+async function handleBackfillRS(request, db, kv, keys) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+  if (!keys.alpacaKey || !keys.alpacaSecret) return json({ error: 'Alpaca keys required' }, 401)
+
+  const body = await request.json().catch(() => ({}))
+  const symbols = (body.symbols ?? []).slice(0, 50)  // max 50 per call to stay within Worker limits
+  const targetDate = body.date ?? new Date().toISOString().split('T')[0]
+
+  if (!symbols.length) return json({ error: 'symbols array required' }, 400)
+
+  const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+
+  // Fetch SPY bars for RS baseline (260 sessions = ~13 months)
+  const spyBars = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&limit=260&feed=iex`,
+    { headers: alpacaHdr }
+  ).catch(() => null)
+  const spyClose = (spyBars?.bars?.SPY ?? []).map(b => b.c)
+  if (spyClose.length < 22) return json({ error: 'Insufficient SPY data for RS calculation' }, 503)
+
+  const spyRet = (n) => {
+    if (spyClose.length < n+1) return null
+    const latest = spyClose[spyClose.length-1]
+    const past   = spyClose[spyClose.length-1-n]
+    return past > 0 ? ((latest - past) / past) * 100 : null
+  }
+  const spyRs1m = spyRet(21), spyRs3m = spyRet(63), spyRs6m = spyRet(126)
+
+  // Fetch multi-symbol bars in one Alpaca call
+  const symbolsParam = symbols.join(',')
+  const barsData = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=260&feed=iex`,
+    { headers: alpacaHdr }
+  ).catch(() => null)
+
+  let processed = 0, insufficient = 0, errors = []
+
+  for (const symbol of symbols) {
+    const bars = barsData?.bars?.[symbol] ?? []
+    const closes = bars.map(b => b.c)
+
+    if (closes.length < 22) {
+      insufficient++
+      await db.prepare(`
+        INSERT INTO market_rs_daily (analysis_date, symbol, company_id, industry, sector, data_quality)
+        SELECT ?, ?, company_id, industry, sector, 'insufficient_history'
+        FROM constituent_master WHERE symbol = ?
+        ON CONFLICT(analysis_date, symbol) DO UPDATE SET data_quality='insufficient_history'
+      `).bind(targetDate, symbol, symbol).run().catch(() => {})
+      continue
+    }
+
+    const ret = (n) => {
+      if (closes.length < n+1) return null
+      const latest = closes[closes.length-1]
+      const past   = closes[closes.length-1-n]
+      return past > 0 ? ((latest - past) / past) * 100 : null
+    }
+
+    const tickRs1m = ret(21), tickRs3m = ret(63), tickRs6m = ret(126)
+    const rs1m = (tickRs1m != null && spyRs1m != null) ? tickRs1m - spyRs1m : null
+    const rs3m = (tickRs3m != null && spyRs3m != null) ? tickRs3m - spyRs3m : null
+    const rs6m = (tickRs6m != null && spyRs6m != null) ? tickRs6m - spyRs6m : null
+
+    const trendScore = rs1m != null && rs3m != null && rs6m != null
+      ? rs1m * 0.40 + rs3m * 0.35 + rs6m * 0.25
+      : null
+
+    try {
+      await db.prepare(`
+        INSERT INTO market_rs_daily
+          (analysis_date, symbol, company_id, industry, sector, rs_1m, rs_3m, rs_6m, trend_score, data_quality)
+        SELECT ?, ?, company_id, industry, sector, ?, ?, ?, ?, 'ok'
+        FROM constituent_master WHERE symbol = ?
+        ON CONFLICT(analysis_date, symbol) DO UPDATE SET
+          rs_1m=excluded.rs_1m, rs_3m=excluded.rs_3m, rs_6m=excluded.rs_6m,
+          trend_score=excluded.trend_score, data_quality='ok'
+      `).bind(targetDate, symbol, rs1m, rs3m, rs6m, trendScore, symbol).run()
+      processed++
+    } catch(e) { errors.push(`${symbol}: ${e.message}`) }
+  }
+
+  // After RS calculation, aggregate industries for this date
+  await aggregateIndustries(db, targetDate)
+  // Invalidate cache
+  await kv.delete('market-map:latest:v2').catch(() => {})
+
+  return json({ ok: true, date: targetDate, processed, insufficient, errors: errors.length ? errors : undefined })
+}
+
+/* ── Aggregate market_rs_daily → industry_trend_daily ── */
+async function aggregateIndustries(db, date) {
+  // Get all RS for this date, deduplicated by company_id (pick highest trend_score per company)
+  const rows = await db.prepare(`
+    SELECT r.industry, r.sector, r.company_id,
+           r.rs_1m, r.rs_3m, r.rs_6m, r.trend_score, r.data_quality
+    FROM market_rs_daily r
+    WHERE r.analysis_date = ?
+    AND r.data_quality = 'ok'
+    GROUP BY r.company_id, r.industry
+    HAVING r.trend_score = MAX(r.trend_score)
+  `).bind(date).all().then(r => r.results ?? []).catch(() => [])
+
+  // Get member counts per industry
+  const memberCounts = await db.prepare(`
+    SELECT industry, COUNT(*) as cnt FROM constituent_master
+    WHERE active_to IS NULL GROUP BY industry
+  `).all().then(r => r.results ?? []).catch(() => [])
+  const memberMap = Object.fromEntries(memberCounts.map(r => [r.industry, r.cnt]))
+
+  // Group by industry
+  const byIndustry = {}
+  for (const r of rows) {
+    if (!byIndustry[r.industry]) byIndustry[r.industry] = { sector: r.sector, members: [] }
+    byIndustry[r.industry].members.push(r)
+  }
+
+  for (const [industry, data] of Object.entries(byIndustry)) {
+    const ms = data.members
+    const rs1ms = ms.map(m => m.rs_1m).filter(v => v != null)
+    const rs3ms = ms.map(m => m.rs_3m).filter(v => v != null)
+    const rs6ms = ms.map(m => m.rs_6m).filter(v => v != null)
+    const med1m = median(rs1ms), med3m = median(rs3ms), med6m = median(rs6ms)
+    const trendScore = med1m != null && med3m != null && med6m != null
+      ? med1m * 0.40 + med3m * 0.35 + med6m * 0.25 : null
+    const rotation = classifyRotationState(med1m, med3m, med6m)
+    const memberCount = memberMap[industry] ?? ms.length
+    const eligibleCount = ms.length
+    const coveragePct = memberCount > 0 ? Math.round(eligibleCount / memberCount * 100) : 0
+
+    await db.prepare(`
+      INSERT INTO industry_trend_daily
+        (analysis_date, industry, sector, member_count, eligible_count, coverage_pct,
+         median_rs_1m, median_rs_3m, median_rs_6m, trend_score, rotation_state)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(analysis_date, industry) DO UPDATE SET
+        eligible_count=excluded.eligible_count, coverage_pct=excluded.coverage_pct,
+        median_rs_1m=excluded.median_rs_1m, median_rs_3m=excluded.median_rs_3m,
+        median_rs_6m=excluded.median_rs_6m, trend_score=excluded.trend_score,
+        rotation_state=excluded.rotation_state
+    `).bind(date, industry, data.sector, memberCount, eligibleCount, coveragePct,
+             med1m, med3m, med6m, trendScore, rotation).run().catch(() => {})
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
    MODULE 5 — ROUTER
    Critical fix: ALL handlers use `await` so async errors are
    properly caught by the outer try-catch.
 ════════════════════════════════════════════════════════════ */
 export default {
-  // Cron Trigger — runs every Sunday at 00:00 UTC
+  // Cron Triggers:
+  //   "0 0 * * 0"   → Sunday 00:00 UTC — full weekly conviction snapshot
+  //   "0 21 * * 1-5" → Mon-Fri 21:00 UTC — daily RS + industry aggregation
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(handleWeeklySnapshot(env))
+    const cron  = event.cron ?? ''
+    const isDaily  = cron === '0 21 * * 1-5'
+    const isWeekly = cron === '0 0 * * 0'
+    if (isDaily)  ctx.waitUntil(handleDailyRS(env))
+    if (isWeekly) ctx.waitUntil(handleWeeklySnapshot(env))
+    // If cron string doesn't match (e.g. manual trigger), run both
+    if (!isDaily && !isWeekly) {
+      ctx.waitUntil(Promise.all([handleDailyRS(env), handleWeeklySnapshot(env)]))
+    }
   },
 
   async fetch(request, env) {
