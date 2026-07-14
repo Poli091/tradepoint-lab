@@ -3847,27 +3847,10 @@ async function handleBackfillRS(request, db, kv, keys) {
 
   // Fetch all symbols from Alpaca (without SPY if D1 had it)
   const batchSymbols = spyClose.length >= 22 ? symbols : ['SPY', ...symbols.filter(s => s !== 'SPY')]
-  const symbolsParam = batchSymbols.join(',')
-  // Date range required — without it Alpaca returns only the latest bar
-  const endDate   = new Date().toISOString().split('T')[0]
-  const startDate = new Date(Date.now() - 400*24*60*60*1000).toISOString().split('T')[0]
-  const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&start=${startDate}&end=${endDate}&limit=300`,
-    { headers: alpacaHdr }
-  ).catch(e => { console.error('[BackfillRS] Alpaca fetch error:', e.message); return null })
-  console.log(`[BackfillRS] Alpaca returned ${Object.keys(barsData?.bars ?? {}).length} symbols, first ticker bars: ${(Object.values(barsData?.bars ?? {})[0] ?? []).length}`)
-
-  // If D1 didn't have SPY, extract from Alpaca response
-  if (spyClose.length < 22) {
-    const alpacaSpyBars = barsData?.bars?.SPY ?? []
-    spyClose = alpacaSpyBars.map(b => b.c).filter(v => v > 0)
-  }
-
   if (spyClose.length < 22) return json({
     error: 'Insufficient SPY data for RS calculation',
     barsReceived: spyClose.length,
     d1Bars: spyD1?.results?.length ?? 0,
-    alpacaSymbols: barsData ? Object.keys(barsData.bars ?? {}).length : 0,
     hint: 'Load SPY in PriceChart (1Y) to populate D1 cache, then retry'
   }, 503)
 
@@ -3879,11 +3862,30 @@ async function handleBackfillRS(request, db, kv, keys) {
   }
   const spyRs1m = spyRet(21), spyRs3m = spyRet(63), spyRs6m = spyRet(126)
 
+  // Single-symbol Alpaca endpoint — same as OHLCV handler (works on free IEX plan)
+  const endDate   = new Date().toISOString().split('T')[0]
+  const startDate = new Date(Date.now() - 400*24*60*60*1000).toISOString().split('T')[0]
+
   let processed = 0, insufficient = 0, errors = []
 
   for (const symbol of symbols) {
-    const bars = barsData?.bars?.[symbol] ?? []
-    const closes = bars.map(b => b.c)
+    // Check D1 cache first (already fetched by PriceChart)
+    const d1Bars = await db.prepare(
+      `SELECT close FROM ohlcv_bars WHERE ticker=? AND res='D' ORDER BY bar_date DESC LIMIT 300`
+    ).bind(symbol).all().catch(() => null)
+
+    let closes = d1Bars?.results?.length >= 22
+      ? d1Bars.results.map(r => r.close).reverse()
+      : []
+
+    // Alpaca single-symbol if not in D1
+    if (closes.length < 22) {
+      const raw = await fetchJSON(
+        `https://data.alpaca.markets/v2/stocks/${symbol}/bars?timeframe=1Day&start=${startDate}&end=${endDate}&limit=300&feed=iex&adjustment=split`,
+        { headers: alpacaHdr }
+      ).catch(() => null)
+      closes = (raw?.bars ?? []).map(b => b.c).filter(v => v > 0)
+    }
 
     if (closes.length < 22) {
       insufficient++
