@@ -132,6 +132,10 @@ async function fhGet(path, key) {
 
 const delay = ms => new Promise(r => setTimeout(r, ms))
 
+// Current Conviction Engine model version — update here when methodology changes
+// Used in: analyses/grades endpoint, batch scoring, model_version column
+const CURRENT_MODEL_VERSION = 'v1.0'
+
 
 /* ════════════════════════════════════════════════════════════
    MODULE 4 — HANDLERS
@@ -4190,7 +4194,7 @@ export default {
                     ORDER BY analysis_date DESC, rowid DESC
                   ) AS rn
                 FROM analyses
-                WHERE model_version = 'v1.0'
+                WHERE model_version = '` + CURRENT_MODEL_VERSION + `''
               )
               SELECT
                 l.ticker, l.grade, l.final_score, l.analysis_date, l.model_version,
@@ -4227,7 +4231,7 @@ export default {
               spyTotal,
               spyCovered,
               coveragePct:     spyTotal > 0 ? Math.round(spyCovered / spyTotal * 100) : 0,
-              currentModel:    'v1.0',
+              currentModel:    CURRENT_MODEL_VERSION,
               staleThreshold:  30,
             })
           }
