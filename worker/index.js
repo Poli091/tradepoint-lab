@@ -4293,6 +4293,17 @@ export default {
           return await handleBackfillRS(request, db, kv, keys)
         case 'set-targets':
           return await handleSetTargets(request, kv, keys)
+        case 'run-weekly-snapshot': {
+          const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+          if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+          // Run weekly snapshot synchronously and return result
+          try {
+            await handleWeeklySnapshot(env)
+            return json({ ok: true, message: 'Weekly snapshot completed' })
+          } catch(e) {
+            return json({ ok: false, error: e.message }, 500)
+          }
+        }
         case 'analyst-refresh': {
           const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
           if (!isAdmin) return json({ error: 'Admin key required' }, 401)
