@@ -3043,8 +3043,16 @@ async function handleOHLCVForce(ticker, range, keys, db) {
 async function yahooOHLCV(ticker, rangeStr) {
   // rangeStr: '2y', '5y', '10y'
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${rangeStr}&includePrePost=false`
+  // Full browser-like headers — Yahoo Finance blocks minimal User-Agent strings
   const data = await fetchJSON(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://finance.yahoo.com/',
+      'Origin': 'https://finance.yahoo.com',
+    }
   }).catch(() => null)
   const result = data?.chart?.result?.[0]
   if (!result?.timestamp?.length) return []

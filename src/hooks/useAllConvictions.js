@@ -11,25 +11,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
 
-/** Fetch analyst price target directly from Yahoo Finance (client-side, bypasses Cloudflare block) */
-async function fetchAnalystTarget(ticker) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData`
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
-    if (!res.ok) return null
-    const data = await res.json()
-    const fd = data?.quoteSummary?.result?.[0]?.financialData
-    if (!fd) return null
-    return {
-      targetMean:         fd.targetMeanPrice?.raw   ?? null,
-      targetHigh:         fd.targetHighPrice?.raw   ?? null,
-      targetLow:          fd.targetLowPrice?.raw    ?? null,
-      analystCount:       fd.numberOfAnalystOpinions?.raw ?? 0,
-      recommendationMean: fd.recommendationMean?.raw ?? null,
-      recommendationKey:  fd.recommendationKey      ?? null,
-    }
-  } catch { return null }
-}
+// Analyst targets now fetched via Worker with browser-like headers
+// Client-side Yahoo fetch removed (CORS blocked from production domain)
 import { cache } from '../utils/cache.js'
 import { runConviction }           from '../conviction/index.js'
 
@@ -75,17 +58,7 @@ export function useAllConvictions(positions = [], prices = {}) {
           ])
 
           if (fundResult?.data) {
-            let fundData = { ...fundResult.data }
-
-            // If Worker couldn't get price target (Finnhub 403 on free plan, Yahoo blocked from Workers)
-            // fetch directly from Yahoo Finance client-side — browser is not blocked
-            if (fundData.targetMean == null) {
-              const yahooTarget = await fetchAnalystTarget(pos.ticker)
-              if (yahooTarget?.targetMean) {
-                fundData = { ...fundData, ...yahooTarget }
-                console.log(`[Analyst] ${pos.ticker} target from Yahoo client: $${yahooTarget.targetMean}`)
-              }
-            }
+            const fundData = fundResult.data
 
             const conviction = runConviction({
               fundamentals: fundData,
