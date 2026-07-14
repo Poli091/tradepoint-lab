@@ -385,8 +385,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
             </button>
           )}
           </div>{/* end Row 1 */}
-          {/* Row 2: alignment score + tabs + action buttons */}
-          <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0, flexWrap:'wrap' }}>
+          {/* Row 2: full width, space-between */}
+          <div style={{ display:'flex', gap:6, alignItems:'center', width:'100%', justifyContent:'space-between' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {swingResult && result && (() => {
               const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
