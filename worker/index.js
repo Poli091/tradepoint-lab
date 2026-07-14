@@ -3988,10 +3988,16 @@ async function handleBackfillRS(request, db, kv, keys) {
     ...notProcessed.map(r => ({ symbol: r.symbol, reason: 'not_attempted' })),
   ]
 
+  const missingStructural = missingSymbols.filter(m => m.reason === 'insufficient_history').length
+  const missingErrors     = missingSymbols.filter(m => m.reason !== 'insufficient_history').length
+
   return json({
     ok: true, date: targetDate, status,
     universeExpected, universeProcessed: uniOk,
     coveragePct,
+    missingCount: missingSymbols.length,
+    missingStructural,  // IPO, spinoff, insufficient history — expected
+    missingErrors,      // provider errors, symbol issues — investigate
     batchProcessed: processed, batchInsufficient: insufficient,
     missingSymbols: missingSymbols.length ? missingSymbols : undefined,
     errors: errors.length ? errors : undefined
