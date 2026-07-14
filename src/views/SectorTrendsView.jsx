@@ -288,15 +288,17 @@ function BalanceView({ industries }) {
   const [positionsTick, setPositionsTick] = useState(0)
   const positions = useMemo(() => loadOverrides() ?? [], [positionsTick]) // eslint-disable-line
 
-  // Map each position to its industry
+  // Map each position to its industry — built from Market Map pre-computed industries
+  // industries prop comes from /api/market-map/latest (503 SPY constituents)
   const tickerToIndustry = useMemo(() => {
     const map = {}
-    for (const u of UNIVERSE) {
-      if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
-      map[u.ticker] = u.industry || u.sector || 'Other'
+    for (const ind of (industries ?? [])) {
+      for (const t of (ind.tickers ?? [])) {
+        map[t.ticker] = ind.name
+      }
     }
     return map
-  }, [])
+  }, [industries])
 
   // Industry exposure from positions
   const exposure = useMemo(() => {
