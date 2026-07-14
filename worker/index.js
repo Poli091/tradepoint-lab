@@ -3833,25 +3833,38 @@ async function handleBackfillRS(request, db, kv, keys) {
 
   const alpacaHdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
 
-  // Fetch SPY + all symbols in ONE Alpaca call (avoids Yahoo Finance Cloudflare block)
-  // SPY is included in the batch to get the baseline in the same request
-  const allSymbols = ['SPY', ...symbols.filter(s => s !== 'SPY')]
-  const symbolsParam = allSymbols.join(',')
-  // Explicit date range needed — without it Alpaca returns only the latest bar
-  const endDate   = new Date().toISOString().split('T')[0]
-  const startDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]  // ~400 days back
-  const barsData = await fetchJSON(
-    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&start=${startDate}&end=${endDate}&limit=300&adjustment=split`,
-    { headers: alpacaHdr }
-  ).catch(e => { console.error('[BackfillRS] Alpaca multi-bar fetch error:', e.message); return null })
+  // SPY baseline: try D1 cache first (populated by PriceChart usage), then Alpaca
+  let spyClose = []
+  const spyD1 = await db.prepare(
+    `SELECT close FROM ohlcv_bars WHERE ticker='SPY' AND res='1D'
+     ORDER BY bar_date DESC LIMIT 300`
+  ).all().catch(() => null)
+  if (spyD1?.results?.length >= 22) {
+    // D1 has SPY — use it (already sorted newest-first, reverse for chronological)
+    spyClose = spyD1.results.map(r => r.close).reverse()
+    console.log(`[BackfillRS] SPY from D1: ${spyClose.length} bars`)
+  }
 
-  // Extract SPY baseline from the same batch response
-  const spyClose = (barsData?.bars?.SPY ?? []).map(b => b.c).filter(v => v > 0)
+  // Fetch all symbols from Alpaca (without SPY if D1 had it)
+  const batchSymbols = spyClose.length >= 22 ? symbols : ['SPY', ...symbols.filter(s => s !== 'SPY')]
+  const symbolsParam = batchSymbols.join(',')
+  const barsData = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbolsParam}&timeframe=1Day&limit=300`,
+    { headers: alpacaHdr }
+  ).catch(e => { console.error('[BackfillRS] Alpaca fetch error:', e.message); return null })
+
+  // If D1 didn't have SPY, extract from Alpaca response
+  if (spyClose.length < 22) {
+    const alpacaSpyBars = barsData?.bars?.SPY ?? []
+    spyClose = alpacaSpyBars.map(b => b.c).filter(v => v > 0)
+  }
+
   if (spyClose.length < 22) return json({
     error: 'Insufficient SPY data for RS calculation',
     barsReceived: spyClose.length,
-    hint: 'Alpaca returned insufficient SPY bars — check if SPY is accessible on this plan',
-    alpacaResponse: barsData ? Object.keys(barsData.bars ?? {}).length + ' symbols returned' : 'null response'
+    d1Bars: spyD1?.results?.length ?? 0,
+    alpacaSymbols: barsData ? Object.keys(barsData.bars ?? {}).length : 0,
+    hint: 'Load SPY in PriceChart (1Y) to populate D1 cache, then retry'
   }, 503)
 
   const spyRet = (n) => {
