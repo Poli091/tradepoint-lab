@@ -3518,7 +3518,7 @@ function classifyRotationState(rs1m, rs3m, rs6m) {
 }
 
 /* ── GET /api/market-map/latest — pre-computed industry aggregates ── */
-async function handleMarketMapLatest(request, db, kv) {
+async function handleMarketMapLatest(request, db, kv, keys) {
   if (!db) return json({ error: 'D1 not configured' }, 503)
 
   const url    = new URL(request.url)
@@ -4152,7 +4152,7 @@ export default {
           if (!param1) return await handleGetAllHistory(db)
           return await handleGetHistory(param1, db)
         case 'market-map':
-          if (param1 === 'latest') return await handleMarketMapLatest(request, db, kv)
+          if (param1 === 'latest') return await handleMarketMapLatest(request, db, kv, keys)
           return json({ error: 'Unknown market-map endpoint' }, 404)
         case 'constituent-import':
           return await handleConstituentImport(request, db, keys)
