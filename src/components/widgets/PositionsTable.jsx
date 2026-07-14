@@ -2,7 +2,7 @@
  * MODULE: WIDGETS / PositionsTable.jsx
  * Sortable positions table with real conviction rings + grade labels.
  *
- * Columns: Symbol · Price · Day % · P&L · Upside ↑ · Conviction
+ * Columns: Symbol · Price · Day % · Mkt Value · Today Sparkline · All-Time P&L · Conviction
  */
 
 import { useState, useMemo }    from 'react'

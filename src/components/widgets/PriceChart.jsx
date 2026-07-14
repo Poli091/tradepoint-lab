@@ -22,7 +22,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts'
 import { Maximize2, Minimize2 } from 'lucide-react'
-import { POSITIONS }                from '../../data/positions.js'
+import { loadOverrides }            from '../../utils/positionsStorage.js'
 import { genPriceData, RANGE_DAYS } from '../../utils/chartData.js'
 import {
   calcSMA, calcEMA, calcRSI, calcMACD, calcBB, calcForecast, thinData,
@@ -228,7 +228,7 @@ function ChartPanels({ chartData, ind, showRSI, showMACD, mainHeight, panelHeigh
 
 /* ── Main component ──────────────────────────────────────────────────────── */
 export default function PriceChart({ ticker, onTickerChange, range, onRangeChange, prices = {} }) {
-  const pos       = POSITIONS.find(p => p.ticker === ticker)
+  const pos       = (loadOverrides() ?? []).find(p => p.ticker === ticker)
   const livePrice = prices[ticker]?.price ?? pos?.currentPrice ?? 0
 
   const [rawData,   setRawData]   = useState([])
@@ -461,7 +461,7 @@ export default function PriceChart({ ticker, onTickerChange, range, onRangeChang
 
   const tickerStrip = (
     <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
-      {POSITIONS.map(p => {
+      {(loadOverrides() ?? []).map(p => {
         const active = ticker === p.ticker
         return (
           <button key={p.ticker} onClick={() => onTickerChange(p.ticker)} style={{

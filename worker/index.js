@@ -1198,7 +1198,7 @@ async function handleSaveAnalysis(ticker, request, db) {
       r.rawScore        ?? null, r.riskPenalty    ?? null, r.finalScore ?? null,
       r.gateCap         ?? null, r.activeGate     ?? null,
       r.grade           ?? null, r.confidence     ?? null,
-      r.audit?.modelVersion ?? 'v1.0',
+      r.audit?.modelVersion ?? CURRENT_MODEL_VERSION,
       bd.growth?.score    ?? null, bd.quality?.score  ?? null,
       bd.strength?.score  ?? null, bd.valuation?.score ?? null,
       bd.technical?.score ?? null, bd.valuation?.metric ?? null,
@@ -3755,7 +3755,7 @@ async function handleMarketMapLatest(request, db, kv, keys) {
 
   const result = {
     asOf: targetDate,
-    universeVersion: 'v1.0',
+    universeVersion: CURRENT_MODEL_VERSION,
     industryCount: industries.length,
     tickers: Object.values(industryMap),
     snapshotStatus: latestRun?.status ?? 'complete',
