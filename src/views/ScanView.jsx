@@ -117,7 +117,8 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
   const [activeTicker, setActiveTicker] = useState(null)
   const [scanHistory,  setScanHistory]  = useState(loadScanHistory)
   const [gradeFilter,  setGradeFilter]  = useState('ALL')
-  const [d1Grades,     setD1Grades]     = useState({})  // { TICKER: { grade, score } } from D1
+  const [d1Grades,     setD1Grades]     = useState({})   // { TICKER: { grade, score, stale } } from D1
+  const [d1Coverage,   setD1Coverage]   = useState(null)  // { spyCovered, spyTotal, coveragePct }
 
   // Load all grades from D1 on mount
   useEffect(() => {
@@ -131,6 +132,7 @@ export default function ScanView({ onSelectTicker, convictionResults = {} }) {
           map[row.ticker] = { grade: row.grade, score: row.final_score }
         }
         setD1Grades(map)
+        setD1Coverage({ spyCovered: data.spyCovered, spyTotal: data.spyTotal, coveragePct: data.coveragePct })
       })
       .catch(() => {})
   }, [])
