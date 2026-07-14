@@ -4056,6 +4056,13 @@ export default {
         case 'history':
           if (!param1) return await handleGetAllHistory(db)
           return await handleGetHistory(param1, db)
+        case 'market-map':
+          if (param1 === 'latest') return await handleMarketMapLatest(request, db, kv)
+          return json({ error: 'Unknown market-map endpoint' }, 404)
+        case 'constituent-import':
+          return await handleConstituentImport(request, db, keys)
+        case 'backfill-rs':
+          return await handleBackfillRS(request, db, kv, keys)
         case 'analyst-refresh': {
           const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
           if (!isAdmin) return json({ error: 'Admin key required' }, 401)
