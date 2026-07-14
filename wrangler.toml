@@ -54,7 +54,4 @@ migrations_dir  = "worker/migrations"  # Wrangler tracks applied migrations here
 # Scans all tickers cached in KV and saves conviction scores to D1
 
 [triggers]
-crons = [
-  "0 0 * * 0",    # Sunday 00:00 UTC — full weekly conviction snapshot
-  "0 22 * * 1-5"  # Mon-Fri 22:00 UTC (6pm EDT / 5pm EST) — daily RS calculation, guaranteed post-close
-]
+crons = ["0 0 * * 0"]
