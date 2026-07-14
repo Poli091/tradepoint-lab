@@ -58,7 +58,7 @@ function AppInner() {
   const [sortDir,     setSortDir]     = useState('desc')
   const handleSort = (col) => { setSortBy(col); setSortDir(d => col === sortBy ? (d==='desc'?'asc':'desc') : 'desc') }
 
-  const { livePositions, prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
+  const { prices, loading: pricesLoading, error: pricesError, lastUpdated, fetchSingle } = useMarketData()
 
   // State declarations must come BEFORE useMemos that reference them
   const [settingsOpen,  setSettingsOpen]  = useState(false)

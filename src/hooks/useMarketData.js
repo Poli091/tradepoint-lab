@@ -11,10 +11,9 @@
  *   6. Auto-refreshes every 5 minutes
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getWorkerUrl, buildHeaders } from '../utils/api/worker.js'
 import { cache }         from '../utils/cache.js'
-import { POSITIONS }     from '../data/positions.js'
 import { loadWatchlist } from '../utils/watchlistStorage.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
 
@@ -131,19 +130,6 @@ export function useMarketData() {
     }
   }, [fetchPrices])
 
-  const livePositions = useMemo(() =>
-    POSITIONS.map(pos => {
-      const live = prices[pos.ticker]
-      return {
-        ...pos,
-        currentPrice: live?.price     ?? pos.currentPrice,
-        dayChange:    live?.change    ?? null,
-        dayChangePct: live?.changePct ?? null,
-        isLive:       !!live,
-      }
-    }),
-    [prices]
-  )
 
   /** Fetch a single arbitrary ticker immediately (global search, CompareView, etc.) */
   const fetchSingle = useCallback(async (ticker) => {
@@ -161,5 +147,5 @@ export function useMarketData() {
     } catch (e) { console.warn('[fetchSingle]', t, e.message) }
   }, [])
 
-  return { prices, livePositions, loading, error, lastUpdated, refresh: fetchPrices, fetchSingle }
+  return { prices, loading, error, lastUpdated, refresh: fetchPrices, fetchSingle }
 }

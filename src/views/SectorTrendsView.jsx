@@ -11,7 +11,6 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { workerAPI }     from '../utils/api/worker.js'
-import { UNIVERSE }      from '../data/tickerUniverse.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
 
 /* ══════════════════════════════════════════
@@ -66,18 +65,6 @@ const classifyRotation = (rs1M, rs3M, rs6M) => {
     return { label:'Weakening',      color:'#EF4444', emoji:'↘' }
 
   return { label:'Stable', color:'var(--txt-muted)', emoji:'→' }     // fallback
-}
-
-/* Industry → tickers mapping from UNIVERSE */
-function buildIndustryMap() {
-  const groups = {}
-  for (const u of UNIVERSE) {
-    if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
-    const ind = u.industry || u.sector || 'Other'
-    if (!groups[ind]) groups[ind] = []
-    groups[ind].push(u.ticker)
-  }
-  return groups
 }
 
 /* ══════════════════════════════════════════
