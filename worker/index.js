@@ -3705,13 +3705,17 @@ async function handleConstituentImport(request, db, keys) {
 
   // Dry-run: return analysis without writing
   if (dryRun) {
-    // Compare against existing master
-    const existing = await db.prepare(`SELECT symbol FROM constituent_master WHERE active_to IS NULL`)
-      .all().then(r => new Set(r.results.map(x => x.symbol))).catch(() => new Set())
-    const newSymbols = normalizedRows.filter(r => !existing.has(r.symbol)).map(r => r.symbol)
-    const updateSymbols = normalizedRows.filter(r => existing.has(r.symbol)).map(r => r.symbol)
-    const deactivated = [...existing].filter(s => !seenSymbols.has(s))
-    // Detect provider symbol conflicts (two securities map to same provider symbol)
+    // Single query with full data for all comparisons
+    const existingMap = await db.prepare(`SELECT symbol, spy_weight, sector, industry FROM constituent_master WHERE active_to IS NULL`)
+      .all().then(r => Object.fromEntries(r.results.map(x => [x.symbol, x]))).catch(() => ({}))
+
+    const newSymbols      = normalizedRows.filter(r => !existingMap[r.symbol]).map(r => r.symbol)
+    const updateSymbols   = normalizedRows.filter(r => !!existingMap[r.symbol])
+    const deactivatedList = Object.keys(existingMap).filter(s => !seenSymbols.has(s))
+    const materialWeightChanges = updateSymbols.filter(r => existingMap[r.symbol] && Math.abs((r.spyWeight??0) - (existingMap[r.symbol].spy_weight??0)) >= 0.10)
+    const minorWeightChanges    = updateSymbols.filter(r => existingMap[r.symbol] && Math.abs((r.spyWeight??0) - (existingMap[r.symbol].spy_weight??0)) > 0 && Math.abs((r.spyWeight??0) - (existingMap[r.symbol].spy_weight??0)) < 0.10)
+
+    // Provider symbol conflicts
     const providerSymbolConflicts = []
     const seenProviderSymbols = { alpaca: {}, yahoo: {}, finnhub: {} }
     for (const r of normalizedRows) {
@@ -3722,16 +3726,6 @@ async function handleConstituentImport(request, db, keys) {
       }
     }
 
-    // Weight changes (from existing master)
-    const existing = await db.prepare(`SELECT symbol, spy_weight, sector, industry FROM constituent_master WHERE active_to IS NULL`)
-      .all().then(r => Object.fromEntries(r.results.map(x => [x.symbol, x]))).catch(() => ({}))
-    const newSymbols    = normalizedRows.filter(r => !existing[r.symbol]).map(r => r.symbol)
-    const updateSymbols = normalizedRows.filter(r => !!existing[r.symbol])
-    const deactivated   = [...seenSymbols].filter(s => !seenSymbols.has(s))  // symbols leaving index
-    const deactivatedList = Object.keys(existing).filter(s => !seenSymbols.has(s))
-    const materialWeightChanges = updateSymbols.filter(r => existing[r.symbol] && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) >= 0.10)
-    const minorWeightChanges    = updateSymbols.filter(r => existing[r.symbol] && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) > 0 && Math.abs((r.spyWeight??0) - (existing[r.symbol].spy_weight??0)) < 0.10)
-
     return json({
       dryRun: true, canCommit, constituentVersion: version,
       received: constituents.length,
@@ -3739,7 +3733,7 @@ async function handleConstituentImport(request, db, keys) {
       weightOk, countOk,
       inserted: newSymbols.length, newSecurities: newSymbols,
       updated: updateSymbols.length,
-      materialWeightChanges: materialWeightChanges.map(r => ({ symbol: r.symbol, old: existing[r.symbol]?.spy_weight, new: r.spyWeight })),
+      materialWeightChanges: materialWeightChanges.map(r => ({ symbol: r.symbol, old: existingMap[r.symbol]?.spy_weight, new: r.spyWeight })),
       minorWeightChangesCount: minorWeightChanges.length,
       deactivated: deactivatedList.length, deactivatedList,
       unclassified: unclassified.length, unclassifiedList: unclassified,
