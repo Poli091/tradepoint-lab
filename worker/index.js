@@ -3931,23 +3931,46 @@ async function handleBackfillRS(request, db, kv, keys) {
   // Aggregate industries for this date
   await aggregateIndustries(db, targetDate)
 
-  // Write run status to market_map_runs so /api/market-map/latest can find it
-  const total = symbols.length
-  const coveragePct = total > 0 ? Math.round((processed / total) * 100) : 0
+  // Count UNIVERSE totals from D1 (not just this batch) — coverage = global, not per-batch
+  const uniTot = await db.prepare(
+    `SELECT COUNT(*) as n FROM constituent_master WHERE active_to IS NULL`
+  ).first().then(r => r?.n ?? 0).catch(() => 0)
+  const uniOk = await db.prepare(
+    `SELECT COUNT(*) as n FROM market_rs_daily WHERE analysis_date=? AND data_quality='ok'`
+  ).bind(targetDate).first().then(r => r?.n ?? 0).catch(() => 0)
+  const uniInsuf = await db.prepare(
+    `SELECT COUNT(*) as n FROM market_rs_daily WHERE analysis_date=? AND data_quality='insufficient_history'`
+  ).bind(targetDate).first().then(r => r?.n ?? 0).catch(() => 0)
+
+  const universeExpected = Math.max(uniTot, uniOk + uniInsuf)
+  const coveragePct = universeExpected > 0 ? Math.round((uniOk / universeExpected) * 100) : 0
   const status = coveragePct >= 95 ? 'complete' : coveragePct >= 85 ? 'partial' : 'failed'
+
+  // Write universe-level coverage — ON CONFLICT upserts accumulate across batches
   await db.prepare(`
     INSERT INTO market_map_runs
       (analysis_date, status, symbols_expected, symbols_processed, symbols_insufficient, coverage_pct, completed_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(analysis_date) DO UPDATE SET
-      status=excluded.status, symbols_processed=excluded.symbols_processed,
-      coverage_pct=excluded.coverage_pct, completed_at=excluded.completed_at
-  `).bind(targetDate, status, total, processed, insufficient, coveragePct, new Date().toISOString()).run().catch(() => {})
+      status=excluded.status,
+      symbols_expected=excluded.symbols_expected,
+      symbols_processed=excluded.symbols_processed,
+      symbols_insufficient=excluded.symbols_insufficient,
+      coverage_pct=excluded.coverage_pct,
+      completed_at=excluded.completed_at
+  `).bind(targetDate, status, universeExpected, uniOk, uniInsuf,
+          coveragePct, new Date().toISOString()).run().catch(() => {})
 
-  // Invalidate KV cache only for complete snapshots
+  // Invalidate KV only when universe-level snapshot is complete
   if (status === 'complete') await kv.delete('market-map:latest:v2').catch(() => {})
 
-  return json({ ok: true, date: targetDate, status, coveragePct, processed, insufficient, errors: errors.length ? errors : undefined })
+  return json({
+    ok: true, date: targetDate, status,
+    universeExpected, universeProcessed: uniOk,
+    coveragePct,
+    batchProcessed: processed, batchInsufficient: insufficient,
+    errors: errors.length ? errors : undefined
+  })
 }
 
 /* ── Aggregate market_rs_daily → industry_trend_daily ── */
