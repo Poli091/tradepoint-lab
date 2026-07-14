@@ -3881,9 +3881,11 @@ async function handleBackfillRS(request, db, kv, keys) {
       : []
 
     // Alpaca single-symbol if not in D1
+    // Normalize: Yahoo uses BRK-B, Alpaca uses BRK.B
     if (closes.length < 22) {
+      const alpacaSym = symbol.replace(/-([A-Z])$/, '.$1')  // BRK-B → BRK.B
       const raw = await fetchJSON(
-        `https://data.alpaca.markets/v2/stocks/${symbol}/bars?timeframe=1Day&start=${startDate}&end=${endDate}&limit=300&feed=iex&adjustment=split`,
+        `https://data.alpaca.markets/v2/stocks/${alpacaSym}/bars?timeframe=1Day&start=${startDate}&end=${endDate}&limit=300&feed=iex&adjustment=split`,
         { headers: alpacaHdr }
       ).catch(() => null)
       closes = (raw?.bars ?? []).map(b => b.c).filter(v => v > 0)
