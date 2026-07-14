@@ -278,9 +278,10 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
     strongSell:        rec.strongSell                   ?? 0,
     consecutiveBeats,
     epsSurprisePct,
-    // ── Yahoo Finance supplemental data (informational only — no score impact) ──
-    nextEarningsDate:  yhSummary?.nextEarnings ?? null,
-    earningsDateSource: yhSummary?.nextEarnings ? 'yahoo' : null,
+    // ── Earnings date: Yahoo (blocked by Cloudflare) → Finnhub calendar fallback ──
+    // Finnhub /calendar/earnings is free and not blocked
+    nextEarningsDate:  null,   // populated below
+    earningsDateSource: null,  // populated below
     instOwnership:     yhSummary?.instOwn      ?? null,
     // shortInfo computed below from FINRA (official) + Yahoo float ──────────
     shortInfo:         null,   // populated after FINRA fetch
@@ -292,6 +293,28 @@ async function handleFundamentals(ticker, keys, kv, forceRefresh) {
       finnhubEarnings: earns.length > 0,
     },
   }
+
+  // Earnings date: try Yahoo first, fallback to Finnhub calendar (free endpoint, not blocked)
+  let nextEarningsDate = yhSummary?.nextEarnings ?? null
+  let earningsDateSource = nextEarningsDate ? 'yahoo' : null
+
+  if (!nextEarningsDate) {
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const ahead = new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0]
+      const fhCal = await fhGet(`/calendar/earnings?from=${today}&to=${ahead}&symbol=${t}`, keys.finnhub)
+      const upcoming = (fhCal?.earningsCalendar ?? [])
+        .filter(e => e.date >= today)
+        .sort((a,b) => a.date.localeCompare(b.date))[0]
+      if (upcoming?.date) {
+        nextEarningsDate = upcoming.date
+        earningsDateSource = 'finnhub-calendar'
+      }
+    } catch { /* skip */ }
+  }
+
+  data.nextEarningsDate   = nextEarningsDate
+  data.earningsDateSource = earningsDateSource
 
   // FINRA short interest — official biweekly source.
   // Yahoo already fetched (yhSummary) — used for float shares to compute %.
