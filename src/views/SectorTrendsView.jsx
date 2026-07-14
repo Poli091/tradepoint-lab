@@ -578,64 +578,57 @@ export default function SectorTrendsView({ onSelectTicker }) {
   const [viewMode, setViewMode] = useState('trend')   // 'trend'|'rotation'|'balance'
   const [sizeMode, setSizeMode] = useState('count')
 
+  const [snapshotMeta, setSnapshotMeta] = useState(null)
+
   useEffect(() => {
     setLoading(true)
-    workerAPI.get('/api/sector-trends')
-      .then(r => { setRaw(r?.tickers ?? []); setError(null) })
+    workerAPI.get('/api/market-map/latest')
+      .then(r => {
+        setRaw(r?.tickers ?? [])
+        setSnapshotMeta({ asOf: r?.asOf, status: r?.snapshotStatus, coveragePct: r?.coveragePct })
+        setError(null)
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
+  // Industries come pre-aggregated from /api/market-map/latest
+  // raw = array of industry objects: { name, sector, trendScore, rs1M/3M/6M, rotation,
+  //   dataCount, tickerCount, coveragePct, tickers:[{ticker, trendScore, rs1M, ...}] }
   const industries = useMemo(() => {
-    const MAX_STALE = 14
-    const tickerMap = {}
-    for (const t of raw) tickerMap[t.ticker] = t
-
-    const groups = {}
-    for (const u of UNIVERSE) {
-      if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
-      const ind = u.industry || u.sector || 'Other'
-      if (!groups[ind]) groups[ind] = { name: ind, sector: u.sector, tickers: [] }
-      const a = tickerMap[u.ticker]
-      const age = a?.date ? (Date.now() - new Date(a.date+'T12:00:00Z').getTime()) / 86_400_000 : null
-      groups[ind].tickers.push({
-        ticker: u.ticker, name: u.name, ageInDays: age,
-        ...(a ?? { trendScore:null, rs1M:null, rs3M:null, rs6M:null, grade:null, upside:null }),
+    return raw
+      .map(ind => ({
+        name:        ind.name,
+        sector:      ind.sector,
+        tickers:     (ind.tickers ?? []).map(t => ({
+          ticker:     t.ticker,
+          name:       t.company ?? t.ticker,
+          trendScore: t.trendScore ?? null,
+          rs1M:       t.rs1M ?? null,
+          rs3M:       t.rs3M ?? null,
+          rs6M:       t.rs6M ?? null,
+          grade:      t.grade ?? null,
+          score:      t.score ?? null,
+          spyWeight:  t.spyWeight ?? null,
+        })),
+        tickerCount: ind.tickerCount ?? 0,
+        dataCount:   ind.dataCount   ?? 0,
+        coverage:    (ind.coveragePct ?? 0) / 100,
+        insufficient: (ind.coveragePct ?? 0) < 40 || (ind.dataCount ?? 0) < 3,
+        trendScore:  ind.trendScore ?? null,
+        rs1M:        ind.rs1M       ?? null,
+        rs3M:        ind.rs3M       ?? null,
+        rs6M:        ind.rs6M       ?? null,
+        rotation:    ind.rotation   ?? null,
+        value: sizeMode === 'equal' ? 1
+             : sizeMode === 'weight' ? (ind.tickers ?? []).reduce((s,t) => s + (t.spyWeight ?? 0), 0)
+             : ind.tickerCount ?? 1,
+      }))
+      .filter(g => g.tickerCount >= 1)
+      .sort((a,b) => {
+        if (a.insufficient !== b.insufficient) return a.insufficient ? 1 : -1
+        return (b.trendScore ?? -999) - (a.trendScore ?? -999)
       })
-    }
-
-    return Object.values(groups).map(g => {
-      const tickers_ = Array.isArray(g.tickers) ? g.tickers : []
-      const fresh    = tickers_.filter(t => t.ageInDays != null && t.ageInDays <= MAX_STALE)
-      const withData = fresh.filter(t => t.trendScore != null)
-      const cov      = tickers_.length > 0 ? withData.length / tickers_.length : 0
-      const insuf    = cov < 0.40 || withData.length < 3
-
-      const rs1M = withData.length ? median(withData.filter(t=>t.rs1M!=null).map(t=>t.rs1M)) : null
-      const rs3M = withData.length ? median(withData.filter(t=>t.rs3M!=null).map(t=>t.rs3M)) : null
-      const rs6M = withData.length ? median(withData.filter(t=>t.rs6M!=null).map(t=>t.rs6M)) : null
-      const trendScore = withData.length ? median(withData.map(t=>t.trendScore)) : null
-      const positiveRS  = withData.filter(t=>(t.trendScore??0)>0).length
-      const breadthEMA200 = withData.filter(t=>t.aboveEMA200===true).length
-      const mAge = medianAge(tickers_)
-      const oldest = tickers_.reduce((mx,t) => t.ageInDays!=null ? Math.max(mx,t.ageInDays) : mx, 0)
-
-      return {
-        name: g.name, sector: g.sector,
-        tickers: tickers_,
-        tickerCount: tickers_.length, dataCount: withData.length,
-        coverage: cov, insufficient: insuf,
-        trendScore, rs1M, rs3M, rs6M,
-        positiveRS, breadthEMA200,
-        medianAge: mAge, oldestAge: oldest,
-        value: sizeMode === 'equal' ? 1 : tickers_.length,
-      }
-    })
-    .filter(g => g.tickerCount >= 2)
-    .sort((a,b) => {
-      if (a.insufficient !== b.insufficient) return a.insufficient ? 1 : -1
-      return (b.trendScore??-999)-(a.trendScore??-999)
-    })
   }, [raw, sizeMode])
 
   const selectedInd = industries.find(i => i.name === selected)
@@ -655,14 +648,23 @@ export default function SectorTrendsView({ onSelectTicker }) {
         <div>
           <div style={{ fontSize:15, fontWeight:700, color:'var(--txt)' }}>Market Map</div>
           <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:1, fontStyle:'italic' }}>
-            TradePoint Universe only · RS vs SPY · No impact on Conviction or Swing scores
+            S&P 500 (503 constituents) · RS vs SPY · No impact on Conviction or Swing scores
           </div>
+          {snapshotMeta?.asOf && (
+            <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2 }}>
+              <span style={{ color: snapshotMeta.status === 'complete' ? 'var(--green)' : 'var(--amber)' }}>
+                ● {snapshotMeta.status}
+              </span>
+              {' · as of '}{snapshotMeta.asOf}
+              {snapshotMeta.coveragePct != null && ` · ${snapshotMeta.coveragePct}% coverage`}
+            </div>
+          )}
         </div>
 
         {/* Refresh button */}
         <button onClick={() => {
           setRaw([]); setLoading(true); setError(null)
-          workerAPI.get('/api/sector-trends?refresh=1')
+          workerAPI.get('/api/market-map/latest?refresh=1')
             .then(r => { setRaw(r?.tickers ?? []); setError(null) })
             .catch(e => setError(e.message))
             .finally(() => setLoading(false))
@@ -692,7 +694,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
             <span style={{ fontSize:10, color:'var(--txt-muted)' }}>Block size:</span>
             <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
               border:'1px solid var(--border)', overflow:'hidden' }}>
-              {[['count','# stocks'],['equal','Equal']].map(([v,l]) => (
+              {[['count','# stocks'],['equal','Equal'],['weight','SPY weight']].map(([v,l]) => (
                 <button key={v} onClick={() => setSizeMode(v)} style={{
                   padding:'4px 9px', border:'none', cursor:'pointer', fontSize:10, fontWeight:600,
                   background: sizeMode===v?'var(--accent)':'transparent',
