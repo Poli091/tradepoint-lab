@@ -84,19 +84,28 @@ function calcAcceleration(f) {
 }
 
 /* ── Growth Quality Modifier ─────────────────────────────
- * If operating margin contracted severely while revenue grew,
- * the company is buying growth at the cost of profitability.
- * Apply a multiplier to prevent full Growth score in that case.
+ * Reduces Growth score when revenue grows but profitability deteriorates severely.
+ * Intent: penalize companies buying growth at the cost of margins.
+ *
+ * NON-DUPLICATION DESIGN:
+ *   Growth modifier → measures DIRECTION/DETERIORATION of margin (not level)
+ *   Quality        → measures CURRENT LEVEL of margins
+ *   Gate 2         → only activates when margin crosses ≤ 0
+ *   Risk           → penalizes volatility, not margin level directly
+ *
+ * Thresholds (gross-to-operating spread proxy for margin deterioration):
+ *   spread > 40pp AND opMargin < 0   → severe   → cap Growth at 65%
+ *   spread > 30pp AND opMargin < 5%  → moderate → cap Growth at 85%
+ *   otherwise                         → no adjustment
+ *
+ * Note: spread = grossMargin - operatingMargin measures SG&A + R&D burden.
+ * High spread + negative opMargin = heavy investment spending erasing profitability.
  */
 function growthQualityModifier(f) {
-  // Need both current margin and some proxy for historical
-  // Using gross vs operating spread as a proxy for deterioration
   if (f.operatingMargin == null || f.grossMargin == null) return 1.0
-
-  // If operating margin is very negative vs gross margin, profitability is poor quality
   const spread = f.grossMargin - f.operatingMargin
-  if (spread > 40 && f.operatingMargin < 0) return 0.65  // severe deterioration
-  if (spread > 30 && f.operatingMargin < 5) return 0.85  // moderate deterioration
+  if (spread > 40 && f.operatingMargin < 0)   return 0.65  // severe: >40pp spread + negative opMargin
+  if (spread > 30 && f.operatingMargin < 5)   return 0.85  // moderate: >30pp spread + thin opMargin
   return 1.0
 }
 

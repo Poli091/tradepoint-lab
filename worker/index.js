@@ -1425,7 +1425,7 @@ async function handlePortfolioReview(request, keys, kv, db) {
   if (!keys.groq) return json({ error: 'Groq key not configured' }, 401)
   const body = await request.json().catch(() => null)
   if (!body?.positions?.length) return json({ error: 'positions required' }, 400)
-  const { positions, modelVersion = 'conviction-v1.0' } = body
+  const { positions, modelVersion = `conviction-${CURRENT_MODEL_VERSION}` } = body
 
   // Cache key: portfolio hash + ISO week + model version
   const stateStr = positions.map(p => `${p.ticker}:${p.conviction?.score}:${p.conviction?.grade}`).sort().join(',')
