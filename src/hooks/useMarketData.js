@@ -53,11 +53,10 @@ export function useMarketData() {
 
     try {
       // Collect all tickers from every source
-      const posTickers  = POSITIONS.map(p => p.ticker)
       const customPos   = loadOverrides() ?? []
       const custTickers = customPos.map(p => p.ticker)
       const wlTickers   = (loadWatchlist() ?? []).map(w => w.ticker)
-      const allTickers  = [...new Set([...posTickers, ...custTickers, ...wlTickers])]
+      const allTickers  = [...new Set([...custTickers, ...wlTickers])]
                             .slice(0, MAX_BATCH)
 
       if (!allTickers.length) { setLoading(false); return }
