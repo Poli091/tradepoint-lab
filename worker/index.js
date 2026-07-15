@@ -2231,8 +2231,18 @@ async function handleValidateV11(request, env, keys, kv, db) {
       const priceData = await kv.get(`price:${ticker}`, 'json')
       const price     = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
 
-      // Run v1.1 engine
-      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price, fund.sector??'', fund.sectorEtf??'')
+      // Resolve sector from constituent_master (authoritative) or fund cache
+      let sector = fund.sector ?? ''
+      let sectorEtf = fund.sectorEtf ?? ''
+      if (!sector && db) {
+        const cmRow = await db.prepare(
+          `SELECT tradepoint_sector, gics_sector FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
+        ).bind(ticker).first().catch(() => null)
+        sector = cmRow?.tradepoint_sector ?? cmRow?.gics_sector ?? ''
+      }
+
+      // Run v1.1 engine with resolved sector
+      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price, sector, sectorEtf)
 
       // Build comparison
       const v10score = v10row?.final_score ?? null
@@ -2272,10 +2282,12 @@ async function handleValidateV11(request, env, keys, kv, db) {
           score: v11.finalScore, grade: v11.grade,
           gate: v11gate,
           modelVersion: CURRENT_MODEL_VERSION,
+          resolvedProfile: v11.sectorProfile ?? null,
           operatingMarginRaw: fund?.operatingMargin ?? null,
-          gate2ProfPass:  v11?.gates?.gate2?.checks?.profitability?.pass ?? null,
-          gate2MarginPass: v11?.gates?.gate2?.checks?.operatingMargin?.pass ?? null,
-          gate2Cause:     v11?.gates?.gate2?.cause ?? null,
+          gate2ProfPass:    v11?.gates?.gate2?.checks?.profitability?.pass ?? null,
+          gate2MarginPass:  v11?.gates?.gate2?.checks?.operatingMargin?.pass ?? null,
+          gate2ProfSource:  v11?.gates?.gate2?.checks?.profitability?.source ?? null,
+          gate2Cause:       v11?.gates?.gate2?.cause ?? null,
           growth: v11comp.growth, quality: v11comp.quality,
           strength: v11comp.strength, technical: v11comp.technical,
           growthModifier:    v11.breakdown?.growth?.growthQualityModifier ?? 1.0,
@@ -2414,10 +2426,14 @@ async function handleBatchScan(request, env, keys, kv, db) {
         }
       }
 
-      // Step 3: Run conviction engine
+      // Step 3: Run conviction engine with sector from constituent_master
       const priceData = await kv.get(`price:${ticker}`, 'json')
       const price = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
-      const result = computeConviction(fund, ohlcv, spyOhlcv, price)
+      const cmRow2 = await db.prepare(
+        `SELECT tradepoint_sector, gics_sector FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
+      ).bind(ticker).first().catch(() => null)
+      const tickerSector = cmRow2?.tradepoint_sector ?? cmRow2?.gics_sector ?? fund.sector ?? ''
+      const result = computeConviction(fund, ohlcv, spyOhlcv, price, tickerSector, '')
 
       // Step 4: Save to analyses table
       const now = Date.now()

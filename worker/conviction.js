@@ -281,7 +281,10 @@ function gates(f, profile) {
     const negEq   = de != null && de < 0
     const levOk   = !negEq && (de == null || de <= debtThreshold)
     profPass      = roe >= 10 && levOk
-    profSource    = levOk ? 'roe_leverage_ok' : 'roe_failed_leverage_check'
+    // Source reflects BOTH leverage AND ROE outcome
+    profSource    = !levOk ? 'roe_failed_leverage_check'
+                 : roe >= 10 ? 'roe_leverage_ok'           // both passed
+                 : 'roe_below_threshold'                     // leverage ok but ROE < 10
   } else {
     // No ROIC or ROE — not evaluable; ROI excluded (ambiguous); pass by null policy
     profPass = true; profSource = null; gate2Evaluable = false
