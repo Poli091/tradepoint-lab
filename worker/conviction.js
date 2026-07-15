@@ -33,9 +33,18 @@ const PROFILES = {
     debt:null, cr:null, ic:null },
 }
 
-function getProfile(ticker, sector='', sectorEtf='') {
+// Industry-level bank mapping: only 'Banks - Large' → banks
+// Prevents insurance, payment, asset managers from using bank profile
+const INDUSTRY_MAP = {
+  'Banks - Large': 'banks',
+  'Banks - Regional': 'banks',
+  'Banks': 'banks',
+}
+
+function getProfile(ticker, sector='', sectorEtf='', industry='') {
   return PROFILES[TICKER_OVERRIDES[ticker?.toUpperCase()]]
     ?? PROFILES[ETF_MAP[sectorEtf]]
+    ?? PROFILES[INDUSTRY_MAP[industry]]    // industry takes priority over sector for banks
     ?? PROFILES[SECTOR_MAP[sector]]
     ?? PROFILES.default
 }
@@ -350,10 +359,10 @@ function confidence(scores, ohlcvLen, spyLen) {
 /* ════════════════════════════════════════════════════════════
    MAIN ORCHESTRATOR
 ════════════════════════════════════════════════════════════ */
-export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPrice=null, sector='', sectorEtf='') {
+export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPrice=null, sector='', sectorEtf='', industry='') {
   const f = fundamentals
   const ticker = f.ticker
-  const profile = getProfile(ticker, sector, sectorEtf)
+  const profile = getProfile(ticker, sector, sectorEtf, industry)
 
   const gw = growth(f)
   const ql = quality(f)

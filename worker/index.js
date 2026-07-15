@@ -2231,18 +2231,20 @@ async function handleValidateV11(request, env, keys, kv, db) {
       const priceData = await kv.get(`price:${ticker}`, 'json')
       const price     = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
 
-      // Resolve sector from constituent_master (authoritative) or fund cache
+      // Resolve sector + industry from constituent_master (authoritative)
       let sector = fund.sector ?? ''
       let sectorEtf = fund.sectorEtf ?? ''
+      let industry = fund.industry ?? ''
       if (!sector && db) {
         const cmRow = await db.prepare(
-          `SELECT tradepoint_sector, gics_sector FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
+          `SELECT tradepoint_sector, gics_sector, tradepoint_industry FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
         ).bind(ticker).first().catch(() => null)
-        sector = cmRow?.tradepoint_sector ?? cmRow?.gics_sector ?? ''
+        sector   = cmRow?.tradepoint_sector  ?? cmRow?.gics_sector ?? ''
+        industry = cmRow?.tradepoint_industry ?? ''
       }
 
-      // Run v1.1 engine with resolved sector
-      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price, sector, sectorEtf)
+      // Run v1.1 engine with resolved sector + industry
+      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price, sector, sectorEtf, industry)
 
       // Build comparison
       const v10score = v10row?.final_score ?? null
@@ -2430,10 +2432,11 @@ async function handleBatchScan(request, env, keys, kv, db) {
       const priceData = await kv.get(`price:${ticker}`, 'json')
       const price = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
       const cmRow2 = await db.prepare(
-        `SELECT tradepoint_sector, gics_sector FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
+        `SELECT tradepoint_sector, gics_sector, tradepoint_industry FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
       ).bind(ticker).first().catch(() => null)
-      const tickerSector = cmRow2?.tradepoint_sector ?? cmRow2?.gics_sector ?? fund.sector ?? ''
-      const result = computeConviction(fund, ohlcv, spyOhlcv, price, tickerSector, '')
+      const tickerSector   = cmRow2?.tradepoint_sector  ?? cmRow2?.gics_sector ?? fund.sector ?? ''
+      const tickerIndustry = cmRow2?.tradepoint_industry ?? fund.industry ?? ''
+      const result = computeConviction(fund, ohlcv, spyOhlcv, price, tickerSector, '', tickerIndustry)
 
       // Step 4: Save to analyses table
       const now = Date.now()
