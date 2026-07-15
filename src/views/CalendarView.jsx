@@ -11,8 +11,7 @@ import EarningsEditor from '../components/widgets/EarningsEditor.jsx'
 import { EARNINGS } from '../data/earnings.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
 import { loadEarnings } from '../utils/earningsStorage.js'
-import { useLang }       from '../context/LanguageContext.jsx'
-import { useBreakpoint } from '../hooks/useBreakpoint.js'
+import { useLang } from '../context/LanguageContext.jsx'
 import { getGradeColor } from '../conviction/grade/index.js'
 
 const TYPE_LABELS = {
@@ -24,7 +23,6 @@ const TYPE_LABELS = {
 
 export default function CalendarView({ convictionResults = {}, prices = {} }) {
   const { t } = useLang()
-  const { isMobile } = useBreakpoint()
   const [events,        setEvents]        = useState(() => loadEarnings() ?? EARNINGS)
   const [editorOpen,    setEditorOpen]    = useState(false)
   const [earningsDates, setEarningsDates] = useState({})
@@ -57,25 +55,23 @@ export default function CalendarView({ convictionResults = {}, prices = {} }) {
   // Auto-generate earnings events from:
   // 1. conviction results (if available)
   // 2. direct fundamentals fetch (earningsDates state)
-  const autoEvents = Object.values(
-    userPositions.reduce((acc, pos) => {
-      if (acc[pos.ticker]) return acc  // deduplicate — same ticker in Brokerage + Roth = 1 event
+  const autoEvents = userPositions
+    .map(pos => {
       const cv = convictionResults[pos.ticker]
       const dateFromCV     = cv?.nextEarningsDate
       const dateFromDirect = earningsDates[pos.ticker]?.date
       const date   = dateFromCV ?? dateFromDirect
       const source = dateFromCV ? (cv.earningsDateSource ?? 'auto') : (earningsDates[pos.ticker]?.source ?? 'auto')
-      if (!date) return acc
-      acc[pos.ticker] = {
+      if (!date) return null
+      return {
         ticker: pos.ticker,
         date,
         type:  'monitor',
         note:  `Next earnings · Source: ${source}`,
         _auto: true,
       }
-      return acc
-    }, {})
-  )
+    })
+    .filter(Boolean)
 
   // Merge: manual events take priority over auto (dedup by ticker)
   const manualTickers = new Set(events.map(e => e.ticker))

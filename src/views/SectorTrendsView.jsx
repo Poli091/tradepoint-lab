@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { workerAPI }     from '../utils/api/worker.js'
+import { UNIVERSE }      from '../data/tickerUniverse.js'
 import { loadOverrides } from '../utils/positionsStorage.js'
 
 /* ══════════════════════════════════════════
@@ -65,6 +66,18 @@ const classifyRotation = (rs1M, rs3M, rs6M) => {
     return { label:'Weakening',      color:'#EF4444', emoji:'↘' }
 
   return { label:'Stable', color:'var(--txt-muted)', emoji:'→' }     // fallback
+}
+
+/* Industry → tickers mapping from UNIVERSE */
+function buildIndustryMap() {
+  const groups = {}
+  for (const u of UNIVERSE) {
+    if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
+    const ind = u.industry || u.sector || 'Other'
+    if (!groups[ind]) groups[ind] = []
+    groups[ind].push(u.ticker)
+  }
+  return groups
 }
 
 /* ══════════════════════════════════════════
@@ -209,16 +222,6 @@ function RotationView({ industries, onSelectIndustry }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.every(ind => ind.rs1M == null && ind.rs3M == null && ind.rs6M == null) && (
-            <tr><td colSpan={8} style={{ padding:'32px 20px', textAlign:'center', color:'var(--txt-muted)' }}>
-              <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>Rotation data not yet available</div>
-              <div style={{ fontSize:11, lineHeight:1.8 }}>
-                Rotation requires RS 1M, 3M and 6M for each industry.<br/>
-                Trend Map may show scores from the latest available snapshot.<br/>
-                Click ↺ Refresh after more OHLCV history has been collected.
-              </div>
-            </td></tr>
-          )}
           {sorted.map((ind, i) => {
             const rot = classifyRotation(ind.rs1M, ind.rs3M, ind.rs6M)
             return (
@@ -275,29 +278,15 @@ function BalanceView({ industries }) {
   const [positionsTick, setPositionsTick] = useState(0)
   const positions = useMemo(() => loadOverrides() ?? [], [positionsTick]) // eslint-disable-line
 
-  // Map each position to its industry — built from Market Map pre-computed industries
-  // industries prop comes from /api/market-map/latest (503 SPY constituents)
-  // Supplementary map for non-SPY portfolio tickers
-  const SUPPLEMENT = {
-    'MELI':'Consumer Tech', 'SHOP':'Consumer Tech', 'SE':'Consumer Tech',
-    'TEAM':'Software/SaaS', 'DDOG':'Software/SaaS', 'SNOW':'Software/SaaS',
-    'NFLX':'Comm. Services', 'SPOT':'Comm. Services',
-    'UBER':'Consumer Tech', 'LYFT':'Consumer Tech', 'DASH':'Consumer Tech',
-    'BABA':'Consumer Tech', 'JD':'Consumer Tech', 'PDD':'Consumer Tech',
-    'APLD':'Technology', 'GTLB':'Cybersecurity',
-    'CSGP':'Real Estate', 'TRMB':'Software/SaaS',
-    'BSX':'Medical Devices', 'ISRG':'Medical Devices', 'EW':'Medical Devices',
-    'VRTX':'Biotech', 'AMGN':'Biotech',
-  }
+  // Map each position to its industry
   const tickerToIndustry = useMemo(() => {
-    const map = { ...SUPPLEMENT }
-    for (const ind of (industries ?? [])) {
-      for (const t of (ind.tickers ?? [])) {
-        map[t.ticker] = ind.name
-      }
+    const map = {}
+    for (const u of UNIVERSE) {
+      if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
+      map[u.ticker] = u.industry || u.sector || 'Other'
     }
     return map
-  }, [industries])
+  }, [])
 
   // Industry exposure from positions
   const exposure = useMemo(() => {
@@ -426,7 +415,7 @@ function BalanceView({ industries }) {
                   </div>
                   <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:1 }}>
                     {heldPct > 0 ? `${heldPct.toFixed(0)}% held · ` : 'Not in portfolio · '}
-                    {rot.label === 'No data' ? 'Rotation unavailable' : rot.label} · RS {sign(d.trendScore)}
+                    {rot.label} · RS {sign(d.trendScore)}
                   </div>
                 </div>
                 <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:3, flexShrink:0,
@@ -520,12 +509,10 @@ function TreemapContainer({ industries, onSelect }) {
 
 function SVGTreemap({ industries, onSelect, width, height }) {
   const PAD = 2
-  // squarify works best with items sorted by value (largest first)
-  // trendScore sorting is for the ranking list; treemap uses value for layout
-  const sorted = [...(industries||[])]
-    .filter(i => (i.value||0) > 0 && i.name)
-    .sort((a,b) => (b.value||0) - (a.value||0))
-  const nodes = squarify(sorted, 0, 0, width, height)
+  const nodes = squarify(
+    (industries||[]).filter(i => (i.value||0) > 0 && i.name),
+    0, 0, width, height
+  )
   if (!nodes.length) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
       justifyContent:'center', height:'100%', gap:10, color:'var(--txt-muted)' }}>
@@ -579,67 +566,66 @@ export default function SectorTrendsView({ onSelectTicker }) {
   const [error,    setError]    = useState(null)
   const [selected, setSelected] = useState(null)
   const [viewMode, setViewMode] = useState('trend')   // 'trend'|'rotation'|'balance'
-  const [sizeMode, setSizeMode] = useState(
-    () => localStorage.getItem('marketMapSizeMode') || 'weight'
-  )
-  useEffect(() => { localStorage.setItem('marketMapSizeMode', sizeMode) }, [sizeMode])
-
-  const [snapshotMeta, setSnapshotMeta] = useState(null)
+  const [sizeMode, setSizeMode] = useState('count')
 
   useEffect(() => {
     setLoading(true)
-    workerAPI.get('/api/market-map/latest')
-      .then(r => {
-        setRaw(r?.tickers ?? [])
-        setSnapshotMeta({
-          asOf: r?.asOf, status: r?.snapshotStatus,
-          coveragePct: r?.coveragePct,
-          symbolsProcessed: r?.symbolsProcessed,
-          symbolsExpected:  r?.symbolsExpected,
-        })
-        setError(null)
-      })
+    workerAPI.get('/api/sector-trends')
+      .then(r => { setRaw(r?.tickers ?? []); setError(null) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
-  // Industries come pre-aggregated from /api/market-map/latest
-  // raw = array of industry objects: { name, sector, trendScore, rs1M/3M/6M, rotation,
-  //   dataCount, tickerCount, coveragePct, tickers:[{ticker, trendScore, rs1M, ...}] }
   const industries = useMemo(() => {
-    return raw
-      .map(ind => ({
-        name:        ind.name,
-        sector:      ind.sector,
-        tickers:     (ind.tickers ?? []).map(t => ({
-          ticker:     t.ticker,
-          name:       t.company ?? t.ticker,
-          trendScore: t.trendScore ?? null,
-          rs1M:       t.rs1M ?? null,
-          rs3M:       t.rs3M ?? null,
-          rs6M:       t.rs6M ?? null,
-          grade:      t.grade ?? null,
-          score:      t.score ?? null,
-          spyWeight:  t.spyWeight ?? null,
-        })),
-        tickerCount: ind.tickerCount ?? 0,
-        dataCount:   ind.dataCount   ?? 0,
-        coverage:    (ind.coveragePct ?? 0) / 100,
-        insufficient: (ind.coveragePct ?? 0) < 40 || (ind.dataCount ?? 0) < 3,
-        trendScore:  ind.trendScore ?? null,
-        rs1M:        ind.rs1M       ?? null,
-        rs3M:        ind.rs3M       ?? null,
-        rs6M:        ind.rs6M       ?? null,
-        rotation:    ind.rotation   ?? null,
-        value: sizeMode === 'equal' ? 1
-             : sizeMode === 'weight' ? (ind.tickers ?? []).reduce((s,t) => s + (t.spyWeight ?? 0), 0)
-             : ind.tickerCount ?? 1,
-      }))
-      .filter(g => g.tickerCount >= 1)
-      .sort((a,b) => {
-        if (a.insufficient !== b.insufficient) return a.insufficient ? 1 : -1
-        return (b.trendScore ?? -999) - (a.trendScore ?? -999)
+    const MAX_STALE = 14
+    const tickerMap = {}
+    for (const t of raw) tickerMap[t.ticker] = t
+
+    const groups = {}
+    for (const u of UNIVERSE) {
+      if (u.type === 'ETF' || u.type === 'ADR' || u.country === 'AR') continue
+      const ind = u.industry || u.sector || 'Other'
+      if (!groups[ind]) groups[ind] = { name: ind, sector: u.sector, tickers: [] }
+      const a = tickerMap[u.ticker]
+      const age = a?.date ? (Date.now() - new Date(a.date+'T12:00:00Z').getTime()) / 86_400_000 : null
+      groups[ind].tickers.push({
+        ticker: u.ticker, name: u.name, ageInDays: age,
+        ...(a ?? { trendScore:null, rs1M:null, rs3M:null, rs6M:null, grade:null, upside:null }),
       })
+    }
+
+    return Object.values(groups).map(g => {
+      const tickers_ = Array.isArray(g.tickers) ? g.tickers : []
+      const fresh    = tickers_.filter(t => t.ageInDays != null && t.ageInDays <= MAX_STALE)
+      const withData = fresh.filter(t => t.trendScore != null)
+      const cov      = tickers_.length > 0 ? withData.length / tickers_.length : 0
+      const insuf    = cov < 0.40 || withData.length < 3
+
+      const rs1M = withData.length ? median(withData.filter(t=>t.rs1M!=null).map(t=>t.rs1M)) : null
+      const rs3M = withData.length ? median(withData.filter(t=>t.rs3M!=null).map(t=>t.rs3M)) : null
+      const rs6M = withData.length ? median(withData.filter(t=>t.rs6M!=null).map(t=>t.rs6M)) : null
+      const trendScore = withData.length ? median(withData.map(t=>t.trendScore)) : null
+      const positiveRS  = withData.filter(t=>(t.trendScore??0)>0).length
+      const breadthEMA200 = withData.filter(t=>t.aboveEMA200===true).length
+      const mAge = medianAge(tickers_)
+      const oldest = tickers_.reduce((mx,t) => t.ageInDays!=null ? Math.max(mx,t.ageInDays) : mx, 0)
+
+      return {
+        name: g.name, sector: g.sector,
+        tickers: tickers_,
+        tickerCount: tickers_.length, dataCount: withData.length,
+        coverage: cov, insufficient: insuf,
+        trendScore, rs1M, rs3M, rs6M,
+        positiveRS, breadthEMA200,
+        medianAge: mAge, oldestAge: oldest,
+        value: sizeMode === 'equal' ? 1 : tickers_.length,
+      }
+    })
+    .filter(g => g.tickerCount >= 2)
+    .sort((a,b) => {
+      if (a.insufficient !== b.insufficient) return a.insufficient ? 1 : -1
+      return (b.trendScore??-999)-(a.trendScore??-999)
+    })
   }, [raw, sizeMode])
 
   const selectedInd = industries.find(i => i.name === selected)
@@ -659,25 +645,14 @@ export default function SectorTrendsView({ onSelectTicker }) {
         <div>
           <div style={{ fontSize:15, fontWeight:700, color:'var(--txt)' }}>Market Map</div>
           <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:1, fontStyle:'italic' }}>
-            S&P 500 (503 constituents) · RS vs SPY · No impact on Conviction or Swing scores
+            TradePoint Universe only · RS vs SPY · No impact on Conviction or Swing scores
           </div>
-          {snapshotMeta?.asOf && (
-            <div style={{ fontSize:9, color:'var(--txt-muted)', marginTop:2 }}>
-              <span style={{ color: snapshotMeta.status === 'complete' ? 'var(--green)' : 'var(--amber)' }}>
-                ● {snapshotMeta.status}
-              </span>
-              {' · as of '}{snapshotMeta.asOf}
-              {snapshotMeta.symbolsProcessed != null
-                ? ` · ${snapshotMeta.symbolsProcessed}/${snapshotMeta.symbolsExpected} · ${snapshotMeta.coveragePct}% coverage`
-                : snapshotMeta.coveragePct != null ? ` · ${snapshotMeta.coveragePct}% coverage` : ''}
-            </div>
-          )}
         </div>
 
         {/* Refresh button */}
         <button onClick={() => {
           setRaw([]); setLoading(true); setError(null)
-          workerAPI.get('/api/market-map/latest?refresh=1')
+          workerAPI.get('/api/sector-trends?refresh=1')
             .then(r => { setRaw(r?.tickers ?? []); setError(null) })
             .catch(e => setError(e.message))
             .finally(() => setLoading(false))
@@ -707,7 +682,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
             <span style={{ fontSize:10, color:'var(--txt-muted)' }}>Block size:</span>
             <div style={{ display:'flex', background:'var(--surface-up)', borderRadius:6,
               border:'1px solid var(--border)', overflow:'hidden' }}>
-              {[['count','# stocks'],['equal','Equal'],['weight','SPY weight']].map(([v,l]) => (
+              {[['count','# stocks'],['equal','Equal']].map(([v,l]) => (
                 <button key={v} onClick={() => setSizeMode(v)} style={{
                   padding:'4px 9px', border:'none', cursor:'pointer', fontSize:10, fontWeight:600,
                   background: sizeMode===v?'var(--accent)':'transparent',
@@ -746,7 +721,7 @@ export default function SectorTrendsView({ onSelectTicker }) {
           {/* TREND MAP */}
           {viewMode === 'trend' && (
             <>
-              <div style={{ flex:1, padding:'8px 8px 8px 12px', overflow:'hidden', minWidth:0 }}>
+              <div style={{ flex:1, padding:12, overflow:'hidden', minWidth:0 }}>
                 <TreemapContainer industries={industries} onSelect={setSelected} />
               </div>
 

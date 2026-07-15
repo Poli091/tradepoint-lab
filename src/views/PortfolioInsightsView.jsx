@@ -5,7 +5,6 @@
  */
 
 import { useMemo, useState, useCallback, useEffect } from 'react'
-import { useBreakpoint } from '../hooks/useBreakpoint.js'
 import { fUSD, fPct } from '../utils/format.js'
 import { workerAPI } from '../utils/api/worker.js'
 import { getGrade } from '../conviction/grade/index.js'
@@ -46,7 +45,6 @@ function Section({ title, children }) {
 }
 
 export default function PortfolioInsightsView({ visiblePositions = [], convictionResults = {}, prices = {} }) {
-  const { isMobile } = useBreakpoint()
   const [review,        setReview]        = useState(null)
   const [macro,         setMacro]         = useState(null)
   const [reviewLoading, setReviewLoading] = useState(false)
