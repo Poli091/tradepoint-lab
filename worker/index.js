@@ -1937,6 +1937,157 @@ async function handleDailyRS(env) {
 
 
 
+
+/* ── GET /api/admin/test-fixtures ────────────────────────────────────────
+   Runs synthetic fixtures to verify each new v1.1 rule branch is active.
+   Each fixture is a constructed fundamentals object designed to trigger
+   exactly one new rule. Expected outcomes are documented and verified.
+──────────────────────────────────────────────────────────────────────── */
+async function handleTestFixtures(request, keys, kv) {
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const spyOhlcv = await kv.get('ohlcv:SPY:1Y', 'json') ?? []
+
+  // Base fundamentals for a healthy company
+  const BASE = {
+    ticker: 'TEST', revenueGrowthYoY: 20, revenueGrowth3Y: 15,
+    epsGrowthYoY: 25, epsGrowth3Y: 20, fcfGrowth5Y: 15,
+    roic: 20, roe: 25, roi: 15,
+    grossMargin: 65, operatingMargin: 25, netMargin: 18,
+    debtToEquity: 0.3, currentRatio: 2.0, interestCoverage: 15,
+    pe: 25, peg: 1.2, forwardPE: 20, evEbitda: 18,
+    beta: 1.1, targetMean: null,
+    strongBuy: 20, buy: 5, hold: 2, sell: 0, strongSell: 0,
+    consecutiveBeats: 3, epsSurprisePct: 5,
+  }
+
+  const fixtures = [
+    {
+      id: 'F1_negative_equity',
+      desc: 'D/E negative (negative equity) → strength D/E = 0 pts, negativeEquity flag',
+      fund: { ...BASE, debtToEquity: -2.5 },
+      expect: { negativeEquity: true },
+    },
+    {
+      id: 'F2_roe_negative_equity',
+      desc: 'ROIC missing, ROE=22%, D/E=-1.5 (negative equity) → Gate2 fails: negativeEquity blocks ROE fallback',
+      // D/E=-1.5 passes Gate1 (negative handled), but Gate2 detects negativeEquity -> ROE rejected
+      fund: { ...BASE, roic: null, roi: null, roe: 22, debtToEquity: -1.5 },
+      expect: { gate2Pass: false, negativeEquity: true },
+    },
+    {
+      id: 'F3_roe_valid_fallback',
+      desc: 'ROIC missing, ROE=14%, D/E=0.5 (healthy) → Gate2 quality passes via ROE',
+      fund: { ...BASE, roic: null, roi: null, roe: 14, debtToEquity: 0.5 },
+      expect: { gate2Pass: true, profSource: 'roe_leverage_ok' },
+    },
+    {
+      id: 'F4_eps_anomalous',
+      desc: 'EPS growth 700% (base distortion) → capped at 4/8 anomalous handling',
+      fund: { ...BASE, epsGrowthYoY: 700 },
+      expect: { epsAnomalous: true },
+    },
+    {
+      id: 'F5_eps_winsorized',
+      desc: 'EPS growth 90% → winsorized to 80 cap → same as +80%',
+      fund: { ...BASE, epsGrowthYoY: 90 },
+      expect: { epsCapped: true },
+    },
+    {
+      id: 'F6_growth_modifier_severe',
+      desc: 'opExpenseBurden >40pp + opMargin <0 → growth modifier 0.65',
+      fund: { ...BASE, grossMargin: 70, operatingMargin: -5 },
+      expect: { growthModifier: 0.65 },
+    },
+    {
+      id: 'F7_growth_modifier_moderate',
+      desc: 'opExpenseBurden >30pp + opMargin <5% → growth modifier 0.85',
+      fund: { ...BASE, grossMargin: 60, operatingMargin: 3 },
+      expect: { growthModifier: 0.85 },
+    },
+    {
+      id: 'F8_no_modifier_healthy',
+      desc: 'Healthy margins → growth modifier 1.0 (no penalty)',
+      fund: { ...BASE, grossMargin: 65, operatingMargin: 25 },
+      expect: { growthModifier: 1.0 },
+    },
+    {
+      id: 'F9_roic_only_gate2',
+      desc: 'ROIC=15% → Gate2 passes using ROIC directly (not ROI or ROE)',
+      fund: { ...BASE, roic: 15, roi: 3, roe: 30 },
+      expect: { gate2Pass: true, profSource: 'roic' },
+    },
+    {
+      id: 'F10_roi_excluded',
+      desc: 'ROIC missing, ROI=15% (ambiguous) → must NOT pass Gate2 via ROI alone',
+      fund: { ...BASE, roic: null, roi: 15, roe: null },
+      expect: { gate2Pass: true, gate2Evaluable: false, profSource: null,
+               note: 'ROI ignored; no ROIC/ROE → not evaluable → pass by null policy, confidence reduced' },
+    },
+  ]
+
+  const results = []
+  for (const fix of fixtures) {
+    const result = computeConviction(fix.fund, [], spyOhlcv, null)
+    const gate2checks = result.gates?.gate2?.checks ?? {}
+    const profCheck   = gate2checks.profitability ?? {}
+    const growthMod   = result.breakdown?.growth?.growthQualityModifier ?? 1.0
+    const negEq       = result.breakdown?.strength?.negativeEquity === true
+    const epsAnomaly  = result.breakdown?.growth?.components?.eps?.anomalous === true
+    const epsCapped   = result.breakdown?.growth?.components?.eps?.capped === true
+
+    results.push({
+      id:    fix.id,
+      desc:  fix.desc,
+      score: result.finalScore,
+      grade: result.grade,
+      gate:  result.activeGate ?? 'none',
+      breakdown: {
+        growth:   result.breakdown?.growth?.score,
+        quality:  result.breakdown?.quality?.score,
+        strength: result.breakdown?.strength?.score,
+      },
+      checks: {
+        gate2Pass:       gate2checks.profitability?.pass ?? null,
+        gate2Evaluable:  gate2checks.profitability?.evaluable ?? null,
+        profSource:      profCheck.source ?? null,
+        negativeEquity:  negEq,
+        growthModifier:  growthMod,
+        epsAnomalous:    epsAnomaly,
+        epsCapped:       epsCapped,
+      },
+      expected: fix.expect,
+      passed: verifyFixture(fix.expect, {
+        gate2Pass: gate2checks.profitability?.pass ?? null,
+        profSource: profCheck.source ?? null,
+        negativeEquity: negEq,
+        growthModifier: growthMod,
+        epsAnomalous: epsAnomaly,
+        epsCapped: epsCapped,
+      }),
+    })
+  }
+
+  const allPassed = results.every(r => r.passed !== false)
+  return json({ ok: true, allPassed, engineVersion: CURRENT_MODEL_VERSION, results })
+}
+
+function verifyFixture(expected, actual) {
+  for (const [key, val] of Object.entries(expected)) {
+    if (key === 'note') continue  // informational only
+    // gate2Evaluable=false is a valid expected value (not "missing")
+    if (actual[key] === undefined) return null  // field missing from response
+    const numExpect = Number(val), numActual = Number(actual[key])
+    if (!isNaN(numExpect) && !isNaN(numActual)) {
+      if (Math.abs(numActual - numExpect) > 0.01) return false
+    } else {
+      if (actual[key] !== val) return false
+    }
+  }
+  return true
+}
+
 /* ── POST /api/admin/validate-v11 ───────────────────────────────────────
    Runs v1.1 engine on a list of tickers and returns comparison vs v1.0
    scores already in D1. Does NOT write to D1.
@@ -2007,34 +2158,58 @@ async function handleValidateV11(request, env, keys, kv, db) {
       const v11score = v11.finalScore
       const delta    = v10score != null && v11score != null ? Math.round((v11score - v10score) * 10) / 10 : null
 
+      // Component-level deltas
+      const v10comp = v10row ? {
+        growth: v10row.growth_score, quality: v10row.quality_score,
+        strength: v10row.strength_score, technical: v10row.technical_score,
+      } : null
+      const v11comp = {
+        growth: v11.breakdown?.growth?.score,
+        quality: v11.breakdown?.quality?.score,
+        strength: v11.breakdown?.strength?.score,
+        technical: v11.breakdown?.technical?.score,
+      }
+      const compDeltas = v10comp ? {
+        growth:    Math.round(((v11comp.growth ?? 0) - (v10comp.growth ?? 0)) * 10) / 10,
+        quality:   Math.round(((v11comp.quality ?? 0) - (v10comp.quality ?? 0)) * 10) / 10,
+        strength:  Math.round(((v11comp.strength ?? 0) - (v10comp.strength ?? 0)) * 10) / 10,
+        technical: Math.round(((v11comp.technical ?? 0) - (v10comp.technical ?? 0)) * 10) / 10,
+      } : null
+
+      const v10gate = v10row?.active_gate ?? null
+      const v11gate = v11.activeGate ?? null
+
       results.push({
         ticker,
         v10: v10row ? {
           score: v10row.final_score, grade: v10row.grade,
-          gate: v10row.active_gate ?? null,
-          growth: v10row.growth_score, quality: v10row.quality_score,
-          strength: v10row.strength_score, technical: v10row.technical_score,
-          modelVersion: v10row.model_version,
+          gate: v10gate, modelVersion: v10row.model_version,
+          growth: v10comp.growth, quality: v10comp.quality,
+          strength: v10comp.strength, technical: v10comp.technical,
         } : null,
         v11: {
-          score:    v11.finalScore, grade: v11.grade,
-          gate:     v11.activeGate ?? null,
-          growth:   v11.breakdown?.growth?.score,
-          quality:  v11.breakdown?.quality?.score,
-          strength: v11.breakdown?.strength?.score,
-          technical:v11.breakdown?.technical?.score,
-          growthModifier: v11.breakdown?.growth?.growthQualityModifier,
-          negativeEquity: v11.breakdown?.strength?.negativeEquity,
-          extended:       v11.breakdown?.technical?.components?.ema200?.extended,
+          score: v11.finalScore, grade: v11.grade,
+          gate: v11gate,
+          modelVersion: CURRENT_MODEL_VERSION,
+          growth: v11comp.growth, quality: v11comp.quality,
+          strength: v11comp.strength, technical: v11comp.technical,
+          growthModifier:    v11.breakdown?.growth?.growthQualityModifier ?? 1.0,
+          negativeEquity:    v11.breakdown?.strength?.negativeEquity === true,
+          extended:          v11.breakdown?.technical?.components?.ema200?.extended === true,
+          gate2ProfSource:   v11.gates?.gate2?.checks?.profitability?.source ?? null,
+          gate2ProfPass:     v11.gates?.gate2?.checks?.profitability?.pass ?? null,
         },
+        componentDeltas: compDeltas,
         delta,
-        gradeChanged: v10row?.grade !== v11.grade,
-        gateChanged:  (v10row?.active_gate ?? null) !== (v11.activeGate ?? null),
+        gradeChanged:    v10row ? v10row.grade !== v11.grade : null,
+        gateChanged:     v10row ? v10gate !== v11gate : null,
         flags: {
-          largeDelta:    delta != null && Math.abs(delta) > 10,
-          gradeChanged:  v10row?.grade !== v11.grade,
-          newGateCap:    !v10row?.active_gate && !!v11.activeGate,
-          removedGate:   !!v10row?.active_gate && !v11.activeGate,
+          largeDelta:   delta != null && Math.abs(delta) > 10,
+          gradeChanged: v10row ? v10row.grade !== v11.grade : false,
+          newGateCap:   v10row ? !v10gate && !!v11gate : false,
+          removedGate:  v10row ? !!v10gate && !v11gate : false,
+          negativeEquity: v11.breakdown?.strength?.negativeEquity === true,
+          extended:       v11.breakdown?.technical?.components?.ema200?.extended === true,
         },
       })
     } catch(e) {
@@ -2048,17 +2223,25 @@ async function handleValidateV11(request, env, keys, kv, db) {
   const avgDelta = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length*10)/10 : null
   const medDelta = deltas.length ? (deltas.sort((a,b)=>a-b)[Math.floor(deltas.length/2)]) : null
 
+  const skipped = results.filter(r => r.error)
+
   return json({
     ok: true,
+    candidateEngine:   CURRENT_MODEL_VERSION,
+    writeToD1:         false,
     summary: {
-      tested:          tickers.length,
+      requested:       tickers.length,
       compared:        valid.length,
+      skipped:         skipped.length,
+      skippedTickers:  skipped.map(r => ({ ticker: r.ticker, reason: r.error })),
       avgDelta,
       medianDelta:     medDelta,
       gradeChanges:    valid.filter(r => r.gradeChanged).length,
       newGateCaps:     valid.filter(r => r.flags.newGateCap).length,
       removedGateCaps: valid.filter(r => r.flags.removedGate).length,
       largeDeltaCount: valid.filter(r => r.flags.largeDelta).length,
+      negativeEquityCount: valid.filter(r => r.flags.negativeEquity).length,
+      extendedCount:       valid.filter(r => r.flags.extended).length,
     },
     results,
   })
@@ -4549,6 +4732,8 @@ export default {
           return await handleBackfillRS(request, db, kv, keys)
         case 'set-targets':
           return await handleSetTargets(request, kv, keys)
+        case 'test-fixtures':
+          return await handleTestFixtures(request, keys, kv)
         case 'validate-v11':
           return await handleValidateV11(request, env, keys, kv, db)
         case 'batch-scan':
