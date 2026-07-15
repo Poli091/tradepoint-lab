@@ -134,7 +134,7 @@ const delay = ms => new Promise(r => setTimeout(r, ms))
 
 // Current Conviction Engine model version — update here when methodology changes
 // Used in: analyses/grades endpoint, batch scoring, model_version column
-const CURRENT_MODEL_VERSION = 'v1.0'
+const CURRENT_MODEL_VERSION = 'v1.1'  // Gate 2 ROE leverage check, Quality dedup, Growth winsorize, Technical extension
 
 
 /* ════════════════════════════════════════════════════════════

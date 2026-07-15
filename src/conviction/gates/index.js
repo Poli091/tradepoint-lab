@@ -7,6 +7,10 @@
  *
  * Gates run in sequence: Gate 1 first, Gate 2 only if Gate 1 passes.
  * Null fields → pass by default (can't penalize for missing data).
+ *
+ * v1.1 changes:
+ *  - Gate 2: ROE only passes when leverage is healthy (D/E ≤ sectoral max)
+ *  - Gate 2: Operating Margin gate skipped for Banks/REIT (structurally inapplicable)
  */
 
 /* ─── Gate 1 ────────────────────────────────────────────── */
@@ -40,16 +44,56 @@ function checkGate1(ctx) {
 /* ─── Gate 2 ────────────────────────────────────────────── */
 function checkGate2(ctx) {
   const f = ctx.fundamentals
+  const profile = ctx.sectorProfile
   const checks = {}
 
-  // ROIC or ROE must be at least 8% — minimum quality bar
-  const qualityVal = f.roic ?? f.roi ?? f.roe ?? null
-  const qualityOk  = qualityVal == null || qualityVal >= 8
-  checks.roicOrRoe = { pass: qualityOk, value: qualityVal }
+  // ── Profitability check ──────────────────────────────────
+  // Priority: ROIC/ROI (true economic return) → ROE with leverage guard
+  // ROE alone can be inflated by high leverage — only counts if D/E is healthy
+  const roic = f.roic ?? f.roi ?? null
+  const roe  = f.roe ?? null
+  const debtToEquity = f.debtToEquity ?? null
+  const debtThreshold = profile.gate1DebtMax ?? 4  // use sector-appropriate threshold
 
-  // Operating margin must be positive
-  const opOk = f.operatingMargin == null || f.operatingMargin > 0
-  checks.operatingMargin = { pass: opOk, value: f.operatingMargin }
+  let qualityVal, qualitySource, qualityOk
+
+  if (roic != null) {
+    // ROIC/ROI available — use directly, no leverage adjustment needed
+    qualityVal    = roic
+    qualitySource = f.roic != null ? 'roic' : 'roi_proxy'
+    qualityOk     = qualityVal >= 8
+  } else if (roe != null) {
+    // ROE only — require D/E within healthy range to avoid leverage distortion
+    qualityVal    = roe
+    qualitySource = 'roe_with_leverage_check'
+    const leverageOk = debtToEquity == null || debtToEquity <= debtThreshold
+    qualityOk     = roe >= 10 && leverageOk
+    // If ROE ≥ 10 but leverage is too high, note the reason
+    if (roe >= 10 && !leverageOk) {
+      qualitySource = 'roe_failed_leverage_check'
+    }
+  } else {
+    // No quality metric — pass by default (can't penalize for missing data)
+    qualityVal    = null
+    qualitySource = null
+    qualityOk     = true
+  }
+
+  checks.profitability = {
+    pass: qualityOk, value: qualityVal, source: qualitySource,
+    roic, roe, debtToEquity,
+  }
+
+  // ── Operating Margin check ───────────────────────────────
+  // Banks and REITs: operating margin is structurally inapplicable
+  // (banks use Net Interest Margin; REITs report AFFO/FFO)
+  const skipOpMargin = profile.name === 'banks' || profile.name === 'reit'
+  if (skipOpMargin) {
+    checks.operatingMargin = { pass: true, skipped: true, reason: `Not applicable for ${profile.name}` }
+  } else {
+    const opOk = f.operatingMargin == null || f.operatingMargin > 0
+    checks.operatingMargin = { pass: opOk, value: f.operatingMargin }
+  }
 
   const pass = Object.values(checks).every(c => c.pass)
   return { pass, cap: pass ? null : 58, verdict: pass ? null : 'HOLD', checks }

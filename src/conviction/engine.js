@@ -31,6 +31,8 @@ import { buildAudit }        from './audit/index.js'
  * @param {object} prices        - { [ticker]: { price, ... } }
  * @returns Full conviction result object
  */
+const MODEL_VERSION = 'v1.1'  // Gate 2 leverage check, Quality dedup, Growth caps, Technical extension
+
 export function runConviction({ fundamentals, ohlcv = [], spyOhlcv = [], prices = {} }) {
   // ── 1. Build shared context ──────────────────────────────
   const ctx = createContext({ fundamentals, ohlcv, spyOhlcv, prices })
@@ -150,6 +152,7 @@ export function runConviction({ fundamentals, ohlcv = [], spyOhlcv = [], prices 
 
     // Audit
     audit,
+    modelVersion: MODEL_VERSION,
     sectorProfile: ctx.sectorProfile.name,
     fundamentalsData: ctx.fundamentals,  // exposed for UI display
   }

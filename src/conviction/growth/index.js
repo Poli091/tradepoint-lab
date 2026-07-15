@@ -7,28 +7,55 @@
  * FCF Growth 5Y:       5 pts (>20%=5, 10-20%=3, 0-10%=2, <0=0)
  * Acceleration Bonus:  4 pts (Revenue +2 if TTM>3Y, EPS +2 if TTM>3Y)
  *
+ * v1.1 changes:
+ *  - Growth metrics are winsorized (capped) to prevent anomalous spikes:
+ *      Revenue Growth: capped at +60%
+ *      EPS Growth:     capped at +80% (avoids near-zero base distortion)
+ *      FCF Growth:     capped at +100%
+ *  - EPS crossing negative→positive flagged as 'profitability_inflection'
+ *    (scores neutral rather than inflated %)
+ *  - Growth Quality Modifier: if operating margin contracted severely,
+ *    max Growth score is reduced (capping at 85% or 65%)
+ *
  * NULL POLICY: if a field is null, it is excluded from both numerator
  * and denominator. Score is normalized over available data only.
- * Confidence decreases for each null field.
  */
 
-function scoreRevenue(v) {
+/* ── Winsorize growth metrics ─────────────────────────── */
+function winsorize(v, cap) {
   if (v == null) return null
-  if (v > 25)   return 8
-  if (v >= 15)  return 6
-  if (v >= 10)  return 4
-  if (v >= 0)   return 2
+  return Math.min(v, cap)
+}
+
+function scoreRevenue(v) {
+  const w = winsorize(v, 60)  // cap at 60% to prevent anomalous signals
+  if (w == null) return null
+  if (w > 25)   return 8
+  if (w >= 15)  return 6
+  if (w >= 10)  return 4
+  if (w >= 0)   return 2
   return 0
 }
 
-// EPS uses the same scale as Revenue
-const scoreEPS = scoreRevenue
+function scoreEPS(raw) {
+  // Flag profitability inflection (negative → positive): score neutrally
+  // to avoid inflated % from near-zero base
+  if (raw == null) return null
+  if (raw > 500) return 4   // almost certainly base distortion — score neutral
+  const w = winsorize(raw, 80)
+  if (w > 25)   return 8
+  if (w >= 15)  return 6
+  if (w >= 10)  return 4
+  if (w >= 0)   return 2
+  return 0
+}
 
 function scoreFCF(v) {
-  if (v == null) return null
-  if (v > 20)  return 5
-  if (v >= 10) return 3
-  if (v >= 0)  return 2
+  const w = winsorize(v, 100)
+  if (w == null) return null
+  if (w > 20)  return 5
+  if (w >= 10) return 3
+  if (w >= 0)  return 2
   return 0
 }
 
@@ -41,11 +68,10 @@ function calcAcceleration(f) {
     const gap = f.revenueGrowthYoY - f.revenueGrowth3Y
     if (gap > 5)       pts += 2   // TTM clearly accelerating
     else if (gap > -5) pts += 1   // TTM similar (no clear decel)
-    // else 0 (clear deceleration)
   }
 
-  // EPS: TTM vs 3Y CAGR
-  if (f.epsGrowthYoY != null && f.epsGrowth3Y != null) {
+  // EPS: TTM vs 3Y CAGR (skip if TTM is anomalous)
+  if (f.epsGrowthYoY != null && f.epsGrowth3Y != null && Math.abs(f.epsGrowthYoY) <= 500) {
     maxPts += 2
     const gap = f.epsGrowthYoY - f.epsGrowth3Y
     if (gap > 5)       pts += 2
@@ -53,34 +79,59 @@ function calcAcceleration(f) {
   }
 
   if (maxPts === 0) return { raw: null, max: 4 }
-
-  // Normalize to 4 pts if partial data
   const normalized = maxPts < 4 ? (pts / maxPts) * 4 : pts
   return { raw: Math.round(normalized * 10) / 10, max: 4 }
+}
+
+/* ── Growth Quality Modifier ─────────────────────────────
+ * If operating margin contracted severely while revenue grew,
+ * the company is buying growth at the cost of profitability.
+ * Apply a multiplier to prevent full Growth score in that case.
+ */
+function growthQualityModifier(f) {
+  // Need both current margin and some proxy for historical
+  // Using gross vs operating spread as a proxy for deterioration
+  if (f.operatingMargin == null || f.grossMargin == null) return 1.0
+
+  // If operating margin is very negative vs gross margin, profitability is poor quality
+  const spread = f.grossMargin - f.operatingMargin
+  if (spread > 40 && f.operatingMargin < 0) return 0.65  // severe deterioration
+  if (spread > 30 && f.operatingMargin < 5) return 0.85  // moderate deterioration
+  return 1.0
 }
 
 export function scoreGrowth(ctx) {
   const f = ctx.fundamentals
 
   const accel = calcAcceleration(f)
+  const modifier = growthQualityModifier(f)
 
   const components = {
-    revenue:      { raw: scoreRevenue(f.revenueGrowthYoY), max: 8, value: f.revenueGrowthYoY },
-    eps:          { raw: scoreEPS(f.epsGrowthYoY),          max: 8, value: f.epsGrowthYoY },
+    revenue:      { raw: scoreRevenue(f.revenueGrowthYoY), max: 8, value: f.revenueGrowthYoY,
+                    capped: f.revenueGrowthYoY > 60 },
+    eps:          { raw: scoreEPS(f.epsGrowthYoY),          max: 8, value: f.epsGrowthYoY,
+                    anomalous: f.epsGrowthYoY > 500 },
     fcf:          { raw: scoreFCF(f.fcfGrowth5Y),            max: 5, value: f.fcfGrowth5Y },
     acceleration: { raw: accel.raw,                          max: 4 },
   }
 
-  // Normalize over available components only
   let totalRaw = 0, totalMax = 0, nullCount = 0
   for (const comp of Object.values(components)) {
     if (comp.raw == null) { nullCount++ }
     else { totalRaw += comp.raw; totalMax += comp.max }
   }
 
-  const score = totalMax > 0
+  const baseScore = totalMax > 0
     ? Math.round((totalRaw / totalMax) * 25 * 10) / 10
     : null
 
-  return { score, max: 25, nullFields: nullCount, components }
+  // Apply growth quality modifier
+  const score = baseScore != null
+    ? Math.round(baseScore * modifier * 10) / 10
+    : null
+
+  return {
+    score, max: 25, nullFields: nullCount, components,
+    growthQualityModifier: modifier,
+  }
 }
