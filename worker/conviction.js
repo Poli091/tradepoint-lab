@@ -298,13 +298,18 @@ function gates(f, profile) {
     if (profSource && profSource !== 'null') {
       g2checks.profitability = { ...g2checks.profitability, source: 'bank_roe_net_margin' }
     }
-    g2checks.operatingMargin = { pass: bankPass, substitute:'banks:ROE>=8+NetMargin>0',
-      roePass: roeOk, netMarginPass: nmOk }
+    g2checks.operatingMargin = { pass: bankPass, cause: bankPass ? null : 'bank_net_margin',
+      substitute:'banks:ROE>=8+NetMargin>0', roePass: roeOk, netMarginPass: nmOk }
   } else if (profile.name === 'reit') {
     // Gate2 uses tighter leverage threshold than Gate1 (quality vs solvency)
     const g2max = profile.gate2DebtMax ?? 8
     const deOk  = de == null || de <= g2max
-    g2checks.operatingMargin = { pass: deOk, substitute:'reit:D/E<=gate2threshold', threshold: g2max }
+    // Override profitability source with REIT-specific label
+    if (g2checks.profitability?.source) {
+      g2checks.profitability = { ...g2checks.profitability, source: 'reit_roe_leverage' }
+    }
+    g2checks.operatingMargin = { pass: deOk, cause: deOk ? null : 'reit_leverage',
+      substitute:'reit:D/E<=gate2threshold', threshold: g2max }
   } else {
     g2checks.operatingMargin = { pass: f.operatingMargin == null || f.operatingMargin > 0, value: f.operatingMargin }
   }
@@ -313,7 +318,7 @@ function gates(f, profile) {
   if (!g2pass) return { gate1:{pass:true,checks:g1checks}, gate2:{pass:false,checks:g2checks,
     profCheckPass: g2checks.profitability?.pass ?? null,
     marginCheckPass: g2checks.operatingMargin?.pass ?? null,
-    cause: !g2checks.profitability?.pass ? 'profitability' : 'operating_margin',
+    cause: !g2checks.profitability?.pass ? 'profitability' : (g2checks.operatingMargin?.cause ?? 'operating_margin'),
   }, activeCap:58, activeGate:'gate2' }
   return { gate1:{pass:true,checks:g1checks}, gate2:{pass:true,checks:g2checks,
     profCheckPass: g2checks.profitability?.pass ?? null,

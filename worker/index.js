@@ -2022,7 +2022,7 @@ async function handleTestFixtures(request, keys, kv) {
       id: 'F10_roi_excluded',
       desc: 'ROIC missing, ROI=15% (ambiguous) → must NOT pass Gate2 via ROI alone',
       fund: { ...BASE, roic: null, roi: 15, roe: null },
-      expect: { gate2Pass: true, gate2Evaluable: false },
+      expect: { gate2Pass: true, gate2Evaluable: false }
     },
     // ── Technical extension fixtures ──────────────────────────────
     {
@@ -2030,14 +2030,14 @@ async function handleTestFixtures(request, keys, kv) {
       desc: 'Price > EMA50 + 3 ATR => extension penalty -1, extended=true',
       fund: BASE,
       _syntheticOhlcv: 'extension',
-      expect: { extended: true, extensionPenalty: -1 },
+      expect: { extended: true, extensionPenalty: -1 }
     },
     {
       id: 'F12_no_extension',
       desc: 'Price within 1 ATR of EMA50 => no extension penalty, extended=false',
       fund: BASE,
       _syntheticOhlcv: 'normal',
-      expect: { extended: false, extensionPenalty: 0 },
+      expect: { extended: false, extensionPenalty: 0 }
     },
     // ── Bank / REIT sector fixtures ─────────────────────────────
     {
@@ -2050,19 +2050,19 @@ async function handleTestFixtures(request, keys, kv) {
       id: 'F14_bank_gate2_fail',
       desc: 'Bank profile: ROE=15%, Net Margin=-5% => Gate2 fails bank substitute',
       fund: { ...BASE, roic: null, roi: null, roe: 15, netMargin: -5, sector: 'Financials' },
-      expect: { gate2Pass: false, profSource: 'bank_roe_net_margin' },
+      expect: { gate2Pass: false, profSource: 'bank_roe_net_margin', gate2Cause: 'bank_net_margin' },
     },
     {
       id: 'F15_reit_gate2_pass',
-      desc: 'REIT profile: D/E=7 (within threshold 10) => Gate2 passes REIT substitute',
-      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 7, sector: 'Real Estate' },
-      expect: { gate2Pass: true },
+      desc: 'REIT: ROE=12 D/E=7 => passes profitability(ROE>=10+lev) AND REIT Gate2(D/E<=8)',
+      fund: { ...BASE, roic: null, roi: null, roe: 12, operatingMargin: -2, debtToEquity: 7, sector: 'Real Estate' },
+      expect: { gate2Pass: true, profSource: 'reit_roe_leverage' },
     },
     {
       id: 'F16_reit_gate2_fail',
-      desc: 'REIT: D/E=9 passes Gate1 (max=10) but fails Gate2 (max=8) => validates separate thresholds',
-      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 9, sector: 'Real Estate' },
-      expect: { gate2Pass: false },
+      desc: 'REIT: ROE=12 D/E=9 => passes profitability, passes Gate1(<=10), fails Gate2(9>8)',
+      fund: { ...BASE, roic: null, roi: null, roe: 12, operatingMargin: -2, debtToEquity: 9, sector: 'Real Estate' },
+      expect: { gate2Pass: false, gate2Cause: 'reit_leverage' },
     },
   ]
 
@@ -2103,7 +2103,7 @@ async function handleTestFixtures(request, keys, kv) {
         strength: result.breakdown?.strength?.score,
       },
       checks: {
-        gate2Pass:        gate2checks.profitability?.pass ?? null,
+        gate2Pass:        result.gates?.gate2?.pass ?? null,  // overall Gate2 result
         gate2Evaluable:   gate2checks.profitability?.evaluable ?? null,
         profSource:       profCheck.source ?? null,
         negativeEquity:   negEq,
@@ -2119,12 +2119,16 @@ async function handleTestFixtures(request, keys, kv) {
       },
       expected: fix.expect,
       passed: verifyFixture(fix.expect, {
-        gate2Pass: gate2checks.profitability?.pass ?? null,
-        profSource: profCheck.source ?? null,
-        negativeEquity: negEq,
-        growthModifier: growthMod,
-        epsAnomalous: epsAnomaly,
-        epsCapped: epsCapped,
+        gate2Pass:        result.gates?.gate2?.pass ?? null,
+        gate2Evaluable:   gate2checks.profitability?.evaluable ?? null,
+        profSource:       profCheck.source ?? null,
+        negativeEquity:   negEq,
+        growthModifier:   growthMod,
+        epsAnomalous:     epsAnomaly,
+        epsCapped:        epsCapped,
+        extended:         extended,
+        extensionPenalty: result.breakdown?.technical?.extensionPenalty ?? 0,
+        gate2Cause:       result.gates?.gate2?.cause ?? null,
       }),
     })
   }
@@ -2137,13 +2141,24 @@ function verifyFixture(expected, actual) {
   for (const [key, val] of Object.entries(expected)) {
     if (key === 'note') continue
     const av = actual[key]
-    if (av === undefined) return null
+    if (av === undefined) return null  // field not in response
+    // Boolean: strict type + value match
     if (typeof val === 'boolean') {
-      if (av === val) continue
-      if (av === null && val === false) continue
-      return false
+      if (typeof av !== 'boolean') return false
+      if (av !== val) return false
+      continue
     }
-    if (val === null || av === null) continue
+    // Null expected → actual must also be null/empty
+    if (val === null) {
+      if (av !== null && av !== '' && av !== undefined) return false
+      continue
+    }
+    // String: exact match
+    if (typeof val === 'string') {
+      if (String(av) !== val) return false
+      continue
+    }
+    // Number: within 0.01
     const numE = Number(val), numA = Number(av)
     if (!isNaN(numE) && !isNaN(numA)) {
       if (Math.abs(numA - numE) > 0.01) return false
