@@ -52,7 +52,11 @@ function AppInner() {
   const [account,     setAccount]     = useState('combined')
   const [privacyMode, setPrivacyMode] = useState(false)
   const togglePrivacy = () => setPrivacyMode(p => !p)
-  const [ticker,      setTicker]      = useState('')
+  // Default ticker = first portfolio position, fallback SPY
+  const [ticker,      setTicker]      = useState(() => {
+    const pos = loadOverrides() ?? []
+    return pos[0]?.ticker ?? 'SPY'
+  })
   const [range,       setRange]       = useState('1Y')
   const [sortBy,      setSortBy]      = useState('conviction')
   const [sortDir,     setSortDir]     = useState('desc')

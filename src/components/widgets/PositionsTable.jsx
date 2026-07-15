@@ -111,12 +111,12 @@ export default function PositionsTable({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 0 : 800 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 0 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {SORT_COLS.map(col => {
                 // Hide less critical columns on mobile
-                if (isMobile && ['chart'].includes(col.key)) return null
+                if (isMobile && ['chart', 'gain'].includes(col.key)) return null
                 const active = sortBy === col.key
                 return (
                   <th key={col.key} onClick={() => { if (col.noSort) return; onSort(col.key) }} style={{ minWidth: col.minW,
@@ -197,8 +197,8 @@ export default function PositionsTable({
                     </td>
                   )}
 
-                  {/* All-time P&L */}
-                  <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 130 }}>
+                  {/* All-time P&L — hidden on mobile */}
+                  {!isMobile && <td style={{ padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 130 }}>
                     <div className="pv" style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: isGain ? 'var(--green)' : 'var(--red)' }}>
                       {fSignedUSD(gain)}
                     </div>
@@ -206,7 +206,7 @@ export default function PositionsTable({
                       {fPct(gainPct)}
                     </div>
                   </td>
-
+}
                   {/* Conviction ring + grade */}
                   <td style={{ padding: '9px 10px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>

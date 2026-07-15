@@ -344,8 +344,8 @@ export default function Header({
       {/* Global ticker search */}
       {!isMobile && <TickerSearch onSelect={onGlobalSearch} />}
 
-      {/* Live data badge */}
-      {liveBadge && <div style={{ flexShrink:0 }}>{liveBadge}</div>}
+      {/* Live data badge — hidden on mobile (header too narrow) */}
+      {liveBadge && !isMobile && <div style={{ flexShrink:0 }}>{liveBadge}</div>}
 
       {/* Market status + time */}
       {!isMobile && (
