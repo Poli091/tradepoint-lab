@@ -2089,6 +2089,7 @@ async function handleTestFixtures(request, keys, kv) {
     const negEq       = result.breakdown?.strength?.negativeEquity === true
     const epsAnomaly  = result.breakdown?.growth?.components?.eps?.anomalous === true
     const epsCapped   = result.breakdown?.growth?.components?.eps?.capped === true
+    const extended    = result.breakdown?.technical?.extended === true
 
     results.push({
       id:    fix.id,
@@ -2249,9 +2250,9 @@ async function handleValidateV11(request, env, keys, kv, db) {
           gate: v11gate,
           modelVersion: CURRENT_MODEL_VERSION,
           operatingMarginRaw: fund?.operatingMargin ?? null,
-          gate2ProfPass:  result?.gates?.gate2?.checks?.profitability?.pass ?? null,
-          gate2MarginPass: result?.gates?.gate2?.checks?.operatingMargin?.pass ?? null,
-          gate2Cause:     result?.gates?.gate2?.cause ?? null,
+          gate2ProfPass:  v11?.gates?.gate2?.checks?.profitability?.pass ?? null,
+          gate2MarginPass: v11?.gates?.gate2?.checks?.operatingMargin?.pass ?? null,
+          gate2Cause:     v11?.gates?.gate2?.cause ?? null,
           growth: v11comp.growth, quality: v11comp.quality,
           strength: v11comp.strength, technical: v11comp.technical,
           growthModifier:    v11.breakdown?.growth?.growthQualityModifier ?? 1.0,
