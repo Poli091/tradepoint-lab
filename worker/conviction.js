@@ -25,7 +25,7 @@ const PROFILES = {
     debt:[[1.5,5],[2.5,4],[4.0,3],[6.0,1],[Infinity,0]],
     cr:  [[1.2,5],[1.0,4],[0.8,3],[0.6,1]],
     ic:  [[3.0,5],[2.0,4],[1.5,3],[1.0,1]] },
-  reit:      { name:'reit',      gate1DebtMax:10,   riskDebtMax:8.0,
+  reit:      { name:'reit',      gate1DebtMax:10,  gate2DebtMax:8,  riskDebtMax:8.0,
     debt:[[3.0,5],[5.0,4],[8.0,3],[10.0,1],[Infinity,0]],
     cr:  [[1.5,5],[1.0,4],[0.8,3],[0.5,1]],
     ic:  [[3.0,5],[2.0,4],[1.5,3],[1.0,1]] },
@@ -293,10 +293,18 @@ function gates(f, profile) {
   if (profile.name === 'banks') {
     const roeOk = roe == null || roe >= 8
     const nmOk  = f.netMargin == null || f.netMargin > 0
-    g2checks.operatingMargin = { pass: roeOk && nmOk, substitute:'banks:ROE>=8+NetMargin>0' }
+    const bankPass = roeOk && nmOk
+    // Override profitability source with bank-specific label
+    if (profSource && profSource !== 'null') {
+      g2checks.profitability = { ...g2checks.profitability, source: 'bank_roe_net_margin' }
+    }
+    g2checks.operatingMargin = { pass: bankPass, substitute:'banks:ROE>=8+NetMargin>0',
+      roePass: roeOk, netMarginPass: nmOk }
   } else if (profile.name === 'reit') {
-    const deOk = de == null || de <= (profile.gate1DebtMax ?? 10)
-    g2checks.operatingMargin = { pass: deOk, substitute:'reit:D/E<=threshold' }
+    // Gate2 uses tighter leverage threshold than Gate1 (quality vs solvency)
+    const g2max = profile.gate2DebtMax ?? 8
+    const deOk  = de == null || de <= g2max
+    g2checks.operatingMargin = { pass: deOk, substitute:'reit:D/E<=gate2threshold', threshold: g2max }
   } else {
     g2checks.operatingMargin = { pass: f.operatingMargin == null || f.operatingMargin > 0, value: f.operatingMargin }
   }
@@ -371,7 +379,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       quality:   { score:ql.score,    max:20, nullFields:ql.nullFields },
       strength:  { score:st.score,    max:15, nullFields:st.nullFields, skipped:st.skipped, negativeEquity:st.negativeEquity===true },
       valuation: { score:vl.score,    max:15, metric:vl.metric, value:vl.value },
-      technical: { score:tc.score,    max:15, nullFields:tc.nullFields, extended:tc.extended===true, components:tc.components },
+      technical: { score:tc.score,    max:15, nullFields:tc.nullFields, extended:tc.extended===true, extensionPenalty:tc.extended?-1:0, components:tc.components },
       risk:      { penalty:rk.penalty, flags:rk.flags },
     },
     gates: { gate1:gt.gate1, gate2:gt.gate2 },

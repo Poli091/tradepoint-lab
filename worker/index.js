@@ -2030,27 +2030,27 @@ async function handleTestFixtures(request, keys, kv) {
       desc: 'Price > EMA50 + 3 ATR => extension penalty -1, extended=true',
       fund: BASE,
       _syntheticOhlcv: 'extension',
-      expect: { extended: true },
+      expect: { extended: true, extensionPenalty: -1 },
     },
     {
       id: 'F12_no_extension',
       desc: 'Price within 1 ATR of EMA50 => no extension penalty, extended=false',
       fund: BASE,
       _syntheticOhlcv: 'normal',
-      expect: { extended: false },
+      expect: { extended: false, extensionPenalty: 0 },
     },
     // ── Bank / REIT sector fixtures ─────────────────────────────
     {
       id: 'F13_bank_gate2_pass',
       desc: 'Bank profile: ROE=15%, Net Margin=12% => Gate2 passes bank substitute',
       fund: { ...BASE, roic: null, roi: null, roe: 15, netMargin: 12, sector: 'Financials' },
-      expect: { gate2Pass: true },
+      expect: { gate2Pass: true, profSource: 'bank_roe_net_margin' },
     },
     {
       id: 'F14_bank_gate2_fail',
       desc: 'Bank profile: ROE=15%, Net Margin=-5% => Gate2 fails bank substitute',
       fund: { ...BASE, roic: null, roi: null, roe: 15, netMargin: -5, sector: 'Financials' },
-      expect: { gate2Pass: false },
+      expect: { gate2Pass: false, profSource: 'bank_roe_net_margin' },
     },
     {
       id: 'F15_reit_gate2_pass',
@@ -2060,8 +2060,8 @@ async function handleTestFixtures(request, keys, kv) {
     },
     {
       id: 'F16_reit_gate2_fail',
-      desc: 'REIT profile: D/E=12 (above threshold 10) => Gate2 fails REIT substitute',
-      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 12, sector: 'Real Estate' },
+      desc: 'REIT: D/E=9 passes Gate1 (max=10) but fails Gate2 (max=8) => validates separate thresholds',
+      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 9, sector: 'Real Estate' },
       expect: { gate2Pass: false },
     },
   ]
@@ -2082,7 +2082,7 @@ async function handleTestFixtures(request, keys, kv) {
       const syn = buildSyntheticOhlcv(fix._syntheticOhlcv)
       ohlcv = syn.ohlcv; livePrice = syn.livePrice
     }
-    const result = computeConviction(fix.fund, ohlcv, spyOhlcv, livePrice)
+    const result = computeConviction(fix.fund, ohlcv, spyOhlcv, livePrice, fix.fund.sector??'', fix.fund.sectorEtf??'')
     const gate2checks = result.gates?.gate2?.checks ?? {}
     const profCheck   = gate2checks.profitability ?? {}
     const growthMod   = result.breakdown?.growth?.growthQualityModifier ?? 1.0
@@ -2103,17 +2103,19 @@ async function handleTestFixtures(request, keys, kv) {
         strength: result.breakdown?.strength?.score,
       },
       checks: {
-        gate2Pass:       gate2checks.profitability?.pass ?? null,
-        gate2Evaluable:  gate2checks.profitability?.evaluable ?? null,
-        profSource:      profCheck.source ?? null,
-        negativeEquity:  negEq,
-        growthModifier:  growthMod,
-        epsAnomalous:    epsAnomaly,
-        epsCapped:       epsCapped,
-        extended:        extended,
-        gate2ProfPass:   gate2checks.profitability?.pass ?? null,
-        gate2MarginPass: gate2checks.operatingMargin?.pass ?? null,
-        gate2Cause:      result.gates?.gate2?.cause ?? null,
+        gate2Pass:        gate2checks.profitability?.pass ?? null,
+        gate2Evaluable:   gate2checks.profitability?.evaluable ?? null,
+        profSource:       profCheck.source ?? null,
+        negativeEquity:   negEq,
+        growthModifier:   growthMod,
+        epsAnomalous:     epsAnomaly,
+        epsCapped:        epsCapped,
+        extended:         extended,
+        extensionPenalty: result.breakdown?.technical?.extensionPenalty ?? 0,
+        gate2ProfPass:    gate2checks.profitability?.pass ?? null,
+        gate2MarginPass:  gate2checks.operatingMargin?.pass ?? null,
+        gate2Cause:       result.gates?.gate2?.cause ?? null,
+        resolvedProfile:  result.resolvedProfile ?? result.sectorProfile ?? null,
       },
       expected: fix.expect,
       passed: verifyFixture(fix.expect, {
@@ -2133,14 +2135,20 @@ async function handleTestFixtures(request, keys, kv) {
 
 function verifyFixture(expected, actual) {
   for (const [key, val] of Object.entries(expected)) {
-    if (key === 'note') continue  // informational only
-    // gate2Evaluable=false is a valid expected value (not "missing")
-    if (actual[key] === undefined) return null  // field missing from response
-    const numExpect = Number(val), numActual = Number(actual[key])
-    if (!isNaN(numExpect) && !isNaN(numActual)) {
-      if (Math.abs(numActual - numExpect) > 0.01) return false
+    if (key === 'note') continue
+    const av = actual[key]
+    if (av === undefined) return null
+    if (typeof val === 'boolean') {
+      if (av === val) continue
+      if (av === null && val === false) continue
+      return false
+    }
+    if (val === null || av === null) continue
+    const numE = Number(val), numA = Number(av)
+    if (!isNaN(numE) && !isNaN(numA)) {
+      if (Math.abs(numA - numE) > 0.01) return false
     } else {
-      if (actual[key] !== val) return false
+      if (av !== val) return false
     }
   }
   return true
@@ -2209,7 +2217,7 @@ async function handleValidateV11(request, env, keys, kv, db) {
       const price     = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
 
       // Run v1.1 engine
-      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price)
+      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price, fund.sector??'', fund.sectorEtf??'')
 
       // Build comparison
       const v10score = v10row?.final_score ?? null
