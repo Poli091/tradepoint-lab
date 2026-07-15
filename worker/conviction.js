@@ -302,8 +302,15 @@ function gates(f, profile) {
   }
 
   const g2pass=Object.values(g2checks).every(c=>c.pass)
-  if (!g2pass) return { gate1:{pass:true,checks:g1checks}, gate2:{pass:false,checks:g2checks}, activeCap:58, activeGate:'gate2' }
-  return { gate1:{pass:true,checks:g1checks}, gate2:{pass:true,checks:g2checks}, activeCap:null, activeGate:null }
+  if (!g2pass) return { gate1:{pass:true,checks:g1checks}, gate2:{pass:false,checks:g2checks,
+    profCheckPass: g2checks.profitability?.pass ?? null,
+    marginCheckPass: g2checks.operatingMargin?.pass ?? null,
+    cause: !g2checks.profitability?.pass ? 'profitability' : 'operating_margin',
+  }, activeCap:58, activeGate:'gate2' }
+  return { gate1:{pass:true,checks:g1checks}, gate2:{pass:true,checks:g2checks,
+    profCheckPass: g2checks.profitability?.pass ?? null,
+    marginCheckPass: g2checks.operatingMargin?.pass ?? null,
+  }, activeCap:null, activeGate:null }
 }
 
 // Grade
@@ -360,16 +367,16 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
     gateCap: gt.activeCap, activeGate: gt.activeGate, finalScore,
     grade, confidence: conf, sectorProfile: profile.name,
     breakdown: {
-      growth:    { score:gw.score,    max:25, nullFields:gw.nullFields },
+      growth:    { score:gw.score,    max:25, nullFields:gw.nullFields, growthQualityModifier:gw.growthQualityModifier??1.0, components:gw.components },
       quality:   { score:ql.score,    max:20, nullFields:ql.nullFields },
-      strength:  { score:st.score,    max:15, nullFields:st.nullFields, skipped:st.skipped },
+      strength:  { score:st.score,    max:15, nullFields:st.nullFields, skipped:st.skipped, negativeEquity:st.negativeEquity===true },
       valuation: { score:vl.score,    max:15, metric:vl.metric, value:vl.value },
-      technical: { score:tc.score,    max:15, nullFields:tc.nullFields },
+      technical: { score:tc.score,    max:15, nullFields:tc.nullFields, extended:tc.extended===true, components:tc.components },
       risk:      { penalty:rk.penalty, flags:rk.flags },
     },
     gates: { gate1:gt.gate1, gate2:gt.gate2 },
-    negativeEquity: str.negativeEquity === true,
-    growthQualityModifier: gr.growthQualityModifier ?? 1.0,
+    negativeEquity: st.negativeEquity === true,
+    growthQualityModifier: gw.growthQualityModifier ?? 1.0,
     technical: {
       ema200:tc.ema200, aboveEMA200:tc.aboveEMA200,
       rsi:tc.rsi, relStrengthWeighted:tc.relStrengthWeighted,
@@ -379,6 +386,6 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       targetMean:f.targetMean, upside,
       analysts:(f.strongBuy??0)+(f.buy??0)+(f.hold??0)+(f.sell??0)+(f.strongSell??0),
     },
-    modelVersion: 'v1.0',
+    modelVersion: 'v1.1',
   }
 }

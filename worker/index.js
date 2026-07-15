@@ -2022,14 +2022,67 @@ async function handleTestFixtures(request, keys, kv) {
       id: 'F10_roi_excluded',
       desc: 'ROIC missing, ROI=15% (ambiguous) → must NOT pass Gate2 via ROI alone',
       fund: { ...BASE, roic: null, roi: 15, roe: null },
-      expect: { gate2Pass: true, gate2Evaluable: false, profSource: null,
-               note: 'ROI ignored; no ROIC/ROE → not evaluable → pass by null policy, confidence reduced' },
+      expect: { gate2Pass: true, gate2Evaluable: false },
+    },
+    // ── Technical extension fixtures ──────────────────────────────
+    {
+      id: 'F11_technical_extension',
+      desc: 'Price > EMA50 + 3 ATR => extension penalty -1, extended=true',
+      fund: BASE,
+      _syntheticOhlcv: 'extension',
+      expect: { extended: true },
+    },
+    {
+      id: 'F12_no_extension',
+      desc: 'Price within 1 ATR of EMA50 => no extension penalty, extended=false',
+      fund: BASE,
+      _syntheticOhlcv: 'normal',
+      expect: { extended: false },
+    },
+    // ── Bank / REIT sector fixtures ─────────────────────────────
+    {
+      id: 'F13_bank_gate2_pass',
+      desc: 'Bank profile: ROE=15%, Net Margin=12% => Gate2 passes bank substitute',
+      fund: { ...BASE, roic: null, roi: null, roe: 15, netMargin: 12, sector: 'Financials' },
+      expect: { gate2Pass: true },
+    },
+    {
+      id: 'F14_bank_gate2_fail',
+      desc: 'Bank profile: ROE=15%, Net Margin=-5% => Gate2 fails bank substitute',
+      fund: { ...BASE, roic: null, roi: null, roe: 15, netMargin: -5, sector: 'Financials' },
+      expect: { gate2Pass: false },
+    },
+    {
+      id: 'F15_reit_gate2_pass',
+      desc: 'REIT profile: D/E=7 (within threshold 10) => Gate2 passes REIT substitute',
+      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 7, sector: 'Real Estate' },
+      expect: { gate2Pass: true },
+    },
+    {
+      id: 'F16_reit_gate2_fail',
+      desc: 'REIT profile: D/E=12 (above threshold 10) => Gate2 fails REIT substitute',
+      fund: { ...BASE, roic: null, roi: null, roe: 8, operatingMargin: -2, debtToEquity: 12, sector: 'Real Estate' },
+      expect: { gate2Pass: false },
     },
   ]
 
+  // Build synthetic OHLCV for technical extension fixtures
+  function buildSyntheticOhlcv(type) {
+    const prices = []
+    const basePrice = 100
+    for (let i = 0; i < 60; i++) prices.push({ price: basePrice + i * 0.1 })  // gentle uptrend
+    const lastPrice = type === 'extension' ? basePrice * 1.35 : basePrice * 1.02
+    return { ohlcv: prices, livePrice: lastPrice }
+  }
+
   const results = []
   for (const fix of fixtures) {
-    const result = computeConviction(fix.fund, [], spyOhlcv, null)
+    let ohlcv = [], livePrice = null
+    if (fix._syntheticOhlcv) {
+      const syn = buildSyntheticOhlcv(fix._syntheticOhlcv)
+      ohlcv = syn.ohlcv; livePrice = syn.livePrice
+    }
+    const result = computeConviction(fix.fund, ohlcv, spyOhlcv, livePrice)
     const gate2checks = result.gates?.gate2?.checks ?? {}
     const profCheck   = gate2checks.profitability ?? {}
     const growthMod   = result.breakdown?.growth?.growthQualityModifier ?? 1.0
@@ -2056,6 +2109,10 @@ async function handleTestFixtures(request, keys, kv) {
         growthModifier:  growthMod,
         epsAnomalous:    epsAnomaly,
         epsCapped:       epsCapped,
+        extended:        extended,
+        gate2ProfPass:   gate2checks.profitability?.pass ?? null,
+        gate2MarginPass: gate2checks.operatingMargin?.pass ?? null,
+        gate2Cause:      result.gates?.gate2?.cause ?? null,
       },
       expected: fix.expect,
       passed: verifyFixture(fix.expect, {
@@ -2191,11 +2248,15 @@ async function handleValidateV11(request, env, keys, kv, db) {
           score: v11.finalScore, grade: v11.grade,
           gate: v11gate,
           modelVersion: CURRENT_MODEL_VERSION,
+          operatingMarginRaw: fund?.operatingMargin ?? null,
+          gate2ProfPass:  result?.gates?.gate2?.checks?.profitability?.pass ?? null,
+          gate2MarginPass: result?.gates?.gate2?.checks?.operatingMargin?.pass ?? null,
+          gate2Cause:     result?.gates?.gate2?.cause ?? null,
           growth: v11comp.growth, quality: v11comp.quality,
           strength: v11comp.strength, technical: v11comp.technical,
           growthModifier:    v11.breakdown?.growth?.growthQualityModifier ?? 1.0,
           negativeEquity:    v11.breakdown?.strength?.negativeEquity === true,
-          extended:          v11.breakdown?.technical?.components?.ema200?.extended === true,
+          extended:          v11.breakdown?.technical?.extended === true,
           gate2ProfSource:   v11.gates?.gate2?.checks?.profitability?.source ?? null,
           gate2ProfPass:     v11.gates?.gate2?.checks?.profitability?.pass ?? null,
         },
