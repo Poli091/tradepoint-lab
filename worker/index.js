@@ -1936,6 +1936,134 @@ async function handleDailyRS(env) {
 }
 
 
+
+/* ── POST /api/admin/validate-v11 ───────────────────────────────────────
+   Runs v1.1 engine on a list of tickers and returns comparison vs v1.0
+   scores already in D1. Does NOT write to D1.
+   Body: { tickers: ["MSFT","JPM",...] }
+──────────────────────────────────────────────────────────────────────── */
+async function handleValidateV11(request, env, keys, kv, db) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const body    = await request.json().catch(() => ({}))
+  const tickers = (body.tickers ?? []).map(t => t.toUpperCase())
+  if (!tickers.length) return json({ error: 'tickers array required' }, 400)
+
+  const today    = etDate()
+  const spyOhlcv = await kv.get('ohlcv:SPY:1Y', 'json') ?? []
+  const results  = []
+
+  for (const ticker of tickers) {
+    try {
+      // Read v1.0 score from D1
+      const v10row = await db.prepare(
+        `SELECT final_score, grade, growth_score, quality_score, strength_score,
+                valuation_score, technical_score, active_gate, model_version
+         FROM analyses WHERE ticker=? ORDER BY analysis_date DESC, rowid DESC LIMIT 1`
+      ).bind(ticker).first().catch(() => null)
+
+      // Get fundamentals + OHLCV from KV
+      let fund = await kv.get(`fund:${ticker}`, 'json')
+      if (!fund) {
+        // Fetch fresh
+        const fhMetrics  = await fhGet(`/stock/metric?symbol=${ticker}&metric=all`, keys.finnhub)
+        await delay(300)
+        const fhRecs     = await fhGet(`/stock/recommendation?symbol=${ticker}`, keys.finnhub)
+        await delay(300)
+        if (!fhMetrics?.metric) {
+          results.push({ ticker, error: 'no_fundamentals' }); continue
+        }
+        const m = fhMetrics.metric
+        const rec = fhRecs?.[0] ?? {}
+        fund = {
+          ticker, revenueGrowthYoY: m['revenueGrowthTTMYoy'] ?? null,
+          revenueGrowth3Y: m['revenueGrowth3Y'] ?? null, epsGrowthYoY: m['epsGrowthTTMYoy'] ?? null,
+          epsGrowth3Y: m['epsGrowth3Y'] ?? null, fcfGrowth5Y: m['fcfGrowth5Y'] ?? null,
+          roe: m['roeRfy'] ?? m['roeTTM'] ?? null, roic: m['roicTTM'] ?? null,
+          roi: m['roiTTM'] ?? null, grossMargin: m['grossMarginTTM'] ?? null,
+          operatingMargin: m['operatingMarginTTM'] ?? null, netMargin: m['netMarginTTM'] ?? null,
+          debtToEquity: m['totalDebt/totalEquityAnnual'] ?? null,
+          currentRatio: m['currentRatioAnnual'] ?? null, interestCoverage: m['interestCoverageAnnual'] ?? null,
+          pe: m['peExclExtraTTM'] ?? null, peg: m['pegAnnual'] ?? null,
+          forwardPE: m['forwardPE'] ?? null, evEbitda: m['ev/ebitdaTTM'] ?? null,
+          beta: m['beta'] ?? null, targetMean: null,
+          strongBuy: rec.strongBuy ?? 0, buy: rec.buy ?? 0, hold: rec.hold ?? 0,
+          sell: rec.sell ?? 0, strongSell: rec.strongSell ?? 0,
+          consecutiveBeats: 0, epsSurprisePct: null,
+        }
+      }
+
+      const ohlcv     = await kv.get(`ohlcv:${ticker}:1Y`, 'json') ?? []
+      const priceData = await kv.get(`price:${ticker}`, 'json')
+      const price     = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
+
+      // Run v1.1 engine
+      const v11 = computeConviction(fund, ohlcv, spyOhlcv, price)
+
+      // Build comparison
+      const v10score = v10row?.final_score ?? null
+      const v11score = v11.finalScore
+      const delta    = v10score != null && v11score != null ? Math.round((v11score - v10score) * 10) / 10 : null
+
+      results.push({
+        ticker,
+        v10: v10row ? {
+          score: v10row.final_score, grade: v10row.grade,
+          gate: v10row.active_gate ?? null,
+          growth: v10row.growth_score, quality: v10row.quality_score,
+          strength: v10row.strength_score, technical: v10row.technical_score,
+          modelVersion: v10row.model_version,
+        } : null,
+        v11: {
+          score:    v11.finalScore, grade: v11.grade,
+          gate:     v11.activeGate ?? null,
+          growth:   v11.breakdown?.growth?.score,
+          quality:  v11.breakdown?.quality?.score,
+          strength: v11.breakdown?.strength?.score,
+          technical:v11.breakdown?.technical?.score,
+          growthModifier: v11.breakdown?.growth?.growthQualityModifier,
+          negativeEquity: v11.breakdown?.strength?.negativeEquity,
+          extended:       v11.breakdown?.technical?.components?.ema200?.extended,
+        },
+        delta,
+        gradeChanged: v10row?.grade !== v11.grade,
+        gateChanged:  (v10row?.active_gate ?? null) !== (v11.activeGate ?? null),
+        flags: {
+          largeDelta:    delta != null && Math.abs(delta) > 10,
+          gradeChanged:  v10row?.grade !== v11.grade,
+          newGateCap:    !v10row?.active_gate && !!v11.activeGate,
+          removedGate:   !!v10row?.active_gate && !v11.activeGate,
+        },
+      })
+    } catch(e) {
+      results.push({ ticker, error: e.message })
+    }
+  }
+
+  // Aggregate stats
+  const valid    = results.filter(r => r.v10 && r.v11 && r.delta != null)
+  const deltas   = valid.map(r => r.delta)
+  const avgDelta = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length*10)/10 : null
+  const medDelta = deltas.length ? (deltas.sort((a,b)=>a-b)[Math.floor(deltas.length/2)]) : null
+
+  return json({
+    ok: true,
+    summary: {
+      tested:          tickers.length,
+      compared:        valid.length,
+      avgDelta,
+      medianDelta:     medDelta,
+      gradeChanges:    valid.filter(r => r.gradeChanged).length,
+      newGateCaps:     valid.filter(r => r.flags.newGateCap).length,
+      removedGateCaps: valid.filter(r => r.flags.removedGate).length,
+      largeDeltaCount: valid.filter(r => r.flags.largeDelta).length,
+    },
+    results,
+  })
+}
+
 /* ── POST /api/admin/batch-scan ─────────────────────────────────────────
    Fetches fundamentals + OHLCV for a list of tickers, runs conviction
    engine, and saves grades to analyses table.
@@ -4421,6 +4549,8 @@ export default {
           return await handleBackfillRS(request, db, kv, keys)
         case 'set-targets':
           return await handleSetTargets(request, kv, keys)
+        case 'validate-v11':
+          return await handleValidateV11(request, env, keys, kv, db)
         case 'batch-scan':
           return await handleBatchScan(request, env, keys, kv, db)
         case 'run-weekly-snapshot': {

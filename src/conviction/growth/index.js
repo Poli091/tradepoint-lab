@@ -84,28 +84,34 @@ function calcAcceleration(f) {
 }
 
 /* ── Growth Quality Modifier ─────────────────────────────
- * Reduces Growth score when revenue grows but profitability deteriorates severely.
- * Intent: penalize companies buying growth at the cost of margins.
+ * Reduces Growth score when the company has very high operating expense burden
+ * combined with poor/negative operating margins.
+ *
+ * WHAT THIS MEASURES:
+ *   opExpenseBurden = grossMargin - operatingMargin = (SG&A + R&D) / Revenue
+ *   This is NOT a measure of margin change over time (we lack prior-year opMargin
+ *   from Finnhub free tier). It measures how much of gross profit is consumed by
+ *   operating expenses TODAY.
+ *
+ *   High burden + negative opMargin = growth likely subsidized at profitability's expense.
  *
  * NON-DUPLICATION DESIGN:
- *   Growth modifier → measures DIRECTION/DETERIORATION of margin (not level)
- *   Quality        → measures CURRENT LEVEL of margins
- *   Gate 2         → only activates when margin crosses ≤ 0
- *   Risk           → penalizes volatility, not margin level directly
+ *   Growth modifier → current operating expense burden proxy (not a margin level score)
+ *   Quality         → scores current margin levels independently
+ *   Gate 2          → only caps when opMargin crosses ≤ 0
  *
- * Thresholds (gross-to-operating spread proxy for margin deterioration):
- *   spread > 40pp AND opMargin < 0   → severe   → cap Growth at 65%
- *   spread > 30pp AND opMargin < 5%  → moderate → cap Growth at 85%
- *   otherwise                         → no adjustment
+ * Thresholds:
+ *   burden > 40pp AND opMargin < 0%  → severe   → cap Growth at 65%
+ *   burden > 30pp AND opMargin < 5%  → moderate → cap Growth at 85%
  *
- * Note: spread = grossMargin - operatingMargin measures SG&A + R&D burden.
- * High spread + negative opMargin = heavy investment spending erasing profitability.
+ * Future v1.2: replace with actual YoY operating margin delta when Finnhub
+ * provides prior-year operating margin in the free metric endpoint.
  */
 function growthQualityModifier(f) {
   if (f.operatingMargin == null || f.grossMargin == null) return 1.0
-  const spread = f.grossMargin - f.operatingMargin
-  if (spread > 40 && f.operatingMargin < 0)   return 0.65  // severe: >40pp spread + negative opMargin
-  if (spread > 30 && f.operatingMargin < 5)   return 0.85  // moderate: >30pp spread + thin opMargin
+  const opExpenseBurden = f.grossMargin - f.operatingMargin  // SG&A+R&D as % of revenue
+  if (opExpenseBurden > 40 && f.operatingMargin < 0)  return 0.65  // heavy burden + unprofitable
+  if (opExpenseBurden > 30 && f.operatingMargin < 5)  return 0.85  // high burden + thin margins
   return 1.0
 }
 
