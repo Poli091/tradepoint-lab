@@ -4876,6 +4876,11 @@ export default {
             return await handleCacheClear(param2, kv)
           }
           return json({ error: `Unknown cache action: ${param1}` }, 400)
+        case 'conviction':
+          if (param1 === 'analyze') {
+            return await handleConvictionAnalyze(param2, request, env, keys, kv, db)
+          }
+          return json({ error: `Unknown conviction action: ${param1}` }, 404)
         case 'swing':
           return await handleSwingRouter(param1, request, env, keys, kv, db)
         default:
@@ -5180,4 +5185,71 @@ async function handleSwingRouter(action, request, env, keys, kv, db) {
     default:
       return json({ error: `Unknown swing action: ${action}` }, 404)
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+   CONVICTION v1.2 — REAL-TIME ANALYZE ENDPOINT
+   GET /api/conviction/analyze/:ticker
+   Returns full computeConviction() result (no persist)
+════════════════════════════════════════════════════════════ */
+async function handleConvictionAnalyze(ticker, request, env, keys, kv, db) {
+  if (!ticker || !/^[A-Z]{1,10}$/i.test(ticker)) {
+    return json({ error: 'ticker required' }, 400)
+  }
+  const t = ticker.toUpperCase()
+
+  // Fundamentals: use handleFundamentals which has KV + Finnhub fallback
+  let fund = {}
+  try {
+    const fundResp = await handleFundamentals(t, keys, kv)
+    const fundJson = await fundResp.json()
+    fund = fundJson?.data ?? fundJson ?? {}
+  } catch { fund = await kv.get(`fund:${t}`, 'json').catch(() => null) ?? {} }
+
+  // OHLCV: KV first (may be array or {data,meta}), then D1 ohlcv_bars
+  let ohlcvRaw = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => null)
+  let ohlcv = Array.isArray(ohlcvRaw) ? ohlcvRaw : (ohlcvRaw?.data ?? null)
+  if (!Array.isArray(ohlcv) || ohlcv.length < 10) {
+    if (db) {
+      const rows = await db.prepare(
+        `SELECT bar_date AS date, open, high, low, close, volume FROM ohlcv_bars WHERE ticker=? AND res='D' ORDER BY bar_date ASC LIMIT 600`
+      ).bind(t).all().then(r => r.results ?? []).catch(() => [])
+      ohlcv = rows.map(r => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, price: r.close, volume: r.volume ?? 0 }))
+    }
+  } else {
+    // Normalize KV OHLCV to have both price and close
+    ohlcv = ohlcv.map(b => ({ ...b, close: b.close ?? b.price, price: b.price ?? b.close }))
+  }
+
+  // SPY OHLCV from KV (may be array or {data,meta})
+  const spyKv = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => null)
+  const spyArr = Array.isArray(spyKv) ? spyKv : (spyKv?.data ?? [])
+  const spyOhlcv = spyArr.map(b => ({ ...b, close: b.close ?? b.price, price: b.price ?? b.close }))
+
+  // Sector info from constituent_master
+  let sector = '', industry = ''
+  if (db) {
+    const row = await db.prepare(
+      `SELECT gics_sector, tradepoint_industry FROM constituent_master WHERE ticker=? LIMIT 1`
+    ).bind(t).first().catch(() => null)
+    if (row) { sector = row.gics_sector ?? ''; industry = row.tradepoint_industry ?? '' }
+  }
+
+  // Price: from price KV or last OHLCV bar
+  const priceData = await kv.get(`price:${t}`, 'json').catch(() => null)
+  const currentPrice = priceData?.price
+    ?? (ohlcv.length ? (ohlcv[ohlcv.length-1].price ?? ohlcv[ohlcv.length-1].close ?? null) : null)
+    ?? null
+
+  const result = computeConviction(fund, ohlcv, spyOhlcv, currentPrice, sector, '', industry)
+
+  return json({
+    ...result,
+    // Include raw data for UI display and swing engine (client-side)
+    fundamentalsData: fund,
+    ohlcv,
+    spyOhlcv,
+    currentPrice,
+    computedAt: new Date().toISOString(),
+  })
 }

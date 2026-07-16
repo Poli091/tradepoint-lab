@@ -1,94 +1,97 @@
 /**
  * MODULE: HOOKS / useConviction.js
- * Fetches fundamentals + OHLCV (ticker + SPY) then runs the conviction engine.
+ * Fetches full Conviction v1.2 result from the Worker.
  *
- * Data sources:
- *   fundamentals → Worker /api/fundamentals/:ticker (KV 90d cache)
- *   ohlcv        → Worker /api/ohlcv/:ticker/1Y      (KV 24h cache)
- *   spyOhlcv     → Worker /api/ohlcv/SPY/1Y           (KV 24h cache, shared)
+ * Architecture v1.2:
+ *   Worker runs computeConviction() canónico (v1.2)
+ *   React only renders — no local engine
  *
- * The result is memoized in React state. Re-runs when ticker changes.
+ * Endpoint: GET /api/conviction/analyze/:ticker
+ *   Returns: full conviction result + fundamentalsData + ohlcv (for swing)
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
-import { runConviction }           from '../conviction/index.js'
 import { cache }                   from '../utils/cache.js'
 
-export function useConviction(ticker, prices = {}) {
+export function useConviction(ticker) {
   const [result,  setResult]  = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
   // Clear stale result immediately when ticker changes
-  // This prevents showing NVDA data while loading AVGO
   useEffect(() => {
     setResult(null)
     setError(null)
     setLoading(false)
   }, [ticker])
 
-  const compute = useCallback(async (forceRefresh = false) => {
+  const compute = useCallback(async (forceRefresh = false, signal) => {
     if (!ticker) return
-    if (!getWorkerUrl()) {
+    const base = getWorkerUrl()
+    if (!base) {
       setError('Worker not configured — add URL in Settings')
       return
     }
 
-    // Skip re-fetch only if we already have a valid result FOR THIS TICKER
-    // and the local cache is still fresh. Never skip for a different ticker.
-    if (!forceRefresh) {
-      const cachedFund = cache.getFund(ticker)
-      if (cachedFund && result?._ticker === ticker) {
-        // Already computed this ticker and cache is fresh — nothing to do
-        return
-      }
-    }
+    // Use cached result if still fresh and same ticker
+    if (!forceRefresh && result?._ticker === ticker) return
 
     setLoading(true)
     setError(null)
 
     try {
-      const [fundResult, ohlcvResult, spyResult] = await Promise.all([
-        workerAPI.fundamentals(ticker, forceRefresh),
-        workerAPI.ohlcv(ticker, '1Y'),
-        workerAPI.ohlcv('SPY', '1Y'),
-      ])
-
-      if (!fundResult?.data) throw new Error('No fundamentals data for ' + ticker)
-
-      const fetchedAt = fundResult.meta?.fetchedAt ?? Date.now()
-      cache.setFund(ticker, fundResult.data, fetchedAt)
-
-      const conviction = runConviction({
-        fundamentals: fundResult.data,
-        ohlcv:        ohlcvResult?.data ?? [],
-        spyOhlcv:     spyResult?.data   ?? [],
-        prices,
+      // Single call to Worker — canonical v1.2 engine runs server-side
+      const resp = await fetch(`${base}/api/conviction/analyze/${ticker}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal,
       })
+      if (!resp.ok) throw new Error(`Worker error ${resp.status}`)
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error)
 
-      // Tag result with ticker so we can detect stale results
+      // Cache fundamentals locally for display components
+      if (data.fundamentalsData) {
+        cache.setFund(ticker, data.fundamentalsData, Date.now())
+      }
+
       setResult({
-        ...conviction,
-        _ticker:          ticker,
-        fundamentalsData: fundResult.data,      // exposed for CompareView swing
-        ohlcv:            ohlcvResult?.data ?? [],
-        spyOhlcv:         spyResult?.data   ?? [],
-        fetchedAt,
+        ...data,
+        _ticker:    ticker,
+        grade:      data.grade,
+        gradeLabel: data.grade,
       })
-
-      // Auto-save to D1 — silent failure
-      workerAPI.saveAnalysis(ticker, conviction).catch(() => {})
 
     } catch (err) {
+      // Ignore AbortError — just a ticker change, not a real error
+      if (err.name === 'AbortError') return
+
       console.error('[useConviction]', ticker, err.message)
+
+      // Fallback: try to show last D1 snapshot if Worker call fails
+      try {
+        const history = await workerAPI.history?.(ticker)
+        const last = history?.snapshots?.[history.snapshots.length - 1]
+        if (last) {
+          setResult({ ...last, _ticker: ticker, _stale: true })
+          setError(`Live data unavailable — showing snapshot from ${last.analysis_date}`)
+          return
+        }
+      } catch {}
+
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [ticker, result]) // result included so the cache check sees current value
+  }, [ticker, result])
 
-  useEffect(() => { compute() }, [ticker]) // eslint-disable-line
+  // AbortController prevents stale responses from overwriting newer ticker
+  useEffect(() => {
+    if (!ticker) return
+    const controller = new AbortController()
+    compute(false, controller.signal)
+    return () => controller.abort()
+  }, [ticker]) // eslint-disable-line
 
   const recompute = () => compute(true)
   return { result, loading, error, recompute }
