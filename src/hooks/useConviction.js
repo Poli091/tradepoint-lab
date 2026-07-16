@@ -81,7 +81,8 @@ export function useConviction(ticker) {
 
       setError(err.message)
     } finally {
-      setLoading(false)
+      // Don't hide loading if this request was aborted (newer request is still running)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [ticker, result])
 
