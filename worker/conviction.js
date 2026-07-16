@@ -93,9 +93,11 @@ function scoreFcfTtmYoy(v){ if(v==null)return null; const w=Math.min(v,100); ret
 
 function resolveFcfGrowth(f) {
   if (Number.isFinite(f.fcfGrowthTTMYoY)) return f.fcfGrowthTTMYoY
-  if (Number.isFinite(f.fcfTTM) && Number.isFinite(f.fcfPriorTTM) && f.fcfPriorTTM !== 0)
-    return ((f.fcfTTM / f.fcfPriorTTM) - 1) * 100
-  return null
+  if (!Number.isFinite(f.fcfTTM) || !Number.isFinite(f.fcfPriorTTM) || f.fcfPriorTTM === 0) return null
+  // Negative-base edge cases
+  if (f.fcfPriorTTM < 0 && f.fcfTTM > 0) return 100  // turnaround positive — capped by scorer
+  if (f.fcfPriorTTM < 0 && f.fcfTTM <= 0) return null  // pct not interpretable
+  return ((f.fcfTTM / f.fcfPriorTTM) - 1) * 100
 }
 
 function scoreAcceleration(f) {
@@ -147,10 +149,14 @@ function quality(f) {
   if (f.roic != null) { profVal = f.roic; profSource = 'roic' }
   else if (f.roi  != null) { profVal = f.roi;  profSource = 'roi' }
   else if (f.roe  != null) {
-    // ROE with leverage guard: only use if D/E ≤ 4 and equity not negative
-    const de = f.debtToEquity ?? 0
-    if (de >= 0 && de <= 4) { profVal = f.roe; profSource = 'roe' }
-    else { profVal = null; profSource = 'roe_excluded_leverage' }
+    // ROE with leverage guard: D/E must be known and within bounds
+    // If D/E is absent we cannot validate leverage — exclude conservatively
+    if (Number.isFinite(f.debtToEquity) && f.debtToEquity >= 0 && f.debtToEquity <= 4) {
+      profVal = f.roe; profSource = 'roe'
+    } else {
+      profVal = null
+      profSource = Number.isFinite(f.debtToEquity) ? 'roe_excluded_leverage' : 'roe_excluded_missing_leverage'
+    }
   }
   const profScore = profVal==null ? null
     : profVal>20?7 : profVal>=15?6 : profVal>=10?4 : profVal>=8?2 : 0
@@ -371,13 +377,13 @@ function getGrade(s) { return GRADES.find(g=>s>=g.min)?.label ?? 'STRONG SELL' }
 
 /** Coverage: fraction of component slots that have real data */
 function computeCoverage(scores) {
-  const slots = [
-    scores.growth.nullFields, scores.quality.nullFields,
-    scores.valuation.nullFields,
-    scores.strength.notRated ? 3 : (scores.strength.nullFields??0),
-  ]
-  const totalNull = slots.reduce((a,b)=>a+b,0)
-  const totalSlots = 6+4+1+3+4  // growth(6)+quality(4)+valuation(1)+strength(3)+technical(4)
+  const totalNull =
+    (scores.growth.nullFields    ?? 0) +
+    (scores.quality.nullFields   ?? 0) +
+    (scores.valuation.nullFields ?? 0) +
+    (scores.strength.notRated ? 3 : (scores.strength.nullFields ?? 0)) +
+    (scores.technical.nullFields ?? 0)
+  const totalSlots = 6 + 4 + 1 + 3 + 4  // growth(6)+quality(4)+valuation(1)+strength(3)+technical(4)
   return Math.max(0, Math.round((1 - totalNull / totalSlots) * 100))
 }
 

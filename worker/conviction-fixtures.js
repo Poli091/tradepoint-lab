@@ -165,6 +165,28 @@ function run() {
     return r.gates.gate2?.checks?.profitability?.pass === true
   })
 
+
+  // ── F23: full fundamentals, empty OHLCV → technical nullFields=4 ────
+  t('F23','Full fundamentals + empty OHLCV → technical=4 nulls, coverage ~78%', () => {
+    const r = computeConviction(BASE, [], [])
+    return (r.breakdown.technical.nullFields ?? 0) >= 3  // EMA, RSI, RS, Vol all null
+      && r.coveragePct < 90  // coverage must be reduced by missing technical
+  })
+
+  // ── F24: ROE present, D/E absent → roe_excluded_missing_leverage ────
+  t('F24','ROE with D/E absent → excluded (conservative leverage guard)', () => {
+    const f = {...BASE, roic:null, roi:null, roe:20, debtToEquity:undefined}
+    const r = computeConviction(f,[],[])
+    return r.breakdown.quality.profitabilitySource === 'roe_excluded_missing_leverage'
+  })
+
+  // ── F25: FCF prior TTM negative, current positive → turnaround cap ─
+  t('F25','FCF prior=-100, current=+100 (turnaround) → fcfGrowthUsed=100 (not -200%)', () => {
+    const f = {...BASE, fcfGrowthTTMYoY:undefined, fcfTTM:100, fcfPriorTTM:-100}
+    const r = computeConviction(f,[],[])
+    return r.breakdown.growth.fcfGrowthUsed === 100
+  })
+
   console.log(`\n${'─'.repeat(50)}`)
   console.log(`${passed}/${passed+failed} passed, ${failed} failed`)
   return { passed, failed, allPassed: failed===0 }
