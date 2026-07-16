@@ -1,4 +1,6 @@
 import { computeConviction } from './conviction.js'
+import { computeSwingCore } from './swing.js'
+import { runSwingFixtures }  from './swing-fixtures.js'
 
 /**
  * TradePoint Lab — Cloudflare Worker v1.1
@@ -134,7 +136,8 @@ const delay = ms => new Promise(r => setTimeout(r, ms))
 
 // Current Conviction Engine model version — update here when methodology changes
 // Used in: analyses/grades endpoint, batch scoring, model_version column
-const CURRENT_MODEL_VERSION = 'v1.1'  // Gate 2 ROE leverage check, Quality dedup, Growth winsorize, Technical extension
+const CURRENT_MODEL_VERSION = 'v1.2'  // Conviction v1.2: FCF TTM, ROIC priority, Vol Z-score, coverage caps, no renorm
+const SWING_MODEL_VERSION   = 'swing-v2.1'  // Frozen 2026-07-15
 
 
 /* ════════════════════════════════════════════════════════════
@@ -2430,7 +2433,7 @@ async function handleBatchScan(request, env, keys, kv, db) {
 
       // Step 3: Run conviction engine with sector from constituent_master
       const priceData = await kv.get(`price:${ticker}`, 'json')
-      const price = priceData?.price ?? (ohlcv.length ? ohlcv[ohlcv.length-1].price : null)
+      const price = priceData?.price ?? (ohlcv.length ? (ohlcv[ohlcv.length-1].price ?? ohlcv[ohlcv.length-1].close ?? null) : null) ?? null
       const cmRow2 = await db.prepare(
         `SELECT tradepoint_sector, gics_sector, tradepoint_industry FROM constituent_master WHERE symbol=? AND active_to IS NULL LIMIT 1`
       ).bind(ticker).first().catch(() => null)
@@ -4873,6 +4876,8 @@ export default {
             return await handleCacheClear(param2, kv)
           }
           return json({ error: `Unknown cache action: ${param1}` }, 400)
+        case 'swing':
+          return await handleSwingRouter(param1, request, env, keys, kv, db)
         default:
           return json({ error: `Unknown endpoint: ${type}` }, 404)
       }
@@ -4881,4 +4886,298 @@ export default {
       return json({ error: err.message || 'Internal Worker error', endpoint: type, ticker: param1 }, 500)
     }
   },
+}
+
+/* ════════════════════════════════════════════════════════════
+   SWING ENGINE v2.1 — ENDPOINT HANDLERS
+   Routes under /api/swing/:action
+════════════════════════════════════════════════════════════ */
+
+/* ── Shared helper: fetch OHLCV bars for swing (needs 260+ days) ── */
+async function fetchOhlcvForSwing(ticker, keys, kv, db) {
+  // 1. Try KV cache (conviction batch-scan stores {date,open,high,low,close,volume})
+  const cached = await kv.get(`ohlcv:${ticker}:1Y`, 'json').catch(() => null)
+  if (Array.isArray(cached) && cached.length >= 200 && cached[0]?.close != null) return cached
+
+  // 2. Try KV cache from ohlcv endpoint (stores {date,price,open,high,low,volume})
+  if (Array.isArray(cached) && cached.length >= 200 && cached[0]?.price != null) {
+    return cached.map(b => ({ date: b.date, open: b.open ?? b.price, high: b.high ?? b.price, low: b.low ?? b.price, close: b.price, volume: b.volume ?? 0 }))
+  }
+
+  // 3. Try ohlcv_bars D1 table (populated by ohlcv-force endpoint)
+  if (db) {
+    const rows = await db.prepare(
+      `SELECT bar_date AS date, open, high, low, close, volume FROM ohlcv_bars WHERE ticker=? AND res='D' ORDER BY bar_date ASC LIMIT 600`
+    ).bind(ticker).all().then(r => r.results ?? []).catch(() => [])
+    if (rows.length >= 200) {
+      const bars = rows.map(r => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume ?? 0 }))
+      // Cache in KV for next call
+      await kv.put(`ohlcv:${ticker}:1Y`, JSON.stringify(bars), { expirationTtl: 24*3600 }).catch(() => {})
+      return bars
+    }
+  }
+
+  // 4. Fallback: fetch from Alpaca
+  if (!keys.alpacaKey) return []
+  const hdr = { 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret }
+  const end   = new Date().toISOString().split('T')[0]
+  const start = new Date(Date.now() - 400 * 86400000).toISOString().split('T')[0]
+  const raw = await fetchJSON(
+    `https://data.alpaca.markets/v2/stocks/${ticker}/bars?timeframe=1Day&start=${start}&end=${end}&limit=350&feed=iex&adjustment=split`,
+    { headers: hdr }
+  ).catch(() => null)
+  const bars = (raw?.bars ?? []).map(b => ({
+    date: b.t.split('T')[0], open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v
+  }))
+  if (bars.length) await kv.put(`ohlcv:${ticker}:1Y`, JSON.stringify(bars), { expirationTtl: 24*3600 }).catch(() => {})
+  return bars
+}
+
+/* ── Assemble swing input from KV + optional overrides ── */
+async function buildSwingInput(ticker, body, keys, kv, db) {
+  const [ohlcv, spyOhlcv, qqqOhlcv] = await Promise.all([
+    fetchOhlcvForSwing(ticker, keys, kv, db),
+    kv.get('ohlcv:SPY:1Y', 'json').catch(() => null).then(v => v ?? []),
+    kv.get('ohlcv:QQQ:1Y', 'json').catch(() => null).then(v => v ?? []),
+  ])
+
+  // Fundamentals: from body, or KV cache
+  let fund = body.fundamentals ?? await kv.get(`fund:${ticker}`, 'json').catch(() => null) ?? {}
+
+  // Earnings sessions: from body or KV analyst cache
+  let tradingSessionsToEarnings = body.tradingSessionsToEarnings ?? null
+  let earningsDateConfidence    = body.earningsDateConfidence ?? 'unknown'
+  if (tradingSessionsToEarnings == null) {
+    const analystCache = await kv.get(`analyst:${ticker}`, 'json').catch(() => null)
+    if (analystCache?.earningsDate) {
+      const today    = new Date()
+      const earnings = new Date(analystCache.earningsDate)
+      const diffMs   = earnings - today
+      const diffDays = Math.round(diffMs / 86400000)
+      // Approximate trading sessions (no holiday calendar in v2.1)
+      const tradingSessions = Math.max(0, Math.round(diffDays * 5 / 7))
+      if (tradingSessions >= 0 && tradingSessions <= 60) {
+        tradingSessionsToEarnings = tradingSessions
+        earningsDateConfidence    = analystCache.earningsDateConfidence ?? 'estimated'
+      }
+    }
+  }
+
+  const sessionDate = body.sessionDate ?? new Date().toISOString().split('T')[0]
+
+  return {
+    ticker,
+    ohlcv,
+    spyOhlcv,
+    qqqOhlcv,
+    fundamentals:              fund,
+    marketRegimeOverride:      body.marketRegimeOverride ?? null,
+    tradingSessionsToEarnings,
+    earningsDateConfidence,
+    catalystType:              body.catalystType    ?? null,
+    catalystDate:              body.catalystDate    ?? null,
+    catalystDataStatus:        body.catalystDataStatus ?? 'unavailable',
+    eventRisk:                 body.eventRisk       ?? null,
+    sessionDate,
+    accountEquity:             body.accountEquity   ?? null,
+    riskPerTradePct:           body.riskPerTradePct ?? 0.01,
+    maxPositionPct:            body.maxPositionPct  ?? 0.20,
+  }
+}
+
+/* ── POST /api/swing/analyze — single ticker, no persist ──────────────
+   Body: { ticker, ...overrides }
+   Returns: full computeSwingCore result + timestamps
+──────────────────────────────────────────────────────────────────────── */
+async function handleSwingAnalyze(request, keys, kv, db) {
+  const body   = await request.json().catch(() => ({}))
+  const ticker = (body.ticker ?? '').toUpperCase()
+  if (!ticker || !/^[A-Z]{1,10}$/.test(ticker)) return json({ error: 'ticker required (A-Z, max 10)' }, 400)
+
+  const input     = await buildSwingInput(ticker, body, keys, kv, db)
+  const calcStart = Date.now()
+  const result    = computeSwingCore(input)
+  const calcMs    = Date.now() - calcStart
+
+  return json({
+    ...result,
+    calculatedAt:    new Date().toISOString(),
+    engineVersion:   SWING_MODEL_VERSION,
+    calcMs,
+  })
+}
+
+/* ── POST /api/swing/batch-scan — analyze batch, save to D1 ──────────
+   Body: { tickers: ["AAPL",...], date?: "YYYY-MM-DD" }
+   Requires: admin key
+──────────────────────────────────────────────────────────────────────── */
+async function handleSwingBatchScan(request, keys, kv, db) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const body    = await request.json().catch(() => ({}))
+  const tickers = (body.tickers ?? []).slice(0, 25).map(t => t.toUpperCase())
+  const today   = body.date ?? etDate()
+
+  if (!tickers.length) return json({ error: 'tickers array required (max 25)' }, 400)
+
+  let processed = 0, skipped = 0
+  const errors = [], results = []
+
+  for (const ticker of tickers) {
+    try {
+      const input  = await buildSwingInput(ticker, body, keys, kv, db)
+      const result = computeSwingCore(input)
+
+      // Persist to swing_analyses (UPSERT by UNIQUE key)
+      const now = Date.now()
+      await db.prepare(`
+        INSERT INTO swing_analyses (
+          ticker, analysis_date, model_version, timestamp_ms,
+          selected_setup, verdict, hard_gate, gate_cause,
+          setup_grade, pre_gate_grade, final_score, reward_risk,
+          entry_price, stop_price, target_price, target_source,
+          suggested_shares, position_pct, data_confidence,
+          market_regime, trading_sessions_to_earnings,
+          catalyst_type, catalyst_data_status,
+          full_json
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(ticker, model_version, analysis_date) DO UPDATE SET
+          verdict=excluded.verdict, hard_gate=excluded.hard_gate,
+          setup_grade=excluded.setup_grade, final_score=excluded.final_score,
+          market_regime=excluded.market_regime,
+          timestamp_ms=excluded.timestamp_ms, full_json=excluded.full_json
+      `).bind(
+        ticker, today, SWING_MODEL_VERSION, now,
+        result.selectedSetup, result.verdict, result.hardGate ?? null,
+        result.gateCauses?.[0]?.cause ?? null,
+        result.setupGrade, result.preGateGrade,
+        result.finalScore, result.rewardRisk,
+        result.entryPrice ?? null, result.stopPrice ?? null,
+        result.targetPrice ?? null, result.targetSource ?? null,
+        result.suggestedShares ?? null, result.positionPct ?? null,
+        result.dataConfidence,
+        result.marketRegime, result.tradingSessionsToEarnings ?? null,
+        result.catalystType ?? null, result.catalystDataStatus ?? null,
+        JSON.stringify(result)
+      ).run()
+
+      results.push({
+        ticker,
+        verdict:   result.verdict,
+        setup:     result.selectedSetup,
+        grade:     result.setupGrade,
+        score:     result.finalScore,
+        hardGate:  result.hardGate,
+        triggered: result.entryTriggered,
+      })
+      processed++
+    } catch(e) {
+      errors.push({ ticker, error: e.message })
+    }
+  }
+
+  return json({
+    ok: true, date: today, engineVersion: SWING_MODEL_VERSION,
+    processed, skipped, errors: errors.length ? errors : undefined, results,
+  })
+}
+
+/* ── GET /api/swing/latest — query D1 for recent swing analyses ───────
+   ?ticker=AAPL          → latest analysis for one ticker
+   ?limit=50&grade=ENTER → filtered list
+──────────────────────────────────────────────────────────────────────── */
+async function handleSwingLatest(request, db) {
+  if (!db) return json({ error: 'D1 not configured' }, 503)
+  const url    = new URL(request.url)
+  const ticker = url.searchParams.get('ticker')?.toUpperCase()
+  const limit  = Math.min(Number(url.searchParams.get('limit') ?? '50'), 200)
+  const verdict= url.searchParams.get('verdict')  // ENTER, ENTER_SMALL, WATCH, NO_TRADE
+  const grade  = url.searchParams.get('grade')    // A+, A, B, C, D
+
+  if (ticker) {
+    // Single ticker: full result
+    const row = await db.prepare(
+      `SELECT * FROM swing_analyses WHERE ticker=? AND model_version=? ORDER BY analysis_date DESC, rowid DESC LIMIT 1`
+    ).bind(ticker, SWING_MODEL_VERSION).first().catch(() => null)
+    if (!row) return json({ error: `No swing analysis found for ${ticker}` }, 404)
+    const full = JSON.parse(row.full_json ?? '{}')
+    return json({ ...full, analysisDate: row.analysis_date, savedAt: row.timestamp_ms })
+  }
+
+  // List mode: latest per ticker, optional filters
+  let where = `model_version = '${SWING_MODEL_VERSION}'`
+  if (verdict) where += ` AND verdict = '${verdict.replace(/'/g, '')}'`
+  if (grade)   where += ` AND setup_grade = '${grade.replace(/'/g, '')}'`
+
+  const today  = etDate()
+  const sql = `
+    WITH latest AS (
+      SELECT ticker, verdict, hard_gate, setup_grade, final_score,
+             selected_setup, entry_price, target_price, reward_risk,
+             suggested_shares, market_regime, analysis_date, timestamp_ms,
+             trading_sessions_to_earnings,
+             ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY analysis_date DESC, rowid DESC) AS rn
+      FROM swing_analyses
+      WHERE ${where}
+    )
+    SELECT *,
+      CAST(julianday('${today}') - julianday(analysis_date) AS INTEGER) AS age_days
+    FROM latest WHERE rn=1
+    ORDER BY final_score DESC
+    LIMIT ${limit}
+  `
+  const rows = await db.prepare(sql).all().then(r => r.results ?? []).catch(() => [])
+
+  return json({
+    analyses: rows.map(r => ({
+      ticker:          r.ticker,
+      verdict:         r.verdict,
+      hardGate:        r.hard_gate,
+      setupGrade:      r.setup_grade,
+      finalScore:      r.final_score,
+      selectedSetup:   r.selected_setup,
+      entryPrice:      r.entry_price,
+      targetPrice:     r.target_price,
+      rewardRisk:      r.reward_risk,
+      suggestedShares: r.suggested_shares,
+      marketRegime:    r.market_regime,
+      analysisDate:    r.analysis_date,
+      ageDays:         r.age_days ?? 0,
+      stale:           (r.age_days ?? 0) > 7,
+    })),
+    count:       rows.length,
+    modelVersion: SWING_MODEL_VERSION,
+    filters:     { verdict, grade, limit },
+  })
+}
+
+/* ── POST /api/swing/validate-fixtures — run S1–S32 (admin) ──────────── */
+async function handleSwingValidateFixtures(request, keys) {
+  const isAdmin = keys.adminKey && request.headers.get('X-TradePoint-Admin-Key') === keys.adminKey
+  if (!isAdmin) return json({ error: 'Admin key required' }, 401)
+
+  const fixtureResult = runSwingFixtures()
+  return json({
+    ok:            fixtureResult.allPassed,
+    engineVersion: SWING_MODEL_VERSION,
+    ...fixtureResult,
+  })
+}
+
+/* ── Router: /api/swing/:action ──────────────────────────────────────── */
+async function handleSwingRouter(action, request, env, keys, kv, db) {
+  switch (action) {
+    case 'analyze':
+      return await handleSwingAnalyze(request, keys, kv, db)
+    case 'batch-scan':
+      return await handleSwingBatchScan(request, keys, kv, db)
+    case 'latest':
+      return await handleSwingLatest(request, db)
+    case 'validate-fixtures':
+      return await handleSwingValidateFixtures(request, keys)
+    default:
+      return json({ error: `Unknown swing action: ${action}` }, 404)
+  }
 }
