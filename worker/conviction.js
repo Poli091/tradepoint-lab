@@ -266,7 +266,7 @@ function risk(f, profile) {
 function gates(f, profile) {
   // Gate 1
   const g1checks={}
-  const revOk=(f.revenueGrowth3Y!=null&&f.revenueGrowth3Y>0)||(f.revenueGrowthYoY!=null&&f.revenueGrowthYoY>=0)||(f.revenueGrowth3Y==null&&f.revenueGrowthYoY==null)
+  const revOk=(f.revenueGrowth3Y!=null&&f.revenueGrowth3Y>=0)||(f.revenueGrowthYoY!=null&&f.revenueGrowthYoY>=0)||(f.revenueGrowth3Y==null&&f.revenueGrowthYoY==null)
   g1checks.revenueGrowth={pass:revOk}
   g1checks.operatingMargin={pass:f.operatingMargin==null||f.operatingMargin>-25}
   if (profile.name!=='banks'&&profile.gate1DebtMax!=null) {
@@ -289,11 +289,11 @@ function gates(f, profile) {
     gate2Evaluable = true
     const negEq   = de != null && de < 0
     const levOk   = !negEq && (de == null || de <= debtThreshold)
-    profPass      = roe >= 10 && levOk
+    profPass      = roe >= 8 && levOk
     // Source reflects BOTH leverage AND ROE outcome
     profSource    = !levOk ? 'roe_failed_leverage_check'
-                 : roe >= 10 ? 'roe_leverage_ok'           // both passed
-                 : 'roe_below_threshold'                     // leverage ok but ROE < 10
+                 : roe >= 8 ? 'roe_leverage_ok'            // both passed
+                 : 'roe_below_threshold'                     // leverage ok but ROE < 8
   } else {
     // No ROIC or ROE — not evaluable; ROI excluded (ambiguous); pass by null policy
     profPass = true; profSource = null; gate2Evaluable = false

@@ -20,7 +20,7 @@ function checkGate1(ctx) {
   const profile = ctx.sectorProfile
   const checks  = {}
 
-  const revOk = (f.revenueGrowth3Y  != null && f.revenueGrowth3Y  > 0)
+  const revOk = (f.revenueGrowth3Y  != null && f.revenueGrowth3Y  >= 0)
              || (f.revenueGrowthYoY != null && f.revenueGrowthYoY >= 0)
              || (f.revenueGrowth3Y == null && f.revenueGrowthYoY == null)
   checks.revenueGrowth = { pass: revOk, value: f.revenueGrowthYoY }
@@ -66,7 +66,7 @@ function checkGate2(ctx) {
     // ROE with leverage guard: negative equity → leverage is problematic
     const negativeEquity = de != null && de < 0
     const leverageOk     = !negativeEquity && (de == null || de <= debtThreshold)
-    qualityOk     = roe >= 10 && leverageOk
+    qualityOk     = roe >= 8 && leverageOk
     qualitySource = leverageOk ? 'roe_leverage_ok' : 'roe_failed_leverage_check'
   } else {
     qualityVal = null; qualitySource = null; qualityOk = true  // null → pass
