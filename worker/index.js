@@ -5193,12 +5193,10 @@ async function handleSwingRouter(action, request, env, keys, kv, db) {
    Returns full computeConviction() result (no persist)
 ════════════════════════════════════════════════════════════ */
 async function handleConvictionAnalyze(ticker, request, env, keys, kv, db) {
-  if (!ticker || !/^[A-Z]{1,10}$/i.test(ticker)) {
-    return json({ error: 'ticker required' }, 400)
-  }
+  if (!ticker || !/^[A-Z]{1,10}$/i.test(ticker)) return json({ error: 'ticker required' }, 400)
   const t = ticker.toUpperCase()
 
-  // Fundamentals: use handleFundamentals which has KV + Finnhub fallback
+  // ── Fundamentals (KV + Finnhub fallback) ─────────────────────────────
   let fund = {}
   try {
     const fundResp = await handleFundamentals(t, keys, kv)
@@ -5206,27 +5204,58 @@ async function handleConvictionAnalyze(ticker, request, env, keys, kv, db) {
     fund = fundJson?.data ?? fundJson ?? {}
   } catch { fund = await kv.get(`fund:${t}`, 'json').catch(() => null) ?? {} }
 
-  // OHLCV: KV first (may be array or {data,meta}), then D1 ohlcv_bars
-  let ohlcvRaw = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => null)
-  let ohlcv = Array.isArray(ohlcvRaw) ? ohlcvRaw : (ohlcvRaw?.data ?? null)
-  if (!Array.isArray(ohlcv) || ohlcv.length < 10) {
-    if (db) {
-      const rows = await db.prepare(
-        `SELECT bar_date AS date, open, high, low, close, volume FROM ohlcv_bars WHERE ticker=? AND res='D' ORDER BY bar_date ASC LIMIT 600`
-      ).bind(t).all().then(r => r.results ?? []).catch(() => [])
-      ohlcv = rows.map(r => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, price: r.close, volume: r.volume ?? 0 }))
-    }
-  } else {
-    // Normalize KV OHLCV to have both price and close
-    ohlcv = ohlcv.map(b => ({ ...b, close: b.close ?? b.price, price: b.price ?? b.close }))
+  // ── Helpers ───────────────────────────────────────────────────────────
+  const normBars = raw => {
+    const arr = Array.isArray(raw) ? raw : (raw?.data ?? [])
+    return (arr ?? []).map(b => ({
+      date: b.date ?? b.bar_date, open: b.open, high: b.high, low: b.low,
+      close: b.close ?? b.price, price: b.price ?? b.close, volume: b.volume ?? 0,
+    })).filter(b => b.date && (b.close ?? b.price) != null)
+     .sort((a, b) => new Date(a.date) - new Date(b.date))
   }
+  const lastTs = bars => {
+    if (!bars?.length) return 0
+    const d = new Date(bars[bars.length-1].date)
+    return Number.isFinite(d.getTime()) ? d.getTime() : 0
+  }
+  const isFresh = bars => (Date.now() - lastTs(bars)) <= 7 * 86_400_000
 
-  // SPY OHLCV from KV (may be array or {data,meta})
-  const spyKv = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => null)
-  const spyArr = Array.isArray(spyKv) ? spyKv : (spyKv?.data ?? [])
-  const spyOhlcv = spyArr.map(b => ({ ...b, close: b.close ?? b.price, price: b.price ?? b.close }))
+  // ── OHLCV: KV vs D1 — use whichever is more recent ───────────────────
+  const kvRaw  = await kv.get(`ohlcv:${t}:1Y`, 'json').catch(() => null)
+  const kvBars = normBars(kvRaw)
+  let d1Bars = []
+  if (db) {
+    const rows = await db.prepare(
+      `SELECT bar_date AS date, open, high, low, close, volume FROM ohlcv_bars WHERE ticker=? AND res='D' ORDER BY bar_date DESC LIMIT 600`
+    ).bind(t).all().then(r => (r.results ?? []).reverse()).catch(() => [])
+    d1Bars = normBars(rows)
+  }
+  const useD1 = lastTs(d1Bars) > lastTs(kvBars)
+  const ohlcv = (useD1 ? d1Bars : kvBars).slice(-260)
+  const ohlcvFresh     = isFresh(ohlcv)
+  const ohlcvLastDate  = ohlcv.length ? ohlcv[ohlcv.length-1].date : null
+  const ohlcvAgeDays   = ohlcvLastDate
+    ? Math.round((Date.now() - new Date(ohlcvLastDate).getTime()) / 86_400_000) : null
 
-  // Sector info from constituent_master
+  // ── SPY: same KV vs D1 freshness logic ────────────────────────────────
+  const spyKvRaw = await kv.get('ohlcv:SPY:1Y', 'json').catch(() => null)
+  let spyBars = normBars(spyKvRaw)
+  if (!isFresh(spyBars) && db) {
+    const spyRows = await db.prepare(
+      `SELECT bar_date AS date, open, high, low, close, volume FROM ohlcv_bars WHERE ticker='SPY' AND res='D' ORDER BY bar_date DESC LIMIT 600`
+    ).bind().all().then(r => (r.results ?? []).reverse()).catch(() => [])
+    const spyD1 = normBars(spyRows)
+    if (lastTs(spyD1) > lastTs(spyBars)) spyBars = spyD1
+  }
+  const spyOhlcv = spyBars.slice(-260)
+
+  // ── Price: live KV first, then fresh OHLCV close only ─────────────────
+  const priceData    = await kv.get(`price:${t}`, 'json').catch(() => null)
+  const freshClose   = ohlcvFresh && ohlcv.length
+    ? (ohlcv[ohlcv.length-1].price ?? ohlcv[ohlcv.length-1].close ?? null) : null
+  const currentPrice = priceData?.price ?? freshClose ?? null
+
+  // ── Sector from constituent_master ────────────────────────────────────
   let sector = '', industry = ''
   if (db) {
     const row = await db.prepare(
@@ -5235,21 +5264,23 @@ async function handleConvictionAnalyze(ticker, request, env, keys, kv, db) {
     if (row) { sector = row.gics_sector ?? ''; industry = row.tradepoint_industry ?? '' }
   }
 
-  // Price: from price KV or last OHLCV bar
-  const priceData = await kv.get(`price:${t}`, 'json').catch(() => null)
-  const currentPrice = priceData?.price
-    ?? (ohlcv.length ? (ohlcv[ohlcv.length-1].price ?? ohlcv[ohlcv.length-1].close ?? null) : null)
-    ?? null
-
   const result = computeConviction(fund, ohlcv, spyOhlcv, currentPrice, sector, '', industry)
 
   return json({
     ...result,
-    // Include raw data for UI display and swing engine (client-side)
     fundamentalsData: fund,
     ohlcv,
     spyOhlcv,
     currentPrice,
+    dataFreshness: {
+      ohlcvSource:   useD1 ? 'd1' : 'kv',
+      ohlcvLastDate,
+      ohlcvAgeDays,
+      isFresh:       ohlcvFresh,
+      ohlcvBars:     ohlcv.length,
+      priceSource:   priceData?.price ? 'kv_price' : (freshClose ? 'ohlcv_close' : 'unavailable'),
+      warning:       !ohlcvFresh ? `OHLCV is ${ohlcvAgeDays}d old — run batch-price update` : null,
+    },
     computedAt: new Date().toISOString(),
   })
 }

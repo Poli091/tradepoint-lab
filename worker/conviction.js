@@ -510,7 +510,10 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       if (tc.ema200 == null) reasons.push('EMA200_INSUFFICIENT_BARS')
       if (gt.activeGate === 'gate2') reasons.push('GATE2_FAILED')
       const status = reasons.length === 0 ? 'FULL'
-        : reasons.some(r => r.includes('MISSING') || r.includes('GATE2') || r.includes('EXCLUDED')) ? 'LIMITED'
+        : reasons.some(r =>
+            r.includes('MISSING') || r.includes('GATE2') ||
+            r.includes('EXCLUDED') || r.includes('UNAVAILABLE')
+          ) ? 'LIMITED'
         : 'ADJUSTED'
       return { status, reasons }
     })(),
