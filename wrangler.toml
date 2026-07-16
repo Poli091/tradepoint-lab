@@ -4,6 +4,7 @@
 name            = "tradepoint-worker"
 main            = "worker/index.js"
 compatibility_date = "2024-09-23"
+format             = "esm"   # explicit ES module — required for D1 binding
 
 # ── KV Namespace ──────────────────────────────────────────────
 # SETUP STEPS:
@@ -55,3 +56,4 @@ migrations_dir  = "worker/migrations"  # Wrangler tracks applied migrations here
 
 [triggers]
 crons = ["0 0 * * 0"]
+# Daily cron "0 22 * * 1-5" managed via Cloudflare Dashboard (Wrangler API bug with /schedules endpoint)
