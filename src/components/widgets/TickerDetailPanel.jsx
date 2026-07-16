@@ -17,12 +17,12 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { X, RotateCcw, TrendingUp, Shield, BarChart2, DollarSign, Clock, Zap } from 'lucide-react'
 // recharts removed — Score History uses pure SVG
 import { useConviction }           from '../../hooks/useConviction.js'
-import { runSwingConviction, getSwingGrade } from '../../conviction/swing/engine.js'
+// Swing data consumed from Worker — no local engine
 import { computeDecision }                    from '../../conviction/decision/engine.js'
 import { useBreakpoint }  from '../../hooks/useBreakpoint.js'
 import { POSITIONS }      from '../../data/positions.js'
 import { fUSD, fPct, fPctRaw, fMult, fBig, fRatio } from '../../utils/format.js'
-import { workerAPI }       from '../../utils/api/worker.js'
+import { workerAPI, getWorkerUrl } from '../../utils/api/worker.js'
 import { cache }          from '../../utils/cache.js'
 import { loadWatchlist, saveWatchlist } from '../../utils/watchlistStorage.js'
 import { loadOverrides, saveOverrides } from '../../utils/positionsStorage.js'
@@ -148,15 +148,75 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
   const [activeTab, setActiveTab] = useState('score')
   const [mode,       setMode]       = useState('long-term')  // 'long-term' | 'swing'
 
-  // Always compute swing result — mode change does NOT re-fetch (mode not in deps)
-  const swingResult = useMemo(() => {
-    if (!result) return null
-    try {
-      const ohlcv    = result.ohlcv    ?? []
-      const spyOhlcv = result.spyOhlcv ?? []
-      return runSwingConviction(result.fundamentalsData, ohlcv, spyOhlcv)
-    } catch { return null }
-  }, [result?.fundamentalsData, result?.ohlcv, result?.spyOhlcv]) // eslint-disable-line
+  // Swing v2.1: fetch from Worker /api/swing/latest?ticker=X
+  const [swingResult,      setSwingResult]      = useState(null)
+  const [swingLoading,     setSwingLoading]     = useState(false)
+  const [swingError,       setSwingError]       = useState(null)
+
+  useEffect(() => {
+    setSwingResult(null); setSwingError(null)
+    if (!ticker) return
+    const base = getWorkerUrl()
+    if (!base) return
+    const controller = new AbortController()
+    setSwingLoading(true)
+
+    const SWING_COLORS = {
+      ENTER:'#22C55E', ENTER_SMALL:'#86EFAC',
+      WATCH:'#FBBF24', NO_TRADE:'#94A3B8', NOT_DETECTED:'#6B7280',
+    }
+    // Swing verdicts mapped to comparable ranks for Alignment calculation
+    // ENTER=bullish, ENTER_SMALL=mild bullish, WATCH/NO_TRADE=neutral
+    const SWING_GRADE_RANK = {
+      ENTER:4, ENTER_SMALL:3, WATCH:2, NO_TRADE:2, NOT_DETECTED:2
+    }
+
+    fetch(`${base}/api/swing/latest?ticker=${encodeURIComponent(ticker)}`, {
+      signal: controller.signal,
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => {
+        if (data.error) throw new Error(data.error)
+        const color = SWING_COLORS[data.verdict] ?? '#94A3B8'
+        const gradeRank = SWING_GRADE_RANK[data.verdict] ?? 2
+        setSwingResult({
+          ...data,
+          // Grade/color compat for Alignment + header display
+          grade:        data.verdict,
+          gradeLabel:   data.verdict,
+          gradeColor:   color,
+          gradeRank,    // used by alignment instead of GRADE_RANK_MAP
+
+          // v2.1 fields mapped explicitly
+          setup:          data.selectedSetup ?? '—',
+          setupConfidence:data.dataConfidence ?? null,
+          finalScore:     data.finalScore ?? 0,
+
+          // Trade levels — only when entry price available
+          levels: Number.isFinite(data.entryPrice) ? {
+            entry:      data.entryPrice.toFixed(2),
+            stopLoss:   Number.isFinite(data.stopPrice)  ? data.stopPrice.toFixed(2)  : null,
+            takeProfit: Number.isFinite(data.targetPrice) ? data.targetPrice.toFixed(2) : null,
+            riskReward: Number.isFinite(data.rewardRisk)  ? data.rewardRisk.toFixed(1) : null,
+            note:       data.targetSource ?? '',
+          } : null,
+
+          // Swing v2.1 has no LT-style breakdown — null is intentional
+          breakdown: null,
+          setupReasons: [],
+          exhaustion: null,
+        })
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          console.warn('[Swing]', ticker, err.message)
+          setSwingError(err.message)
+        }
+      })
+      .finally(() => { if (!controller.signal.aborted) setSwingLoading(false) })
+
+    return () => controller.abort()
+  }, [ticker])
 
   // Backward compat alias used by alignment and decision engine
   const altResult = swingResult
@@ -183,10 +243,10 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
   const alignment_ = useMemo(() => {
     if (!result || !altResult) return null
-    // If OHLCV is insufficient, swing score is meaningless (0 = missing data, not bearish)
-    // Propagate null so downstream consumers (Decision, CompareView) don't misuse it
-    if ((result.ohlcv?.length ?? 0) < 50) return null
-    const ltR = GRADE_RANK_MAP[result.grade]??2, swR = GRADE_RANK_MAP[altResult.grade]??2
+    // Use Swing's own dataConfidence — not Conviction's OHLCV count
+    if ((altResult.dataConfidence ?? 0) < 30) return null
+    const ltR = GRADE_RANK_MAP[result.grade] ?? 2
+    const swR = altResult.gradeRank ?? GRADE_RANK_MAP[altResult.grade] ?? 2
     const ceiling   = [100,75,50,25,0][Math.min(Math.abs(ltR-swR),4)]
     const similarity = Math.max(0, 100-Math.abs(result.finalScore-altResult.finalScore))
     return Math.min(similarity, ceiling)
@@ -197,7 +257,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
     if (!result) return null
     try {
       // When OHLCV < 50, swing data is insufficient — pass null instead of 0-score result
-      const swingForDecision = (result.ohlcv?.length ?? 0) >= 50 ? altResult : null
+      const swingForDecision = (swingResult?.dataConfidence ?? 0) >= 30 ? altResult : null
       return computeDecision(result, swingForDecision, alignment_)
     } catch { return null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -389,8 +449,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
           <div style={{ display:'flex', gap:6, alignItems:'center', width:'100%', justifyContent:'space-between' }}>
             {/* Alignment Score v2 — agreement as ceiling, strategy phrase */}
             {swingResult && result && (() => {
-              const ltR = GRADE_RANK_MAP[result.grade]    ?? 2
-              const swR = GRADE_RANK_MAP[altResult.grade] ?? 2
+              const ltR = GRADE_RANK_MAP[result.grade] ?? 2
+              const swR = altResult.gradeRank ?? GRADE_RANK_MAP[altResult.grade] ?? 2
               const dist = Math.abs(ltR - swR)
 
               // Agreement ceiling — grade distance determines max possible alignment
@@ -445,7 +505,21 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 'STRONG SELL|SELL':      'High conviction bearish',
                 'STRONG SELL|STRONG SELL':'High conviction bearish',
               }
-              const strategy = STRATEGY[`${result.grade}|${altResult.grade}`] ?? 'Monitor — no clear signal'
+              const SWING_STRATEGY = {
+                'STRONG BUY|ENTER':'Suitable for accumulation', 'BUY|ENTER':'Suitable for accumulation',
+                'HOLD|ENTER':'Swing opportunity', 'SELL|ENTER':'Counter-trend trade only',
+                'STRONG SELL|ENTER':'Counter-trend trade only',
+                'STRONG BUY|ENTER_SMALL':'Accumulate selectively', 'BUY|ENTER_SMALL':'Accumulate selectively',
+                'HOLD|ENTER_SMALL':'Small tactical position', 'SELL|ENTER_SMALL':'Counter-trend trade only',
+                'STRONG SELL|ENTER_SMALL':'Counter-trend trade only',
+                'STRONG BUY|WATCH':'Wait for trigger confirmation', 'BUY|WATCH':'Wait for trigger confirmation',
+                'HOLD|WATCH':'Monitor for confirmation', 'SELL|WATCH':'No swing entry',
+                'STRONG BUY|NO_TRADE':'Long-term thesis intact; no swing entry',
+                'BUY|NO_TRADE':'Long-term thesis intact; no swing entry',
+                'HOLD|NO_TRADE':'No actionable setup', 'SELL|NO_TRADE':'Avoid',
+              }
+              const swingKey = `${result.grade}|${altResult.grade}`
+              const strategy = SWING_STRATEGY[swingKey] ?? STRATEGY[swingKey] ?? 'Monitor — no clear signal'
 
               const color =
                 alignment >= 70 && bothBull ? 'var(--green)' :
@@ -455,7 +529,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
 
               return (
                 <div
-                  title={alignment_==null ? 'Swing alignment unavailable — insufficient OHLCV data' : `LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Ceiling: ${ceiling}% · Similarity: ${similarity}%`}
+                  title={alignment_==null ? 'Swing alignment unavailable — insufficient Swing data confidence' : `LT: ${result.finalScore} (${result.grade}) · SW: ${altResult.finalScore} (${altResult.grade}) · Ceiling: ${ceiling}% · Similarity: ${similarity}%`}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center',
                     padding:'4px 10px', borderRadius:6, marginRight:6,
                     background:`${color}15`, border:`1px solid ${color}44`,
@@ -655,32 +729,35 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                 <>
 
               {/* ══ SWING ANALYSIS DETAIL (when mode === 'swing') ══ */}
-              {mode === 'swing' && swingResult && (
+              {mode === 'swing' && (<>
+                {/* Loading state */}
+                {swingLoading && (
+                  <div style={{ padding:16, marginBottom:16, color:'var(--txt-muted)',
+                    background:'var(--surface-up)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)' }}>
+                    Loading Swing v2.1 analysis…
+                  </div>
+                )}
+                {/* Error state */}
+                {swingError && !swingLoading && (
+                  <div style={{ padding:16, marginBottom:16, color:'var(--amber)',
+                    background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.3)', borderRadius:'var(--radius-lg)' }}>
+                    ⚠ {swingError.includes('404') || swingError.includes('500')
+                      ? 'No Swing snapshot available yet — run batch scan first'
+                      : `Swing analysis unavailable: ${swingError}`}
+                  </div>
+                )}
+                {/* Result state — only when loaded without error */}
+                {swingResult && !swingLoading && !swingError && (
                 <div style={{ background:`${swingResult.gradeColor}11`, border:`1px solid ${swingResult.gradeColor}33`,
                   borderRadius:'var(--radius-lg)', padding:'16px', marginBottom:16 }}>
-                  {(() => {
-                    const bars = result?.ohlcv?.length ?? 0
-                    if (bars < 50) return (
-                      <div style={{ padding:'10px 14px', background:'var(--red-dim)',
-                        border:'1px solid var(--red)', borderRadius:'var(--radius)',
-                        marginBottom:12, fontSize:11, color:'var(--red)' }}>
-                        ⚠ Insufficient OHLCV data ({bars} bars) — Swing Analysis unavailable.
-                        <div style={{ fontSize:9, marginTop:3, opacity:0.8 }}>
-                          EMA, ADX, MACD and most indicators require 200+ bars.
-                          Load historical data first via the price chart (2Y range).
-                        </div>
-                      </div>
-                    )
-                    if (bars < 200) return (
-                      <div style={{ fontSize:10, color:'var(--amber)', marginBottom:8,
-                        padding:'6px 10px', background:'var(--amber-dim)',
-                        border:'1px solid var(--amber)', borderRadius:'var(--radius)' }}>
-                        ⚠ Limited data ({bars}/200 bars) — EMA200 and ADX partially available.
-                        Some indicators may show 0 due to missing history, not bearish signals.
-                      </div>
-                    )
-                    return null
-                  })()}
+                  {/* Low confidence warning */}
+                  {(swingResult.dataConfidence ?? 0) < 30 && (
+                    <div style={{ fontSize:11, color:'var(--amber)', marginBottom:8,
+                      padding:'6px 10px', background:'rgba(251,191,36,0.08)',
+                      border:'1px solid rgba(251,191,36,0.3)', borderRadius:'var(--radius)' }}>
+                      ⚠ Swing data confidence insufficient ({swingResult.dataConfidence ?? 0}%) — technical score not reliable.
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
                     <div>
                       <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
@@ -691,9 +768,9 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                         <span style={{ fontFamily:'var(--mono)', fontSize:14, color:'var(--txt-muted)' }}>/100</span>
                       </div>
                       <div style={{ fontFamily:'var(--mono)', fontSize:14, fontWeight:700,
-                        color:(result?.ohlcv?.length ?? 0) < 50 ? 'var(--txt-muted)' : swingResult.gradeColor,
+                        color:(swingResult.dataConfidence ?? 0) < 30 ? 'var(--txt-muted)' : swingResult.gradeColor,
                         marginTop:4 }}>
-                        {(result?.ohlcv?.length ?? 0) < 50 ? '— Insufficient Data' : `${swingResult.grade} — Swing Timing`}
+                        {swingResult.dataConfidence != null && swingResult.dataConfidence < 30 ? '— Insufficient Data' : `${swingResult.grade} — Swing Timing`}
                       </div>
                     </div>
                     <div style={{ textAlign:'right' }}>
@@ -760,7 +837,7 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   )}
 
                   {/* Entry levels — hidden if OHLCV continuity has errors */}
-                  {swingResult.levels && result?.meta?.continuity?.status !== 'error' && (
+                  {swingResult.levels && !swingResult.hardGate && (
                     <div style={{ marginTop:12, borderTop:'1px solid var(--border)', paddingTop:10 }}>
                       <div style={{ fontSize:10, fontWeight:700, color:'var(--txt-muted)',
                         textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>
@@ -791,6 +868,8 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                     </div>
                   )}
                 </div>
+              )}
+              </>
               )}
 
               {/* ══ SECTION 1: LT CONVICTION SCORE (shown when mode === 'long-term') ══ */}

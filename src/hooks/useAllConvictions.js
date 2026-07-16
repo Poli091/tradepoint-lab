@@ -1,166 +1,150 @@
 /**
- * MODULE: HOOKS / useAllConvictions.js
- * Runs the conviction engine for every position in the portfolio.
- * Used by the Model Diagnostics view.
- *
- * Fetches SPY OHLCV once (shared) then processes tickers sequentially
- * with a small delay between each to respect API rate limits.
- * All data goes through KV cache → subsequent runs are instant.
+ * MODULE: HOOKS / useAllConvictions.js  — v1.2
+ * Calls Worker /api/conviction/analyze/:ticker for each position.
+ * No local engine — canonical v1.2 runs server-side.
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
+import { getWorkerUrl } from '../utils/api/worker.js'
 
-// Analyst targets now fetched via Worker with browser-like headers
-// Client-side Yahoo fetch removed (CORS blocked from production domain)
-import { cache } from '../utils/cache.js'
-import { runConviction }           from '../conviction/index.js'
-
-const TICKER_DELAY_MS = 250   // delay between tickers on first cold run
-
-export function useAllConvictions(positions = [], prices = {}) {
-  const [results,  setResults]  = useState({})    // { [ticker]: convictionResult }
-  const [loading,  setLoading]  = useState(false)
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
-  const [error,    setError]    = useState(null)
-
-  const compute = useCallback(async () => {
-    if (!positions.length) return
-    if (!getWorkerUrl()) {
-      setError('Worker not configured — add URL in Settings → Data Sync')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-    setProgress({ done: 0, total: positions.length })
-
-    try {
-      // Fetch SPY OHLCV once — shared across all ticker RS calculations
-      const spyResult = await workerAPI.ohlcv('SPY', '1Y').catch(() => null)
-      const spyOhlcv  = spyResult?.data ?? []
-
-      const newResults = {}
-
-      for (let i = 0; i < positions.length; i++) {
-        const pos = positions[i]
-        try {
-          // Bust stale localStorage fund_ cache if targetMean is null
-          // (was written before Yahoo Finance fallback was added for analyst targets)
-          const cachedFund = cache.getFund(pos.ticker)
-          if (cachedFund && cachedFund.targetMean == null) {
-            cache.deleteFund(pos.ticker)
-          }
-
-          const [fundResult, ohlcvResult] = await Promise.all([
-            workerAPI.fundamentals(pos.ticker),
-            workerAPI.ohlcv(pos.ticker, '1Y'),
-          ])
-
-          if (fundResult?.data) {
-            const fundData = fundResult.data
-
-            const conviction = runConviction({
-              fundamentals: fundData,
-              ohlcv:        ohlcvResult?.data ?? [],
-              spyOhlcv,
-              prices,
-            })
-            newResults[pos.ticker] = {
-              ...conviction,
-              nextEarningsDate:   fundResult?.data?.nextEarningsDate   ?? null,
-              earningsDateSource: fundResult?.data?.earningsDateSource ?? null,
-            }
-          }
-        } catch (err) {
-          console.warn('[useAllConvictions]', pos.ticker, err.message)
-        }
-
-        setProgress({ done: i + 1, total: positions.length })
-
-        // Small stagger between requests on cache miss runs
-        if (i < positions.length - 1) {
-          await new Promise(r => setTimeout(r, TICKER_DELAY_MS))
-        }
-      }
-
-      setResults(newResults)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [positions, prices]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { compute() }, [compute])
-
-  return { results, loading, progress, error, recompute: compute }
+const GRADE_META = {
+  'STRONG BUY': { color:'#22C55E', bg:'rgba(34,197,94,0.07)',    stars:5 },
+  'BUY':        { color:'#86EFAC', bg:'rgba(134,239,172,0.07)',  stars:4 },
+  'HOLD':       { color:'#FBBF24', bg:'rgba(251,191,36,0.07)',   stars:3 },
+  'SELL':       { color:'#F97316', bg:'rgba(249,115,22,0.07)',   stars:2 },
+  'STRONG SELL':{ color:'#EF4444', bg:'rgba(239,68,68,0.07)',    stars:1 },
+  'NOT_RATED':  { color:'#94A3B8', bg:'rgba(148,163,184,0.07)', stars:0 },
 }
 
-/* ── Aggregate statistics across all results ──────────────── */
+const TICKER_DELAY_MS = 200
+
+export function useAllConvictions(positions = []) {
+  const [results,  setResults]  = useState({})
+  const [loading,  setLoading]  = useState(false)
+  const [progress, setProgress] = useState({ done:0, total:0 })
+  const [error,    setError]    = useState(null)
+
+  const compute = useCallback(async (signal) => {
+    const base = getWorkerUrl()
+    if (!positions.length) return
+    if (!base) { setError('Worker not configured — add URL in Settings'); return }
+
+    // Deduplicate before setting total (Combined may merge same ticker twice)
+    const tickers = [...new Set(positions.map(p => p.ticker).filter(Boolean))]
+    if (!tickers.length) return
+
+    setLoading(true); setError(null)
+    setProgress({ done:0, total:tickers.length })
+
+    const newResults = {}
+
+    for (let i = 0; i < tickers.length; i++) {
+      if (signal?.aborted) return  // bail if positions changed mid-loop
+
+      const ticker = tickers[i]
+      try {
+        const resp = await fetch(`${base}/api/conviction/analyze/${ticker}`, {
+          headers: { 'Content-Type': 'application/json' },
+          signal,
+        })
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        const data = await resp.json()
+        if (data.error) throw new Error(data.error)
+
+        const meta = GRADE_META[data.grade] ?? GRADE_META['NOT_RATED']
+        const riskBreakdown = data.breakdown?.risk?.breakdown
+          ?? (data.breakdown?.risk?.flags ?? []).map(f => ({ label: f.replace(/_/g,' ') }))
+
+        newResults[ticker] = {
+          ...data,
+          grade: data.grade, gradeLabel: data.grade,
+          gradeColor: meta.color, gradeBg: meta.bg, gradeStars: meta.stars,
+          breakdown: data.breakdown ? {
+            ...data.breakdown,
+            risk: { ...data.breakdown.risk, breakdown: riskBreakdown },
+          } : null,
+          nextEarningsDate:   data.fundamentalsData?.nextEarningsDate   ?? null,
+          earningsDateSource: data.fundamentalsData?.earningsDateSource ?? null,
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        console.warn('[useAllConvictions]', ticker, err.message)
+        // newResults[ticker] intentionally left unset — previous result preserved below
+      }
+
+      if (!signal?.aborted) setProgress({ done: i+1, total: tickers.length })
+      if (i < tickers.length - 1 && !signal?.aborted) {
+        await new Promise(r => setTimeout(r, TICKER_DELAY_MS))
+      }
+    }
+
+    if (signal?.aborted) return
+
+    // Merge: keep previous result for any ticker that errored this round
+    setResults(prev => {
+      const next = {}
+      for (const ticker of tickers) {
+        next[ticker] = newResults[ticker] ?? prev[ticker] ?? undefined
+      }
+      // Remove tickers no longer in position list
+      return Object.fromEntries(Object.entries(next).filter(([,v]) => v != null))
+    })
+    setLoading(false)
+  }, [positions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const controller = new AbortController()
+    compute(controller.signal)
+    return () => controller.abort()
+  }, [compute])
+
+  return { results, loading, progress, error, recompute: () => compute() }
+}
+
+/* ── Aggregate statistics ──────────────────────────────────── */
 export function calcDiagnostics(results) {
   const tickers = Object.keys(results)
   if (!tickers.length) return null
 
   const DIMS = [
-    { key: 'growth',    max: 25, label: 'Growth'    },
-    { key: 'quality',   max: 20, label: 'Quality'   },
-    { key: 'strength',  max: 15, label: 'Strength'  },
-    { key: 'valuation', max: 15, label: 'Valuation' },
-    { key: 'technical', max: 15, label: 'Technical' },
+    { key:'growth',    max:25, label:'Growth'    },
+    { key:'quality',   max:20, label:'Quality'   },
+    { key:'strength',  max:15, label:'Strength'  },
+    { key:'valuation', max:15, label:'Valuation' },
+    { key:'technical', max:15, label:'Technical' },
   ]
 
-  // Per-dimension average % of max
   const dimStats = DIMS.map(({ key, max, label }) => {
     const available = tickers
-      .map(t => results[t].breakdown[key])
+      .map(t => results[t].breakdown?.[key])
       .filter(b => b?.score != null && !b.skipped)
-
     const avgPct  = available.length > 0
-      ? available.reduce((s, b) => s + (b.score / max) * 100, 0) / available.length
-      : null
+      ? available.reduce((s, b) => s + (b.score / max) * 100, 0) / available.length : null
     const avgLoss = avgPct != null ? max * (1 - avgPct / 100) : null
-
     return { key, label, max, avgPct, avgLoss, n: available.length }
   })
 
-  // Sort by avgPct ascending → biggest limiter first
-  const rankingByLimit = [...dimStats]
-    .filter(d => d.avgPct != null)
-    .sort((a, b) => a.avgPct - b.avgPct)
+  const rankingByLimit = [...dimStats].filter(d => d.avgPct != null).sort((a,b) => a.avgPct - b.avgPct)
 
-  // Gate activation counts
-  let gate1Count = 0, gate2Count = 0
-  let riskPenaltyTotal = 0
-  let nullFieldsTotal  = 0
-
+  let gate1Count=0, gate2Count=0, riskPenaltyTotal=0, nullFieldsTotal=0
   for (const ticker of tickers) {
     const r = results[ticker]
     if (r.activeGate === 'gate1') gate1Count++
     if (r.activeGate === 'gate2') gate2Count++
     riskPenaltyTotal += r.riskPenalty ?? 0
-    nullFieldsTotal  += Object.values(r.breakdown)
-      .reduce((s, b) => s + (b.nullFields ?? 0), 0)
+    nullFieldsTotal  += Object.values(r.breakdown ?? {}).reduce((s,b) => s+(b?.nullFields??0), 0)
   }
 
-  // Score distribution
-  const scores      = tickers.map(t => results[t].finalScore).filter(Number.isFinite)
-  const avgScore    = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
-  const gradeCounts = { 'STRONG BUY': 0, 'BUY': 0, 'HOLD': 0, 'SELL': 0, 'STRONG SELL': 0 }
-  tickers.forEach(t => {
-    const gradeLabel = results[t].grade
-    if (gradeCounts[gradeLabel] !== undefined) gradeCounts[gradeLabel]++
-  })
+  const scores   = tickers.map(t => results[t].finalScore).filter(Number.isFinite)
+  const avgScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null
+
+  const gradeCounts = { 'STRONG BUY':0,'BUY':0,'HOLD':0,'SELL':0,'STRONG SELL':0,'NOT_RATED':0 }
+  tickers.forEach(t => { const g=results[t].grade; if(g in gradeCounts) gradeCounts[g]++ })
 
   return {
-    dimStats,
-    rankingByLimit,
-    gate1Count,
-    gate2Count,
-    riskPenaltyTotal,
-    nullFieldsTotal,
-    avgScore:  Number.isFinite(avgScore) ? Math.round(avgScore * 10) / 10 : null,
-    gradeCounts,
-    tickerCount: tickers.length,
+    dimStats, rankingByLimit, gate1Count, gate2Count,
+    riskPenaltyTotal, nullFieldsTotal,
+    avgScore: Number.isFinite(avgScore) ? Math.round(avgScore*10)/10 : null,
+    gradeCounts, tickerCount: tickers.length,
   }
 }
