@@ -501,7 +501,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
     modelVersion:'v1.2',
     modelFit: (() => {
       const reasons = []
-      if (ql.profCapApplied) reasons.push('ROE_CAPPED_HIGH_LEVERAGE_SECTOR')
+      if (ql.profCapApplied) reasons.push('ROE_CAPPED_UTILITY_REIT')
       if (ql.profitabilitySource === 'roe_excluded_leverage') reasons.push('ROE_EXCLUDED_HIGH_LEVERAGE')
       if (ql.profitabilitySource === 'roe_excluded_missing_leverage') reasons.push('ROE_EXCLUDED_MISSING_LEVERAGE')
       if (ql.profitabilitySource == null) reasons.push('PROFITABILITY_MISSING')
@@ -510,12 +510,13 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       if (tc.ema200 == null) reasons.push('EMA200_INSUFFICIENT_BARS')
       if (gt.activeGate === 'gate2') reasons.push('GATE2_FAILED')
       const status = reasons.length === 0 ? 'FULL'
-        : reasons.some(r => r.includes('MISSING') || r.includes('GATE2')) ? 'LIMITED'
+        : reasons.some(r => r.includes('MISSING') || r.includes('GATE2') || r.includes('EXCLUDED')) ? 'LIMITED'
         : 'ADJUSTED'
       return { status, reasons }
     })(),
     missingFields: [
       ...(ql.profitabilitySource == null ? ['roic','roi','roe'] : []),
+      ...(ql.profitabilitySource === 'roe_excluded_missing_leverage' ? ['debtToEquity'] : []),
       ...(gw.fcfGrowthUsed == null ? ['fcfGrowthTTMYoY','fcfTTM/fcfPriorTTM'] : []),
       ...(vl.metric == null ? ['peg','evFcf','evEbitda','pe'] : []),
       ...(tc.ema200 == null ? ['ema200_needs200bars'] : []),

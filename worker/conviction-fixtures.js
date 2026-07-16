@@ -187,6 +187,35 @@ function run() {
     return r.breakdown.growth.fcfGrowthUsed === 100
   })
 
+
+  // ── F26: Utility ROE=25, D/E=6 → capped at 4/7, modelFit ADJUSTED ─
+  t('F26','Utility: ROIC/ROI absent, ROE=25, D/E=6 → cap 4/7, profCapApplied=true', () => {
+    const f = {roe:25, debtToEquity:6, grossMargin:50, operatingMargin:18, fcfMarginTTM:12,
+      revenueGrowthYoY:5, peg:null, pe:25, beta:0.7, netMargin:10}
+    const r = computeConviction(f,[],[], null, 'Utilities')
+    const q = r.breakdown.quality
+    const ok = q.profitabilitySource === 'roe'
+      && q.profCapApplied === true
+      && (q.score??0) < 20
+      && ['ADJUSTED','LIMITED'].includes(r.modelFit.status)
+      && r.modelFit.reasons.includes('ROE_CAPPED_UTILITY_REIT')
+    if (!ok) console.log('  F26 detail:', JSON.stringify({profSource:q.profitabilitySource,cap:q.profCapApplied,score:q.score,fit:r.modelFit}))
+    return ok
+  })
+
+  // ── F27: Technology ROE=25, D/E=6 → excluded (no cap, no points) ───
+  t('F27','Technology: ROIC/ROI absent, ROE=25, D/E=6 → excluded (leverage guard)', () => {
+    const f = {roe:25, debtToEquity:6, grossMargin:50, operatingMargin:18, fcfMarginTTM:12,
+      revenueGrowthYoY:20, peg:null, pe:25, beta:1.2, netMargin:15}
+    const r = computeConviction(f,[],[], null, 'Technology')
+    const q = r.breakdown.quality
+    const ok = q.profitabilitySource === 'roe_excluded_leverage'
+      && q.profCapApplied === false
+      && r.modelFit.status === 'LIMITED'
+    if (!ok) console.log('  F27 detail:', JSON.stringify({profSource:q.profitabilitySource,cap:q.profCapApplied,fit:r.modelFit.status}))
+    return ok
+  })
+
   console.log(`\n${'─'.repeat(50)}`)
   console.log(`${passed}/${passed+failed} passed, ${failed} failed`)
   return { passed, failed, allPassed: failed===0 }
