@@ -143,7 +143,7 @@ export default function DashboardView({
   const liveConviction = useMemo(() => {
     const scores = Object.values(convictionResults)
       .map(r => r.finalScore)
-      .filter(s => s != null)
+      .filter(Number.isFinite)
     if (scores.length === 0) return null
     const avg   = Math.round(scores.reduce((a,b) => a+b,0) / scores.length * 10) / 10
     const grade = getGrade(avg)
@@ -209,7 +209,7 @@ export default function DashboardView({
           sub={`${visiblePositions.length} positions`} />
 
         <StatCard icon={Zap} label="Avg conviction"
-          value={liveConviction ? `${liveConviction.score}/100` : `${portfolioStats.avgConviction}/100`}
+          value={liveConviction ? `${liveConviction.score}/100` : Number.isFinite(portfolioStats.avgConviction) ? `${portfolioStats.avgConviction}/100` : '—/100'}
           sub={liveConviction ? liveConviction.label : 'Computing…'}
           subColor={liveConviction ? liveConviction.color : 'var(--txt-muted)'} />
       </div>

@@ -132,7 +132,7 @@ function AppInner() {
   } = useAllConvictions(liveVisiblePositions, prices)
 
   const convictionAvg = useMemo(() => {
-    const scores = Object.values(convictionResults).map(r => r.finalScore).filter(s => s != null)
+    const scores = Object.values(convictionResults).map(r => r.finalScore).filter(Number.isFinite)
     if (!scores.length) return null
     const avg   = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*10)/10
     const grade = getGrade(avg)

@@ -10,6 +10,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { workerAPI, getWorkerUrl } from '../utils/api/worker.js'
+
+// Analyst targets now fetched via Worker with browser-like headers
+// Client-side Yahoo fetch removed (CORS blocked from production domain)
+import { cache } from '../utils/cache.js'
 import { runConviction }           from '../conviction/index.js'
 
 const TICKER_DELAY_MS = 250   // delay between tickers on first cold run
@@ -41,21 +45,27 @@ export function useAllConvictions(positions = [], prices = {}) {
       for (let i = 0; i < positions.length; i++) {
         const pos = positions[i]
         try {
+          // Bust stale localStorage fund_ cache if targetMean is null
+          // (was written before Yahoo Finance fallback was added for analyst targets)
+          const cachedFund = cache.getFund(pos.ticker)
+          if (cachedFund && cachedFund.targetMean == null) {
+            cache.deleteFund(pos.ticker)
+          }
+
           const [fundResult, ohlcvResult] = await Promise.all([
             workerAPI.fundamentals(pos.ticker),
             workerAPI.ohlcv(pos.ticker, '1Y'),
           ])
 
           if (fundResult?.data) {
+            const fundData = fundResult.data
+
             const conviction = runConviction({
-              fundamentals: fundResult.data,
+              fundamentals: fundData,
               ohlcv:        ohlcvResult?.data ?? [],
               spyOhlcv,
               prices,
             })
-            // Always attach earnings date from fundamentals
-            // Note: forceRefresh for null upside was removed — it caused KV write limit
-            // The 48h analyst cache (analyst:TICKER) handles target refresh automatically
             newResults[pos.ticker] = {
               ...conviction,
               nextEarningsDate:   fundResult?.data?.nextEarningsDate   ?? null,
@@ -134,8 +144,8 @@ export function calcDiagnostics(results) {
   }
 
   // Score distribution
-  const scores      = tickers.map(t => results[t].finalScore)
-  const avgScore    = scores.reduce((a, b) => a + b, 0) / scores.length
+  const scores      = tickers.map(t => results[t].finalScore).filter(Number.isFinite)
+  const avgScore    = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
   const gradeCounts = { 'STRONG BUY': 0, 'BUY': 0, 'HOLD': 0, 'SELL': 0, 'STRONG SELL': 0 }
   tickers.forEach(t => {
     const gradeLabel = results[t].grade
@@ -149,7 +159,7 @@ export function calcDiagnostics(results) {
     gate2Count,
     riskPenaltyTotal,
     nullFieldsTotal,
-    avgScore:  Math.round(avgScore * 10) / 10,
+    avgScore:  Number.isFinite(avgScore) ? Math.round(avgScore * 10) / 10 : null,
     gradeCounts,
     tickerCount: tickers.length,
   }

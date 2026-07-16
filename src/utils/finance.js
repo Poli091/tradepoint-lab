@@ -27,9 +27,10 @@ export function calcPortfolioStats(positions) {
   const totalCost  = positions.reduce((s, p) => s + p.avgPrice  * p.qty, 0)
   const totalGain  = totalValue - totalCost
   const gainPct    = totalCost > 0 ? (totalGain / totalCost) * 100 : 0
-  const avgConviction = positions.length
-    ? Math.round(positions.reduce((s, p) => s + p.conviction, 0) / positions.length)
-    : 0
+  const _convScores = positions.map(p => p.conviction).filter(Number.isFinite)
+  const avgConviction = _convScores.length
+    ? Math.round(_convScores.reduce((a,b)=>a+b,0) / _convScores.length)
+    : null
   const best = [...positions].sort((a, b) => calcPnL(b).gainPct - calcPnL(a).gainPct)[0] ?? null
 
   return { totalValue, totalCost, totalGain, gainPct, avgConviction, best, count: positions.length }
