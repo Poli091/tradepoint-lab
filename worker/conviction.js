@@ -209,10 +209,8 @@ function periodReturn(ohlcv, days) {
 
 function technical(ohlcv, spyOhlcv, currentPrice) {
   const closes = (ohlcv||[]).map(d=>d.price)
-  const period  = Math.min(200, closes.length)
-  const p50     = Math.min(50,  closes.length)
-  const ema200  = calcEMA(closes, period)
-  const ema50   = p50 >= 10 ? calcEMA(closes, p50) : null
+  const ema200  = closes.length >= 200 ? calcEMA(closes, 200) : null
+  const ema50   = closes.length >= 50  ? calcEMA(closes, 50)  : null
   const price   = currentPrice ?? closes[closes.length-1]
   const above   = ema200!=null && price!=null ? price>ema200 : null
   // Extension penalty: price > EMA50 + 2.5×ATR → -1 pt (avoid max technical on parabolic moves)
@@ -225,7 +223,7 @@ function technical(ohlcv, spyOhlcv, currentPrice) {
   }
 
   const rsi      = calcRSI(closes)
-  const rsiScore = rsi==null?null : (rsi>=40&&rsi<=60)?3 : (rsi>=30||rsi<=70)?2 : 1
+  const rsiScore = rsi==null?null : (rsi>=40&&rsi<=60)?3 : (rsi>=30&&rsi<=70)?2 : 1
 
   const PERIODS = [{days:21,w:1},{days:63,w:2},{days:126,w:1.5}]
   let totalW=0, wRS=0
@@ -268,7 +266,7 @@ function gates(f, profile) {
   const g1checks={}
   const revOk=(f.revenueGrowth3Y!=null&&f.revenueGrowth3Y>=0)||(f.revenueGrowthYoY!=null&&f.revenueGrowthYoY>=0)||(f.revenueGrowth3Y==null&&f.revenueGrowthYoY==null)
   g1checks.revenueGrowth={pass:revOk}
-  g1checks.operatingMargin={pass:f.operatingMargin==null||f.operatingMargin>-25}
+  g1checks.operatingMargin={pass:f.operatingMargin==null||f.operatingMargin>=-25}
   if (profile.name!=='banks'&&profile.gate1DebtMax!=null) {
     g1checks.debtEquity={pass:f.debtToEquity==null||f.debtToEquity<=profile.gate1DebtMax}
   } else { g1checks.debtEquity={pass:true,skipped:true} }
@@ -368,7 +366,8 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
   const ql = quality(f)
   const st = strength(f, profile)
   const vl = valuation(f)
-  const tc = technical(ohlcv, spyOhlcv, currentPrice ?? f.price)
+  const resolvedPrice = currentPrice ?? f.price ?? null
+  const tc = technical(ohlcv, spyOhlcv, resolvedPrice)
   const rk = risk(f, profile)
   const gt = gates(f, profile)
 
@@ -383,8 +382,8 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
   const conf = confidence(scores, ohlcv.length, spyOhlcv.length)
   const grade = getGrade(finalScore)
 
-  const upside = (f.targetMean && currentPrice)
-    ? Math.round(((f.targetMean/currentPrice)-1)*1000)/10
+  const upside = (f.targetMean != null && resolvedPrice != null && resolvedPrice > 0)
+    ? Math.round(((f.targetMean/resolvedPrice)-1)*1000)/10
     : null
 
   return {
@@ -405,7 +404,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
     technical: {
       ema200:tc.ema200, aboveEMA200:tc.aboveEMA200,
       rsi:tc.rsi, relStrengthWeighted:tc.relStrengthWeighted,
-      currentPrice: currentPrice,
+      currentPrice: resolvedPrice,
     },
     wallStreet: {
       targetMean:f.targetMean, upside,

@@ -53,7 +53,7 @@ export function scoreRSI(ctx) {
 
   let score = 0
   if      (rsi >= 40 && rsi <= 60) score = 3   // healthy range
-  else if (rsi >= 30 || rsi <= 70) score = 2   // oversold or overbought
+  else if (rsi >= 30 && rsi <= 70) score = 2   // normal range
   else                              score = 1   // extreme (<30 or >70)
 
   return { score, rsi }

@@ -25,7 +25,7 @@ function checkGate1(ctx) {
              || (f.revenueGrowth3Y == null && f.revenueGrowthYoY == null)
   checks.revenueGrowth = { pass: revOk, value: f.revenueGrowthYoY }
 
-  const opOk = f.operatingMargin == null || f.operatingMargin > -25
+  const opOk = f.operatingMargin == null || f.operatingMargin >= -25
   checks.operatingMargin = { pass: opOk, value: f.operatingMargin }
 
   if (profile.name !== 'banks' && profile.gate1DebtMax != null) {

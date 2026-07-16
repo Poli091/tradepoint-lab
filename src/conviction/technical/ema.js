@@ -43,9 +43,7 @@ export function scoreEMA200(ctx) {
   }
 
   const closes       = ohlcv.map(d => d.price)
-  const period200    = Math.min(200, closes.length)
-  const period50     = Math.min(50,  closes.length)
-  const ema200       = calcEMA(closes, period200)
+  const ema200       = closes.length >= 200 ? calcEMA(closes, 200) : null
   const ema50        = calcEMA(closes, period50)
   const currentPrice = prices[ticker]?.price ?? closes[closes.length - 1]
 
