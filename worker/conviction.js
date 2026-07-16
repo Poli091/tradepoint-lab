@@ -143,7 +143,8 @@ function growth(f) {
    ROIC→ROI→ROE priority(7) + OpMargin(6) + GrossMargin(4) + FCF Margin(3)
 ════════════════════════════════════════════════════════════ */
 
-function quality(f) {
+function quality(f, profile) {
+  const roeDEThreshold = (profile?.name === 'utilities' || profile?.name === 'reit') ? 8 : 4
   // Priority: ROIC → ROI → ROE (never take max)
   let profVal = null, profSource = null
   if (f.roic != null) { profVal = f.roic; profSource = 'roic' }
@@ -151,15 +152,19 @@ function quality(f) {
   else if (f.roe  != null) {
     // ROE with leverage guard: D/E must be known and within bounds
     // If D/E is absent we cannot validate leverage — exclude conservatively
-    if (Number.isFinite(f.debtToEquity) && f.debtToEquity >= 0 && f.debtToEquity <= 4) {
+    if (Number.isFinite(f.debtToEquity) && f.debtToEquity >= 0 && f.debtToEquity <= roeDEThreshold) {
       profVal = f.roe; profSource = 'roe'
     } else {
       profVal = null
       profSource = Number.isFinite(f.debtToEquity) ? 'roe_excluded_leverage' : 'roe_excluded_missing_leverage'
     }
   }
-  const profScore = profVal==null ? null
+  const profScoreRaw = profVal==null ? null
     : profVal>20?7 : profVal>=15?6 : profVal>=10?4 : profVal>=8?2 : 0
+  // Utilities/REIT: ROE allowed as fallback but high D/E means leverage amplifies ROE.
+  // Cap profScore at 4/7 to avoid rewarding capital structure rather than returns.
+  const profCapApplied = profSource === 'roe' && (profile?.name === 'utilities' || profile?.name === 'reit')
+  const profScore = profCapApplied ? Math.min(profScoreRaw ?? 0, 4) : profScoreRaw
 
   const opScore  = f.operatingMargin==null ? null
     : f.operatingMargin>30?6 : f.operatingMargin>=20?5 : f.operatingMargin>=10?3 : f.operatingMargin>=0?1 : 0
@@ -171,7 +176,7 @@ function quality(f) {
   return { ...sumComponents([
     {score:profScore,weight:7},{score:opScore,weight:6},
     {score:gmScore,weight:4},{score:fcfScore,weight:3}
-  ]), profitabilitySource: profSource, profitabilityValue: profVal }
+  ]), profitabilitySource: profSource, profitabilityValue: profVal, profCapApplied }
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -438,7 +443,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
   const resolvedPrice = currentPrice ?? f.price ?? null
 
   const gw = growth(f)
-  const ql = quality(f)
+  const ql = quality(f, profile)
   const st = strength(f, profile)
   const vl = valuation(f)
   const tc = technical(ohlcv, spyOhlcv, resolvedPrice)
@@ -475,7 +480,7 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
     grade, confidence:conf, coveragePct, sectorProfile:profile.name,
     breakdown:{
       growth:    {score:gw.score,   max:25, nullFields:gw.nullFields, growthQualityModifier:gw.growthQualityModifier??1, fcfGrowthUsed:gw.fcfGrowthUsed},
-      quality:   {score:ql.score,   max:20, nullFields:ql.nullFields, profitabilitySource:ql.profitabilitySource},
+      quality:   {score:ql.score,   max:20, nullFields:ql.nullFields, profitabilitySource:ql.profitabilitySource, profCapApplied:ql.profCapApplied??false},
       strength:  {score:st.score,   max:15, nullFields:st.nullFields, negativeEquity:st.negativeEquity===true},
       valuation: {score:vl.score,   max:15, metric:vl.metric, value:vl.value},
       technical: {score:tc.score,   max:15, nullFields:tc.nullFields, extended:tc.extended, volumeZScore:tc.volumeZScore},
@@ -494,5 +499,26 @@ export function computeConviction(fundamentals, ohlcv=[], spyOhlcv=[], currentPr
       analysts:(f.strongBuy??0)+(f.buy??0)+(f.hold??0)+(f.sell??0)+(f.strongSell??0),
     },
     modelVersion:'v1.2',
+    modelFit: (() => {
+      const reasons = []
+      if (ql.profCapApplied) reasons.push('ROE_CAPPED_HIGH_LEVERAGE_SECTOR')
+      if (ql.profitabilitySource === 'roe_excluded_leverage') reasons.push('ROE_EXCLUDED_HIGH_LEVERAGE')
+      if (ql.profitabilitySource === 'roe_excluded_missing_leverage') reasons.push('ROE_EXCLUDED_MISSING_LEVERAGE')
+      if (ql.profitabilitySource == null) reasons.push('PROFITABILITY_MISSING')
+      if (gw.fcfGrowthUsed == null) reasons.push('FCF_GROWTH_UNAVAILABLE')
+      if (vl.metric == null) reasons.push('VALUATION_MISSING')
+      if (tc.ema200 == null) reasons.push('EMA200_INSUFFICIENT_BARS')
+      if (gt.activeGate === 'gate2') reasons.push('GATE2_FAILED')
+      const status = reasons.length === 0 ? 'FULL'
+        : reasons.some(r => r.includes('MISSING') || r.includes('GATE2')) ? 'LIMITED'
+        : 'ADJUSTED'
+      return { status, reasons }
+    })(),
+    missingFields: [
+      ...(ql.profitabilitySource == null ? ['roic','roi','roe'] : []),
+      ...(gw.fcfGrowthUsed == null ? ['fcfGrowthTTMYoY','fcfTTM/fcfPriorTTM'] : []),
+      ...(vl.metric == null ? ['peg','evFcf','evEbitda','pe'] : []),
+      ...(tc.ema200 == null ? ['ema200_needs200bars'] : []),
+    ],
   }
 }
