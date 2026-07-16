@@ -828,6 +828,71 @@ export default function TickerDetailPanel({ ticker, onClose, prices = {}, embedd
                   {result.gateCap ? ` → Gate cap ${result.gateCap}` : ''} → <strong style={{ color:result.gradeColor }}>{result.finalScore}</strong>
                 </div>
 
+                {/* ── Model Fit + Data Freshness ──────────────────── */}
+                <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                  {/* modelFit badge */}
+                  {result.modelFit?.status && (() => {
+                    const fitStyles = {
+                      FULL:     { color:'var(--green)', bg:'rgba(34,197,94,0.12)',   bd:'rgba(34,197,94,0.35)' },
+                      ADJUSTED: { color:'var(--amber)', bg:'rgba(251,191,36,0.12)',  bd:'rgba(251,191,36,0.35)' },
+                      LIMITED:  { color:'var(--red)',   bg:'rgba(239,68,68,0.12)',   bd:'rgba(239,68,68,0.35)' },
+                    }
+                    const fitTips = {
+                      FULL:     'All scoring components computed with complete data.',
+                      ADJUSTED: 'Sector-specific adaptation applied (e.g. ROE capped for utilities/REIT).',
+                      LIMITED:  'One or more key metrics unavailable. Missing components score zero — result may be conservative.',
+                    }
+                    const s = fitStyles[result.modelFit.status] ?? { color:'var(--txt-muted)', bg:'rgba(148,163,184,0.10)', bd:'rgba(148,163,184,0.30)' }
+                    return (
+                      <div title={[fitTips[result.modelFit.status], ...(result.modelFit.reasons ?? [])].join('\n')}
+                        style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, cursor:'help',
+                          background:s.bg, color:s.color, border:`1px solid ${s.bd}`, letterSpacing:'0.05em' }}>
+                        {result.modelFit.status}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Coverage */}
+                  {result.coveragePct != null && (
+                    <div style={{ fontSize:10, color:'var(--txt-muted)',
+                      padding:'2px 7px', borderRadius:4, background:'var(--surface-up)', border:'1px solid var(--border)' }}>
+                      Coverage {result.coveragePct}%
+                    </div>
+                  )}
+
+                  {/* Data freshness */}
+                  {result.dataFreshness && (() => {
+                    const f = result.dataFreshness
+                    const fs = f.isFresh
+                      ? { color:'var(--green)', bg:'rgba(34,197,94,0.12)',  bd:'rgba(34,197,94,0.35)' }
+                      : { color:'var(--red)',   bg:'rgba(239,68,68,0.12)',  bd:'rgba(239,68,68,0.35)' }
+                    const tip = [
+                      `Source: ${f.ohlcvSource ?? '—'}`,
+                      `Last bar: ${f.ohlcvLastDate ?? '—'}`,
+                      `Age: ${f.ohlcvAgeDays ?? '?'}d`,
+                      `Bars: ${f.ohlcvBars ?? 0}`,
+                      f.warning ?? '',
+                    ].filter(Boolean).join(' · ')
+                    return (
+                      <div title={tip} style={{ fontSize:10, fontWeight:600, padding:'2px 7px', borderRadius:4,
+                        cursor:'help', background:fs.bg, color:fs.color, border:`1px solid ${fs.bd}` }}>
+                        {f.isFresh ? '✓' : '⚠'} {f.ohlcvLastDate ?? '—'} · {f.ohlcvSource}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* missingFields — only if any */}
+                {result.missingFields?.length > 0 && (
+                  <div style={{ marginBottom:10, padding:'6px 10px', background:'rgba(148,163,184,0.05)',
+                    border:'1px solid rgba(148,163,184,0.2)', borderRadius:'var(--radius)', fontSize:10 }}>
+                    <span style={{ color:'var(--txt-muted)', fontWeight:700 }}>Missing data: </span>
+                    <span style={{ color:'var(--txt-muted)' }}>
+                      {result.missingFields.join(' · ')}
+                    </span>
+                  </div>
+                )}
+
                 {/* Dimension bars */}
                 <DimBar label="Growth"    score={result.breakdown.growth.score}    max={25} color={result.gradeColor} />
                 <DimBar label="Quality"   score={result.breakdown.quality.score}   max={20} color={result.gradeColor} />
